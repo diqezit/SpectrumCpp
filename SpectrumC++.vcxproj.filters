@@ -1,49 +1,213 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <Filter Include="Source Files">
+    <Filter Include="00_App">
       <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
-      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
     </Filter>
-    <Filter Include="Header Files">
+    <Filter Include="01_Core">
+      <UniqueIdentifier>{92b45025-a744-4638-8a8b-302a832c694a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="02_Services">
+      <UniqueIdentifier>{6b71f98d-697d-4589-9b93-b6771d15273b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="02_Services\Audio">
+      <UniqueIdentifier>{7a597a7e-f637-4581-8b20-f70918c0c16b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="02_Services\Graphics">
+      <UniqueIdentifier>{6d01e6a5-d032-4be0-ba30-744d08268182}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="03_UI">
+      <UniqueIdentifier>{0c98c43c-eda3-4f0e-804e-fa45130c3e73}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="_Common">
       <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
-      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
     </Filter>
-    <Filter Include="Resource Files">
+    <Filter Include="_Project Files">
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
-      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="01_Core\Controller">
+      <UniqueIdentifier>{2df4793f-3093-4a11-85e3-9a117b9b16ac}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="01_Core\Managers">
+      <UniqueIdentifier>{187d9536-47b1-4f65-8b21-4d375a396489}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="02_Services\Audio\Capture">
+      <UniqueIdentifier>{f36306fe-f2d4-406a-a550-9ec80242207b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="02_Services\Audio\Analysis">
+      <UniqueIdentifier>{b1c35b80-cd23-4554-b580-b2d992d9d96c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="02_Services\Graphics\Context">
+      <UniqueIdentifier>{4237d1d2-7c39-4467-897d-4171e35a1da3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="02_Services\Graphics\Interface">
+      <UniqueIdentifier>{17691a32-1ccb-426b-80a5-f1295b9c0382}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="02_Services\Graphics\Renderers">
+      <UniqueIdentifier>{4ed6eb12-70b9-4de9-b223-38e5e7834543}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="framework.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="Common.h">
+      <Filter>_Common</Filter>
     </ClInclude>
-    <ClInclude Include="targetver.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="Types.h">
+      <Filter>_Common</Filter>
     </ClInclude>
-    <ClInclude Include="Resource.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="Utils.h">
+      <Filter>_Common</Filter>
     </ClInclude>
-    <ClInclude Include="SpectrumC++.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="MainWindow.h">
+      <Filter>00_App</Filter>
+    </ClInclude>
+    <ClInclude Include="OverlayWindow.h">
+      <Filter>00_App</Filter>
+    </ClInclude>
+    <ClInclude Include="ControllerCore.h">
+      <Filter>01_Core\Controller</Filter>
+    </ClInclude>
+    <ClInclude Include="AudioManager.h">
+      <Filter>01_Core\Managers</Filter>
+    </ClInclude>
+    <ClInclude Include="RendererManager.h">
+      <Filter>01_Core\Managers</Filter>
+    </ClInclude>
+    <ClInclude Include="AudioCapture.h">
+      <Filter>02_Services\Audio\Capture</Filter>
+    </ClInclude>
+    <ClInclude Include="WASAPIHelper.h">
+      <Filter>02_Services\Audio\Capture</Filter>
+    </ClInclude>
+    <ClInclude Include="SpectrumAnalyzer.h">
+      <Filter>02_Services\Audio\Analysis</Filter>
+    </ClInclude>
+    <ClInclude Include="FFTProcessor.h">
+      <Filter>02_Services\Audio\Analysis</Filter>
+    </ClInclude>
+    <ClInclude Include="FrequencyMapper.h">
+      <Filter>02_Services\Audio\Analysis</Filter>
+    </ClInclude>
+    <ClInclude Include="SpectrumProcessor.h">
+      <Filter>02_Services\Audio\Analysis</Filter>
+    </ClInclude>
+    <ClInclude Include="GraphicsContext.h">
+      <Filter>02_Services\Graphics\Context</Filter>
+    </ClInclude>
+    <ClInclude Include="IRenderer.h">
+      <Filter>02_Services\Graphics\Interface</Filter>
+    </ClInclude>
+    <ClInclude Include="BaseRenderer.h">
+      <Filter>02_Services\Graphics\Interface</Filter>
+    </ClInclude>
+    <ClInclude Include="BarsRenderer.h">
+      <Filter>02_Services\Graphics\Renderers</Filter>
+    </ClInclude>
+    <ClInclude Include="WaveRenderer.h">
+      <Filter>02_Services\Graphics\Renderers</Filter>
+    </ClInclude>
+    <ClInclude Include="CircularWaveRenderer.h">
+      <Filter>02_Services\Graphics\Renderers</Filter>
+    </ClInclude>
+    <ClInclude Include="CubesRenderer.h">
+      <Filter>02_Services\Graphics\Renderers</Filter>
+    </ClInclude>
+    <ClInclude Include="FireRenderer.h">
+      <Filter>02_Services\Graphics\Renderers</Filter>
+    </ClInclude>
+    <ClInclude Include="LedPanelRenderer.h">
+      <Filter>02_Services\Graphics\Renderers</Filter>
+    </ClInclude>
+    <ClInclude Include="ColorPicker.h">
+      <Filter>03_UI</Filter>
+    </ClInclude>
+    <ClInclude Include="InputManager.h">
+      <Filter>01_Core\Managers</Filter>
+    </ClInclude>
+    <ClInclude Include="WindowManager.h">
+      <Filter>01_Core\Managers</Filter>
+    </ClInclude>
+    <ClInclude Include="WindowHelper.h">
+      <Filter>_Common</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="SpectrumC++.cpp">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="Application.cpp">
+      <Filter>00_App</Filter>
+    </ClCompile>
+    <ClCompile Include="MainWindow.cpp">
+      <Filter>00_App</Filter>
+    </ClCompile>
+    <ClCompile Include="OverlayWindow.cpp">
+      <Filter>00_App</Filter>
+    </ClCompile>
+    <ClCompile Include="Utils.cpp">
+      <Filter>_Common</Filter>
+    </ClCompile>
+    <ClCompile Include="ControllerCore.cpp">
+      <Filter>01_Core\Controller</Filter>
+    </ClCompile>
+    <ClCompile Include="AudioManager.cpp">
+      <Filter>01_Core\Managers</Filter>
+    </ClCompile>
+    <ClCompile Include="RendererManager.cpp">
+      <Filter>01_Core\Managers</Filter>
+    </ClCompile>
+    <ClCompile Include="AudioCapture.cpp">
+      <Filter>02_Services\Audio\Capture</Filter>
+    </ClCompile>
+    <ClCompile Include="WASAPIHelper.cpp">
+      <Filter>02_Services\Audio\Capture</Filter>
+    </ClCompile>
+    <ClCompile Include="SpectrumAnalyzer.cpp">
+      <Filter>02_Services\Audio\Analysis</Filter>
+    </ClCompile>
+    <ClCompile Include="FFTProcessor.cpp">
+      <Filter>02_Services\Audio\Analysis</Filter>
+    </ClCompile>
+    <ClCompile Include="FrequencyMapper.cpp">
+      <Filter>02_Services\Audio\Analysis</Filter>
+    </ClCompile>
+    <ClCompile Include="SpectrumProcessor.cpp">
+      <Filter>02_Services\Audio\Analysis</Filter>
+    </ClCompile>
+    <ClCompile Include="GraphicsContext.cpp">
+      <Filter>02_Services\Graphics\Context</Filter>
+    </ClCompile>
+    <ClCompile Include="BaseRenderer.cpp">
+      <Filter>02_Services\Graphics\Interface</Filter>
+    </ClCompile>
+    <ClCompile Include="BarsRenderer.cpp">
+      <Filter>02_Services\Graphics\Renderers</Filter>
+    </ClCompile>
+    <ClCompile Include="WaveRenderer.cpp">
+      <Filter>02_Services\Graphics\Renderers</Filter>
+    </ClCompile>
+    <ClCompile Include="CircularWaveRenderer.cpp">
+      <Filter>02_Services\Graphics\Renderers</Filter>
+    </ClCompile>
+    <ClCompile Include="CubesRenderer.cpp">
+      <Filter>02_Services\Graphics\Renderers</Filter>
+    </ClCompile>
+    <ClCompile Include="FireRenderer.cpp">
+      <Filter>02_Services\Graphics\Renderers</Filter>
+    </ClCompile>
+    <ClCompile Include="LedPanelRenderer.cpp">
+      <Filter>02_Services\Graphics\Renderers</Filter>
+    </ClCompile>
+    <ClCompile Include="ColorPicker.cpp">
+      <Filter>03_UI</Filter>
+    </ClCompile>
+    <ClCompile Include="InputManager.cpp">
+      <Filter>01_Core\Managers</Filter>
+    </ClCompile>
+    <ClCompile Include="WindowManager.cpp">
+      <Filter>01_Core\Managers</Filter>
+    </ClCompile>
+    <ClCompile Include="WindowHelper.cpp">
+      <Filter>_Common</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="SpectrumC++.rc">
-      <Filter>Resource Files</Filter>
-    </ResourceCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <Image Include="small.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="SpectrumC++.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
+    <Text Include="CMakeLists.txt" />
   </ItemGroup>
 </Project>
