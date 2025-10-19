@@ -2,52 +2,8 @@
 // SpectrumAnalyzer.cpp: Analyzes audio data to produce a frequency spectrum.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 #include "SpectrumAnalyzer.h"
-#include "Utils.h"
 
 namespace Spectrum {
-
-    void SpectrumAnalyzer::AudioBufferManager::Add(
-        const float* data,
-        size_t frames,
-        int channels
-    ) {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        m_buffer.reserve(m_buffer.size() + frames);
-        const float invChannels = 1.0f / static_cast<float>(channels);
-
-        for (size_t frame = 0; frame < frames; ++frame) {
-            const float* frameData = data + frame * static_cast<size_t>(channels);
-            float monoSample = 0.0f;
-            for (int ch = 0; ch < channels; ++ch) {
-                monoSample += frameData[ch];
-            }
-            m_buffer.push_back(monoSample * invChannels);
-        }
-    }
-
-    bool SpectrumAnalyzer::AudioBufferManager::HasEnoughData(
-        size_t required
-    ) const {
-        std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(m_mutex));
-        return m_buffer.size() >= required;
-    }
-
-    void SpectrumAnalyzer::AudioBufferManager::CopyTo(
-        AudioBuffer& dest,
-        size_t size
-    ) {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        if (m_buffer.size() >= size) {
-            std::copy_n(m_buffer.begin(), size, dest.begin());
-        }
-    }
-
-    void SpectrumAnalyzer::AudioBufferManager::Consume(size_t size) {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        if (m_buffer.size() >= size) {
-            m_buffer.erase(m_buffer.begin(), m_buffer.begin() + size);
-        }
-    }
 
     SpectrumAnalyzer::SpectrumAnalyzer(size_t barCount, size_t fftSize)
         : m_barCount(barCount),
@@ -59,15 +15,24 @@ namespace Spectrum {
         m_processBuffer.resize(fftSize);
     }
 
+    bool SpectrumAnalyzer::ValidateAudioInput(
+        const float* data,
+        size_t samples,
+        int channels,
+        size_t& outFrames
+    ) const {
+        if (!data || samples == 0 || channels <= 0) return false;
+        outFrames = samples / static_cast<size_t>(channels);
+        return outFrames > 0;
+    }
+
     void SpectrumAnalyzer::OnAudioData(
         const float* data,
         size_t samples,
         int channels
     ) {
-        if (!data || samples == 0 || channels <= 0) return;
-        const size_t frames = samples / static_cast<size_t>(channels);
-        if (frames == 0) return;
-
+        size_t frames = 0;
+        if (!ValidateAudioInput(data, samples, channels, frames)) return;
         m_bufferManager.Add(data, frames, channels);
     }
 
@@ -81,19 +46,35 @@ namespace Spectrum {
         }
     }
 
-    void SpectrumAnalyzer::ProcessSingleFFTChunk() {
+    void SpectrumAnalyzer::CopyChunkToProcessBuffer() {
         m_bufferManager.CopyTo(m_processBuffer, m_fftProcessor.GetFFTSize());
-        m_fftProcessor.Process(m_processBuffer);
+    }
 
-        SpectrumData currentBars(m_barCount, 0.0f);
+    void SpectrumAnalyzer::ExecuteFFT() {
+        m_fftProcessor.Process(m_processBuffer);
+    }
+
+    void SpectrumAnalyzer::MapMagnitudesToBars(SpectrumData& outBars) {
         m_frequencyMapper.MapFFTToBars(
             m_fftProcessor.GetMagnitudes(),
-            currentBars,
+            outBars,
             m_scaleType
         );
+    }
 
+    void SpectrumAnalyzer::ApplyPostProcessing(SpectrumData& bars) {
         std::lock_guard<std::mutex> lock(m_mutex);
-        m_postProcessor.Process(currentBars);
+        m_postProcessor.Process(bars);
+    }
+
+    void SpectrumAnalyzer::ProcessSingleFFTChunk() {
+        CopyChunkToProcessBuffer();
+        ExecuteFFT();
+
+        SpectrumData currentBars(m_barCount, 0.0f);
+        MapMagnitudesToBars(currentBars);
+
+        ApplyPostProcessing(currentBars);
     }
 
     SpectrumData SpectrumAnalyzer::GetSpectrum() {

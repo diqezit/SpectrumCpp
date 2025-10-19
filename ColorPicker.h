@@ -1,6 +1,6 @@
-// ColorPicker.h
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-// ColorPicker.h: A UI component for selecting a color from an HSV wheel.
+// Defines the ColorPicker, a UI component for selecting a color from an
+// HSV wheel, handling mouse interaction and drawing.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 #ifndef SPECTRUM_CPP_COLOR_PICKER_H
@@ -38,21 +38,20 @@ namespace Spectrum {
         bool EnsureColorWheelBitmap(GraphicsContext& context);
         bool CreateColorWheelBitmap(GraphicsContext& context);
         std::vector<uint32_t> CreateBitmapData();
+        bool CreateD2D1BitmapFromData(GraphicsContext& context, const std::vector<uint32_t>& data);
 
         // Drawing
         void DrawWheel(GraphicsContext& context, const D2D1_RECT_F& rect);
-        void DrawBorder(GraphicsContext& context, const D2D1_RECT_F& rect, const Color& borderColor);
-        void DrawHoverPreview(GraphicsContext& context, const D2D1_RECT_F& rect, const Color& borderColor);
+        void DrawBorder(GraphicsContext& context, const D2D1_RECT_F& rect);
+        void DrawHoverPreview(GraphicsContext& context, const D2D1_RECT_F& rect);
+        Color GetBorderColor() const;
 
         // Interaction
         void UpdateHoverColor(int x, int y);
         bool IsPointInside(int x, int y) const;
+        void InvokeColorSelectionCallback();
+        Color CalculateColorFromPosition(int x, int y) const;
 
-        // Helpers
-        static D2D1_RECT_F MakeRect(const Point& pos, float r);
-        static Point Center(const Point& pos, float r);
-
-    private:
         Point m_position;
         float m_radius;
         bool  m_isVisible;

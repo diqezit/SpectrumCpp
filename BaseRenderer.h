@@ -1,9 +1,11 @@
-// =-=-=-=-=-=-=-=-=-=-=
-// BaseRenderer.h
-// =-=-=-=-=-=-=-=-=-=-=
-
 #ifndef SPECTRUM_CPP_BASE_RENDERER_H
 #define SPECTRUM_CPP_BASE_RENDERER_H
+
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// This file defines the BaseRenderer class, an abstract base for all
+// visualizers. It implements the IRenderer interface and provides common
+// functionality like quality settings, timing, and viewport management
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "IRenderer.h"
 #include "Common.h"
@@ -49,7 +51,6 @@ namespace Spectrum {
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
         bool IsRenderable(const SpectrumData& spectrum) const noexcept;
 
-        // Calculates a centered rectangle with a fixed aspect ratio
         Rect CalculatePaddedRect() const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
@@ -73,6 +74,6 @@ namespace Spectrum {
         static constexpr float TIME_RESET_THRESHOLD = 1e6f;
     };
 
-}
+} // namespace Spectrum
 
 #endif

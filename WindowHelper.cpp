@@ -1,12 +1,45 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-// WindowHelper.cpp: Implementation of common Win32 window helpers.
+// Implements the helper functions for Win32 window management,
+// providing low-level support for window creation and manipulation.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 #include "WindowHelper.h"
-#include "Utils.h"
 
 namespace Spectrum {
     namespace WindowUtils {
+
+        namespace {
+
+            void FillWindowClass(WNDCLASSEXW& wc,
+                HINSTANCE hInstance,
+                const wchar_t* className,
+                WNDPROC wndProc,
+                bool overlay) {
+                wc.cbSize = sizeof(WNDCLASSEXW);
+                wc.style = CS_HREDRAW | CS_VREDRAW;
+                wc.lpfnWndProc = wndProc;
+                wc.cbClsExtra = 0;
+                wc.cbWndExtra = 0;
+                wc.hInstance = hInstance;
+                wc.hIcon = LoadIcon(nullptr, IDI_APPLICATION);
+                wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+                wc.hbrBackground = overlay
+                    ? nullptr
+                    : (HBRUSH)(COLOR_WINDOW + 1);
+                wc.lpszMenuName = nullptr;
+                wc.lpszClassName = className;
+                wc.hIconSm = LoadIcon(nullptr, IDI_APPLICATION);
+            }
+
+            bool HandleClassRegistrationError() {
+                DWORD err = GetLastError();
+                if (err == ERROR_CLASS_ALREADY_EXISTS) return true;
+
+                LOG_ERROR("Failed to register window class: " << err);
+                return false;
+            }
+
+        }
 
         Styles MakeStyles(bool overlay) {
             if (overlay)
@@ -28,28 +61,10 @@ namespace Spectrum {
             WNDPROC wndProc,
             bool overlay) {
             WNDCLASSEXW wc = {};
-            wc.cbSize = sizeof(WNDCLASSEXW);
-            wc.style = CS_HREDRAW | CS_VREDRAW;
-            wc.lpfnWndProc = wndProc;
-            wc.cbClsExtra = 0;
-            wc.cbWndExtra = 0;
-            wc.hInstance = hInstance;
-            wc.hIcon = LoadIcon(nullptr, IDI_APPLICATION);
-            wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-            wc.hbrBackground = overlay
-                ? nullptr
-                : (HBRUSH)(COLOR_WINDOW + 1);
-            wc.lpszMenuName = nullptr;
-            wc.lpszClassName = className;
-            wc.hIconSm = LoadIcon(nullptr, IDI_APPLICATION);
+            FillWindowClass(wc, hInstance, className, wndProc, overlay);
 
             if (RegisterClassExW(&wc)) return true;
-
-            DWORD err = GetLastError();
-            if (err == ERROR_CLASS_ALREADY_EXISTS) return true;
-
-            LOG_ERROR("Failed to register window class: " << err);
-            return false;
+            return HandleClassRegistrationError();
         }
 
         HWND CreateWindowWithStyles(HINSTANCE hInstance,
@@ -112,29 +127,31 @@ namespace Spectrum {
             }
         }
 
-        void GetScreenSize(int& w,
-            int& h) {
-            w = GetSystemMetrics(SM_CXSCREEN);
-            h = GetSystemMetrics(SM_CYSCREEN);
+        Size GetScreenSize() {
+            return { GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN) };
+        }
+
+        Size GetWindowSize(HWND hwnd) {
+            RECT rect{};
+            if (!GetWindowRect(hwnd, &rect)) return { 0, 0 };
+            return { rect.right - rect.left, rect.bottom - rect.top };
+        }
+
+        Pos CalculateCenterPosition(const Size& windowSize, const Size& screenSize) {
+            return { (screenSize.w - windowSize.w) / 2, (screenSize.h - windowSize.h) / 2 };
         }
 
         void CenterOnScreen(HWND hwnd) {
-            RECT rect{};
-            if (!GetWindowRect(hwnd, &rect)) return;
+            Size windowSize = GetWindowSize(hwnd);
+            if (windowSize.w == 0 && windowSize.h == 0) return;
 
-            int ww = rect.right - rect.left;
-            int hh = rect.bottom - rect.top;
-
-            int sw = GetSystemMetrics(SM_CXSCREEN);
-            int sh = GetSystemMetrics(SM_CYSCREEN);
-
-            int x = (sw - ww) / 2;
-            int y = (sh - hh) / 2;
+            Size screenSize = GetScreenSize();
+            Pos centerPos = CalculateCenterPosition(windowSize, screenSize);
 
             SetWindowPos(hwnd,
                 nullptr,
-                x,
-                y,
+                centerPos.x,
+                centerPos.y,
                 0,
                 0,
                 SWP_NOSIZE | SWP_NOZORDER);

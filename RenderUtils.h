@@ -1,8 +1,11 @@
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-// RenderUtils.h: Utility functions for rendering calculations.
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 #ifndef SPECTRUM_CPP_RENDER_UTILS_H
 #define SPECTRUM_CPP_RENDER_UTILS_H
+
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// This file provides a collection of stateless utility functions for
+// common rendering calculations. These helpers are used by various
+// visualizers to analyze spectrum data and compute layout properties
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Common.h"
 
@@ -37,6 +40,6 @@ namespace Spectrum::RenderUtils {
 
     float MagnitudeToHeight(float magnitude, int viewHeight, float scale = 0.9f);
 
-}
+} // namespace Spectrum::RenderUtils
 
 #endif

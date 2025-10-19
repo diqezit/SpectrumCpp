@@ -1,5 +1,7 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-// WindowHelper.h: Common helpers for Win32 window creation and styles.
+// A collection of helper functions for common Win32 window operations,
+// such as creating windows with specific styles, applying overlay effects,
+// and calculating window and screen dimensions.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 #ifndef SPECTRUM_CPP_WINDOW_HELPER_H
@@ -51,8 +53,12 @@ namespace Spectrum {
         void UpdateMinimizeFlagOnSize(WPARAM wParam,
             std::atomic<bool>& minimized);
 
-        void GetScreenSize(int& w,
-            int& h);
+        struct Size { int w, h; };
+        Size GetScreenSize();
+        Size GetWindowSize(HWND hwnd);
+
+        struct Pos { int x, y; };
+        Pos CalculateCenterPosition(const Size& windowSize, const Size& screenSize);
 
         void CenterOnScreen(HWND hwnd);
 

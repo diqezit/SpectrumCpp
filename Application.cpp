@@ -1,13 +1,15 @@
-// Application.cpp
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-// Application.cpp: The entry point of the application.
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// This file contains the main entry point of the application.
+// It initializes the core controller, handles top-level exceptions, and
+// creates a debug console if configured.
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "ControllerCore.h"
-#include "Utils.h"
+#include "PlatformUtils.h" 
 
 namespace {
 
+    // user can enable console for debugging via preprocessor define
 #if defined(SHOW_CONSOLE) && SHOW_CONSOLE
     void CreateDebugConsole() {
         if (!AllocConsole()) return;
@@ -23,6 +25,28 @@ namespace {
     }
 #endif
 
+    void ReportStdException(const std::exception& e) {
+        LOG_ERROR("Unhandled exception: " << e.what());
+        MessageBoxA(
+            nullptr,
+            e.what(),
+            "Unhandled Exception",
+            MB_OK | MB_ICONERROR
+        );
+    }
+
+    void ReportUnknownException() {
+        LOG_ERROR("Unknown unhandled exception");
+        MessageBoxW(
+            nullptr,
+            L"An unknown error occurred",
+            L"Unhandled Exception",
+            MB_OK | MB_ICONERROR
+        );
+    }
+
+    // encapsulates the main application logic in a try-catch block
+    // this ensures any unhandled exception is caught and reported to the user
     int RunApplication(HINSTANCE hInstance) {
 #if defined(SHOW_CONSOLE) && SHOW_CONSOLE
         CreateDebugConsole();
@@ -31,10 +55,10 @@ namespace {
         try {
             Spectrum::ControllerCore app(hInstance);
             if (!app.Initialize()) {
-                LOG_ERROR("Failed to initialize application.");
+                LOG_ERROR("Failed to initialize application");
                 MessageBoxW(
                     nullptr,
-                    L"Application failed to initialize.",
+                    L"Application failed to initialize",
                     L"Error",
                     MB_OK | MB_ICONERROR
                 );
@@ -43,23 +67,11 @@ namespace {
             app.Run();
         }
         catch (const std::exception& e) {
-            LOG_ERROR("Unhandled exception: " << e.what());
-            MessageBoxA(
-                nullptr,
-                e.what(),
-                "Unhandled Exception",
-                MB_OK | MB_ICONERROR
-            );
+            ReportStdException(e);
             return -1;
         }
         catch (...) {
-            LOG_ERROR("Unknown unhandled exception.");
-            MessageBoxW(
-                nullptr,
-                L"An unknown error occurred.",
-                L"Unhandled Exception",
-                MB_OK | MB_ICONERROR
-            );
+            ReportUnknownException();
             return -1;
         }
 
@@ -68,6 +80,7 @@ namespace {
 
 } // anonymous namespace
 
+// standard Win32 entry point for a GUI application
 int WINAPI wWinMain(
     _In_ HINSTANCE hInstance,
     _In_opt_ HINSTANCE hPrevInstance,

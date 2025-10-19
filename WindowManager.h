@@ -1,6 +1,8 @@
-// =-=-=-=-=-=-=-=-=-=-=
-// WindowManager.h
-// =-=-=-=-=-=-=-=-=-=-=
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+// Defines the WindowManager, which orchestrates the lifecycle and
+// configuration of the main application window and the overlay.
+// It manages the graphics context, UI, and state transitions.
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 #ifndef SPECTRUM_CPP_WINDOW_MANAGER_H
 #define SPECTRUM_CPP_WINDOW_MANAGER_H
@@ -14,6 +16,7 @@ namespace Spectrum {
     class EventBus;
     class GraphicsContext;
     class UIManager;
+    class IRenderer;
 
     class WindowManager {
     public:
@@ -23,12 +26,8 @@ namespace Spectrum {
         bool Initialize();
         void ProcessMessages();
 
-        // Handles switching between main window and overlay
         void ToggleOverlay();
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // State & Getters
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
         bool IsRunning() const;
         bool IsOverlayMode() const { return m_isOverlay; }
         bool IsActive() const;
@@ -39,25 +38,32 @@ namespace Spectrum {
         ControllerCore* GetController() const { return m_controller; }
         MainWindow* GetMainWindow() const { return m_mainWnd.get(); }
 
-        // Recreates D2D resources on window change or device loss
         bool RecreateGraphicsAndNotify(HWND hwnd);
 
     private:
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // Initialization
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        void SubscribeToEvents(EventBus* bus);
         bool InitializeMainWindow();
         bool InitializeOverlayWindow();
+        bool InitializeUI();
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // Overlay Management
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
         void ActivateOverlayMode();
         void DeactivateOverlayMode();
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // Member State
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        bool RecreateGraphicsContext(HWND hwnd);
+        void NotifySubsystemsOfResize(HWND hwnd);
+        void NotifyUIManagerOfResize();
+        void NotifyControllerOfResize(HWND hwnd);
+
+        void NotifyRendererOfModeChange();
+        IRenderer* GetActiveRenderer();
+
+        void HideMainUIAndWindow();
+        void PositionAndShowOverlayWindow();
+        void HideOverlayWindow();
+        void ShowMainUIAndWindow();
+
+        void OnExitRequest();
+
         HINSTANCE m_hInstance;
         ControllerCore* m_controller;
         bool m_isOverlay;

@@ -1,94 +1,62 @@
-// InputManager.cpp
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-// InputManager.cpp: Implementation of the InputManager.
+// Implements the InputManager, which polls keyboard state and maps key
+// presses to application-specific actions.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 #include "InputManager.h"
+#include "PlatformUtils.h"
 
 namespace Spectrum {
 
-    InputManager::InputManager() {}
+    InputManager::InputManager() {
+        InitializeKeyMappings();
+    }
+
+    void InputManager::InitializeKeyMappings() {
+        m_keyMappings[VK_SPACE] = InputAction::ToggleCapture;
+        m_keyMappings['A'] = InputAction::ToggleAnimation;
+        m_keyMappings['S'] = InputAction::CycleSpectrumScale;
+        m_keyMappings[VK_UP] = InputAction::IncreaseAmplification;
+        m_keyMappings[VK_DOWN] = InputAction::DecreaseAmplification;
+        m_keyMappings[VK_LEFT] = InputAction::PrevFFTWindow;
+        m_keyMappings[VK_RIGHT] = InputAction::NextFFTWindow;
+        m_keyMappings[VK_SUBTRACT] = InputAction::DecreaseBarCount;
+        m_keyMappings[VK_OEM_MINUS] = InputAction::DecreaseBarCount;
+        m_keyMappings[VK_ADD] = InputAction::IncreaseBarCount;
+        m_keyMappings[VK_OEM_PLUS] = InputAction::IncreaseBarCount;
+        m_keyMappings['R'] = InputAction::SwitchRenderer;
+        m_keyMappings['Q'] = InputAction::CycleQuality;
+        m_keyMappings['O'] = InputAction::ToggleOverlay;
+        m_keyMappings[VK_ESCAPE] = InputAction::Exit;
+    }
 
     void InputManager::Update() {
         PollKeys();
     }
 
     std::vector<InputAction> InputManager::GetActions() {
-        if (m_actionQueue.empty()) {
-            return {};
-        }
+        if (m_actionQueue.empty()) return {};
+
         std::vector<InputAction> actions = std::move(m_actionQueue);
         m_actionQueue.clear();
         return actions;
     }
 
     void InputManager::PollKeys() {
-        const std::vector<int> keysToPoll = {
-            VK_SPACE, 'A', 'R', 'Q', 'O', 'S',
-            VK_UP, VK_DOWN, VK_LEFT, VK_RIGHT,
-            VK_SUBTRACT, VK_OEM_MINUS,
-            VK_ADD, VK_OEM_PLUS,
-            VK_ESCAPE
-        };
-
-        for (int key : keysToPoll) {
-            bool isPressed = (GetAsyncKeyState(key) & 0x8000) != 0;
-
-            if (isPressed && !m_keyStates[key]) {
-                m_keyStates[key] = true;
-                QueueAction(key);
-            }
-            else if (!isPressed) {
-                m_keyStates[key] = false;
-            }
+        for (const auto& [key, action] : m_keyMappings) {
+            ProcessSingleKey(key, action);
         }
     }
 
-    void InputManager::QueueAction(int key) {
-        switch (key) {
-        case VK_SPACE:
-            m_actionQueue.push_back(InputAction::ToggleCapture);
-            break;
-        case 'A':
-            m_actionQueue.push_back(InputAction::ToggleAnimation);
-            break;
-        case 'S':
-            m_actionQueue.push_back(InputAction::CycleSpectrumScale);
-            break;
-        case VK_UP:
-            m_actionQueue.push_back(InputAction::IncreaseAmplification);
-            break;
-        case VK_DOWN:
-            m_actionQueue.push_back(InputAction::DecreaseAmplification);
-            break;
-        case VK_LEFT:
-            m_actionQueue.push_back(InputAction::PrevFFTWindow);
-            break;
-        case VK_RIGHT:
-            m_actionQueue.push_back(InputAction::NextFFTWindow);
-            break;
-        case VK_SUBTRACT:
-        case VK_OEM_MINUS:
-            m_actionQueue.push_back(InputAction::DecreaseBarCount);
-            break;
-        case VK_ADD:
-        case VK_OEM_PLUS:
-            m_actionQueue.push_back(InputAction::IncreaseBarCount);
-            break;
-        case 'R':
-            m_actionQueue.push_back(InputAction::SwitchRenderer);
-            break;
-        case 'Q':
-            m_actionQueue.push_back(InputAction::CycleQuality);
-            break;
-        case 'O':
-            m_actionQueue.push_back(InputAction::ToggleOverlay);
-            break;
-        case VK_ESCAPE:
-            m_actionQueue.push_back(InputAction::Exit);
-            break;
-        default:
-            break;
+    void InputManager::ProcessSingleKey(int key, InputAction action) {
+        bool isPressed = Utils::IsKeyPressed(key);
+
+        if (isPressed && !m_keyStates[key]) {
+            m_keyStates[key] = true;
+            m_actionQueue.push_back(action);
+        }
+        else if (!isPressed) {
+            m_keyStates[key] = false;
         }
     }
 

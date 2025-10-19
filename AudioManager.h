@@ -1,6 +1,8 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-// AudioManager.h: Manages audio sources and configuration.
+// Defines the AudioManager, which orchestrates the lifecycle and configuration
+// of audio sources, handling transitions between live capture and animation.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
 #ifndef SPECTRUM_CPP_AUDIO_MANAGER_H
 #define SPECTRUM_CPP_AUDIO_MANAGER_H
 
@@ -31,6 +33,20 @@ namespace Spectrum {
         bool IsAnimating() const { return m_isAnimating; }
 
     private:
+        void SubscribeToEvents(EventBus* bus);
+        bool CreateAudioSources();
+        void SetCurrentSource(IAudioSource* source);
+
+        void ActivateAnimatedMode();
+        void DeactivateAnimatedMode();
+        void StartRealtimeCapture();
+        void StopRealtimeCapture();
+
+        void ApplyAmplificationChange(float newValue);
+        void ApplyBarCountChange(size_t newCount);
+        void ApplyFFTWindowChange(FFTWindowType newType);
+        void ApplySpectrumScaleChange(SpectrumScale newType);
+
         std::unique_ptr<IAudioSource> m_realtimeSource;
         std::unique_ptr<IAudioSource> m_animatedSource;
         IAudioSource* m_currentSource = nullptr;

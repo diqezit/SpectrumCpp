@@ -1,10 +1,9 @@
-// FFTProcessor.cpp
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 // FFTProcessor.cpp: Implementation of the FFTProcessor class.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 #include "FFTProcessor.h"
-#include "Utils.h"
+#include "MathUtils.h"
 
 namespace Spectrum {
 
@@ -21,17 +20,23 @@ namespace Spectrum {
         , m_logSize(IntegerLog2(fftSize))
         , m_windowType(FFTWindowType::Hann) {
 
+        ValidateFFTSize();
+        AllocateBuffers();
+        InitializeTwiddleFactors();
+        GenerateWindow();
+    }
+
+    void FFTProcessor::ValidateFFTSize() const {
         if (!IsPowerOfTwo(m_fftSize)) {
             LOG_ERROR("FFT size must be a power of two. Got: " << m_fftSize);
         }
+    }
 
+    void FFTProcessor::AllocateBuffers() {
         m_fftBuffer.resize(m_fftSize);
         m_magnitudes.resize(m_fftSize / 2 + 1);
         m_phases.resize(m_fftSize / 2 + 1);
         m_window.resize(m_fftSize);
-
-        InitializeTwiddleFactors();
-        GenerateWindow();
     }
 
     bool FFTProcessor::IsPowerOfTwo(size_t n) noexcept {
@@ -96,17 +101,25 @@ namespace Spectrum {
     }
 
     void FFTProcessor::ApplyWindow(const AudioBuffer& input) {
-        const size_t N = m_fftSize;
-        const size_t M = std::min(N, input.size());
+        const size_t processSize = std::min(m_fftSize, input.size());
+        ApplyWindowToData(input, processSize);
+        PadBuffer(processSize);
+    }
 
-        for (size_t i = 0; i < M; ++i)
+    void FFTProcessor::ApplyWindowToData(const AudioBuffer& input, size_t count) {
+        for (size_t i = 0; i < count; ++i)
             m_fftBuffer[i] = std::complex<float>(input[i] * m_window[i], 0.0f);
+    }
 
-        for (size_t i = M; i < N; ++i)
+    void FFTProcessor::PadBuffer(size_t fromIndex) {
+        for (size_t i = fromIndex; i < m_fftSize; ++i)
             m_fftBuffer[i] = std::complex<float>(0.0f, 0.0f);
     }
 
-    size_t FFTProcessor::ReverseBits(size_t num, size_t bitCount) const noexcept {
+    size_t FFTProcessor::ReverseBits(
+        size_t num,
+        size_t bitCount
+    ) const noexcept {
         size_t rev = 0;
         for (size_t i = 0; i < bitCount; ++i)
             rev |= ((num >> i) & 1ULL) << (bitCount - 1 - i);
@@ -174,6 +187,11 @@ namespace Spectrum {
         return std::atan2(c.imag(), c.real());
     }
 
+    void FFTProcessor::AdjustDCComponent() {
+        if (!m_magnitudes.empty())
+            m_magnitudes[0] *= 0.5f; // DC component
+    }
+
     void FFTProcessor::CalculateMagnitudesAndPhases() {
         const float norm = 2.0f / static_cast<float>(m_fftSize);
         const size_t bins = m_magnitudes.size(); // N/2 + 1
@@ -183,8 +201,7 @@ namespace Spectrum {
             m_phases[i] = CalculatePhase(m_fftBuffer[i]);
         }
 
-        if (!m_magnitudes.empty())
-            m_magnitudes[0] *= 0.5f; // DC component
+        AdjustDCComponent();
     }
 
     void FFTProcessor::Process(const AudioBuffer& input) {

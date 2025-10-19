@@ -1,26 +1,54 @@
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// This file implements the SpectrumPostProcessor. It orchestrates the
+// post-processing pipeline by first normalizing the signal's gain and
+// then applying signal shaping and visual effects.
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
 #include "SpectrumPostProcessor.h"
-#include "Utils.h"
+#include "MathUtils.h"
 
 namespace Spectrum {
 
-    SpectrumPostProcessor::SpectrumPostProcessor(size_t barCount)
-        : m_barCount(barCount),
-        m_amplificationFactor(DEFAULT_AMPLIFICATION),
-        m_smoothingFactor(DEFAULT_SMOOTHING) {
-        Reset();
-    }
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // Lifecycle Management
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-    void SpectrumPostProcessor::Process(SpectrumData& spectrum) {
-        if (spectrum.size() != m_barCount) return;
-        ApplyScaling(spectrum);
-        UpdatePeakValues(spectrum);
-        ApplySmoothing(spectrum);
+    SpectrumPostProcessor::SpectrumPostProcessor(
+        size_t barCount
+    ) :
+        m_barCount(barCount),
+        m_amplificationFactor(DEFAULT_AMPLIFICATION),
+        m_smoothingFactor(DEFAULT_SMOOTHING),
+        m_normalizer(std::make_unique<GainNormalizer>())
+    {
+        Reset();
     }
 
     void SpectrumPostProcessor::Reset() {
         m_smoothedBars.assign(m_barCount, 0.0f);
         m_peakValues.assign(m_barCount, 0.0f);
+        if (m_normalizer)
+            m_normalizer->Reset();
     }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // Main Execution Loop
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+    void SpectrumPostProcessor::Process(SpectrumData& spectrum) {
+        if (spectrum.size() != m_barCount) return;
+
+        // Pipeline: Normalize -> Shape -> Apply Visual Effects
+        m_normalizer->Process(spectrum);
+        ApplyLogarithmicScaling(spectrum);
+        ApplyAmplification(spectrum);
+        UpdateBarPeaks(spectrum);
+        ApplySmoothing(spectrum);
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // Configuration & Setters
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
     void SpectrumPostProcessor::SetBarCount(size_t newBarCount) {
         if (newBarCount > 0 && newBarCount != m_barCount) {
@@ -37,36 +65,76 @@ namespace Spectrum {
         m_smoothingFactor = Utils::Saturate(newSmoothing);
     }
 
-    void SpectrumPostProcessor::ApplyScaling(SpectrumData& spectrum) {
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // Public Getters
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+    [[nodiscard]] const SpectrumData& SpectrumPostProcessor::GetSmoothedBars() const {
+        return m_smoothedBars;
+    }
+
+    [[nodiscard]] const SpectrumData& SpectrumPostProcessor::GetPeakValues() const {
+        return m_peakValues;
+    }
+
+    [[nodiscard]] float SpectrumPostProcessor::GetAmplification() const {
+        return m_amplificationFactor;
+    }
+
+    [[nodiscard]] float SpectrumPostProcessor::GetSmoothing() const {
+        return m_smoothingFactor;
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // Private Implementation / Internal Helpers
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+    void SpectrumPostProcessor::ApplyLogarithmicScaling(SpectrumData& spectrum) const {
         const float sensitivity = 150.0f;
+        const float invLogSensitivity = 1.0f / std::log1p(sensitivity);
+
+        for (float& val : spectrum)
+            val = std::log1p(val * sensitivity) * invLogSensitivity;
+    }
+
+    void SpectrumPostProcessor::ApplyAmplification(SpectrumData& spectrum) const {
+        for (float& val : spectrum)
+            val = Utils::Saturate(std::pow(val, m_amplificationFactor));
+    }
+
+    void SpectrumPostProcessor::UpdateBarPeaks(const SpectrumData& spectrum) {
         for (size_t i = 0; i < m_barCount; ++i) {
-            float scaled = std::log1p(spectrum[i] * sensitivity) / std::log1p(sensitivity);
-            scaled = std::pow(scaled, m_amplificationFactor);
-            spectrum[i] = Utils::Saturate(scaled);
+            if (spectrum[i] > m_peakValues[i])
+                UpdateSingleBarPeak(i, spectrum[i]);
+            else
+                ApplySingleBarPeakDecay(i);
         }
     }
 
-    void SpectrumPostProcessor::UpdatePeakValues(const SpectrumData& spectrum) {
-        const float peakDecayRate = 0.98f;
-        for (size_t i = 0; i < m_barCount; ++i) {
-            if (spectrum[i] > m_peakValues[i]) {
-                m_peakValues[i] = spectrum[i];
-            }
-            else {
-                m_peakValues[i] *= peakDecayRate;
-            }
-        }
+    void SpectrumPostProcessor::UpdateSingleBarPeak(size_t index, float newValue) {
+        m_peakValues[index] = newValue;
     }
 
-    void SpectrumPostProcessor::ApplySmoothing(SpectrumData& spectrum) {
+    void SpectrumPostProcessor::ApplySingleBarPeakDecay(size_t index) {
+        m_peakValues[index] *= kPeakDecayRate;
+    }
+
+    [[nodiscard]] float SpectrumPostProcessor::GetAdaptiveSmoothingFactor(
+        float newValue,
+        float oldValue
+    ) const {
         const float attackSmoothingFactor = 0.5f;
-        for (size_t i = 0; i < m_barCount; ++i) {
-            const float smoothing = (spectrum[i] > m_smoothedBars[i])
-                ? m_smoothingFactor * attackSmoothingFactor
-                : m_smoothingFactor;
+        if (newValue > oldValue)
+            return m_smoothingFactor * attackSmoothingFactor;
 
+        return m_smoothingFactor;
+    }
+
+    void SpectrumPostProcessor::ApplySmoothing(const SpectrumData& spectrum) {
+        for (size_t i = 0; i < m_barCount; ++i) {
+            const float smoothing = GetAdaptiveSmoothingFactor(spectrum[i], m_smoothedBars[i]);
             m_smoothedBars[i] = m_smoothedBars[i] * smoothing + spectrum[i] * (1.0f - smoothing);
         }
     }
 
-}
+} // namespace Spectrum

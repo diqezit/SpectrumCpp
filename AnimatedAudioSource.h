@@ -21,7 +21,12 @@ namespace Spectrum {
         void SetSmoothing(float smoothing);
 
     private:
+        // Test data generation pipeline
         SpectrumData GenerateTestSpectrum(float timeOffset);
+        float CalculateBarValue(size_t barIndex, float timeOffset) const;
+        float CalculateBaseSineValue(float phase) const;
+        float ApplyFrequencyFalloff(float value, float normalizedFrequency) const;
+        float AddRandomNoise(float value) const;
 
         float m_animationTime = 0.0f;
         size_t m_barCount;

@@ -1,4 +1,3 @@
-// FFTProcessor.h
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 // FFTProcessor.h: Performs the Fast Fourier Transform on audio data.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
@@ -27,12 +26,23 @@ namespace Spectrum {
 
         // Static window function generators
         static std::vector<float> GenerateWindow(FFTWindowType type, size_t size);
-        static float ApplyWindowFunction(FFTWindowType type, size_t index, size_t size);
+        static float ApplyWindowFunction(
+            FFTWindowType type,
+            size_t index,
+            size_t size
+        );
 
     private:
+        // Initialization
+        void ValidateFFTSize() const;
+        void AllocateBuffers();
+        void InitializeTwiddleFactors();
+
         // Window and input preparation
         void GenerateWindow();
         void ApplyWindow(const AudioBuffer& input);
+        void ApplyWindowToData(const AudioBuffer& input, size_t count);
+        void PadBuffer(size_t fromIndex);
 
         // FFT processing
         void PerformFFT();
@@ -40,17 +50,28 @@ namespace Spectrum {
         void CooleyTukeyFFT();
 
         // Cooley–Tukey helpers
-        void StagePass(size_t m, size_t halfM, size_t step) noexcept;
-        void ButterflyBlock(size_t base, size_t halfM, size_t step) noexcept;
+        void StagePass(
+            size_t m,
+            size_t halfM,
+            size_t step
+        ) noexcept;
+        void ButterflyBlock(
+            size_t base,
+            size_t halfM,
+            size_t step
+        ) noexcept;
 
         // Result calculation
         void CalculateMagnitudesAndPhases();
+        void AdjustDCComponent();
         float CalculateMagnitude(const std::complex<float>& c) const noexcept;
         float CalculatePhase(const std::complex<float>& c) const noexcept;
 
         // Helpers
-        size_t ReverseBits(size_t num, size_t bitCount) const noexcept;
-        void InitializeTwiddleFactors();
+        size_t ReverseBits(
+            size_t num,
+            size_t bitCount
+        ) const noexcept;
         static bool IsPowerOfTwo(size_t n) noexcept;
 
     private:

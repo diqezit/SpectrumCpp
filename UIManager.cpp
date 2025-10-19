@@ -1,9 +1,12 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-// UIManager.cpp: Implementation of the UIManager class.
+// Implements the UIManager, which creates and manages all UI components,
+// forwarding interactions to the appropriate handlers.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
 #include "UIManager.h"
 #include "GraphicsContext.h"
 #include "ControllerCore.h"
+#include "ColorPicker.h"
 
 namespace Spectrum {
 
@@ -12,19 +15,26 @@ namespace Spectrum {
     }
 
     bool UIManager::Initialize(GraphicsContext& context) {
-        m_colorPicker = std::make_unique<ColorPicker>(Point{ 20.0f, 20.0f }, 40.0f);
-        if (!m_colorPicker->Initialize(context)) {
-            return false;
-        }
-
-        // Set up callback to notify the controller of color changes
-        m_colorPicker->SetOnColorSelectedCallback([this](const Color& color) {
-            if (m_controller) {
-                m_controller->SetPrimaryColor(color);
-            }
-            });
-
+        if (!CreateUIComponents(context)) return false;
+        SetupCallbacks();
         return true;
+    }
+
+    bool UIManager::CreateUIComponents(GraphicsContext& context) {
+        m_colorPicker = std::make_unique<ColorPicker>(Point{ 20.0f, 20.0f }, 40.0f);
+        if (!m_colorPicker->Initialize(context)) return false;
+
+        // Future UI elements will be created here
+        return true;
+    }
+
+    void UIManager::SetupCallbacks() {
+        if (m_colorPicker) {
+            m_colorPicker->SetOnColorSelectedCallback([this](const Color& color) {
+                if (m_controller) m_controller->SetPrimaryColor(color);
+                });
+        }
+        // Future UI element callbacks will be set up here
     }
 
     void UIManager::RecreateResources(GraphicsContext& context) {
@@ -40,19 +50,29 @@ namespace Spectrum {
         // Future elements will be drawn here
     }
 
-    bool UIManager::HandleMouseMessage(UINT msg, int x, int y) {
-        bool needsRedraw = false;
+    bool UIManager::HandleMouseMove(int x, int y) {
         if (m_colorPicker && m_colorPicker->IsVisible()) {
-            if (msg == WM_MOUSEMOVE) {
-                needsRedraw = m_colorPicker->HandleMouseMove(x, y);
-            }
-            else if (msg == WM_LBUTTONDOWN) {
-                needsRedraw = m_colorPicker->HandleMouseClick(x, y);
-            }
+            return m_colorPicker->HandleMouseMove(x, y);
         }
-        // Future elements will handle messages here
+        return false;
+    }
 
-        return needsRedraw;
+    bool UIManager::HandleMouseClick(int x, int y) {
+        if (m_colorPicker && m_colorPicker->IsVisible()) {
+            return m_colorPicker->HandleMouseClick(x, y);
+        }
+        return false;
+    }
+
+    bool UIManager::HandleMouseMessage(UINT msg, int x, int y) {
+        switch (msg) {
+        case WM_MOUSEMOVE:
+            return HandleMouseMove(x, y);
+        case WM_LBUTTONDOWN:
+            return HandleMouseClick(x, y);
+        default:
+            return false;
+        }
     }
 
 }

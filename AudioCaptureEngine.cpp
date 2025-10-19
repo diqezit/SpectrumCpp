@@ -20,20 +20,11 @@ namespace Spectrum {
             static constexpr DWORD INIT_RETRY_DELAY_MS = 200;
 
             ScopedCOMInitializer com;
-            if (!com.IsInitialized()) {
-                return nullptr;
-            }
+            if (!com.IsInitialized()) return nullptr;
 
-            wrl::ComPtr<IMMDevice> device;
             for (int retry = 0; retry < MAX_INIT_RETRIES; ++retry) {
-                if (!InitializeDevice(device)) {
-                    continue;
-                }
-
                 auto data = std::make_unique<WasapiInitData>();
-                if (InitializeClient(device, *data)) {
-                    return data;
-                }
+                if (TryInitializeOnce(data)) return data;
 
                 if (retry < MAX_INIT_RETRIES - 1) {
                     LOG_INFO(
@@ -52,8 +43,23 @@ namespace Spectrum {
             return nullptr;
         }
 
-        bool WasapiInitializer::InitializeDevice(wrl::ComPtr<IMMDevice>& device) const {
+        bool WasapiInitializer::TryInitializeOnce(std::unique_ptr<WasapiInitData>& data) {
             wrl::ComPtr<IMMDeviceEnumerator> enumerator;
+            if (!CreateDeviceEnumerator(enumerator)) return false;
+
+            wrl::ComPtr<IMMDevice> device;
+            if (!GetDefaultAudioDevice(enumerator.Get(), device)) return false;
+
+            if (!ActivateClientInterface(device.Get(), data->audioClient)) return false;
+
+            if (!GetClientMixFormat(data->audioClient.Get(), &data->waveFormat)) return false;
+
+            if (!TryInitializeInPreferredMode(*data, device)) return false;
+
+            return SetupCaptureClient(data->audioClient.Get(), data->captureClient.GetAddressOf());
+        }
+
+        bool WasapiInitializer::CreateDeviceEnumerator(wrl::ComPtr<IMMDeviceEnumerator>& enumerator) const {
             HRESULT hr = CoCreateInstance(
                 __uuidof(MMDeviceEnumerator),
                 nullptr,
@@ -61,59 +67,81 @@ namespace Spectrum {
                 __uuidof(IMMDeviceEnumerator),
                 &enumerator
             );
-            if (!CheckResult(hr, "Failed to create device enumerator")) {
-                return false;
-            }
+            return CheckResult(hr, "Failed to create device enumerator");
+        }
 
-            hr = enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device);
+        bool WasapiInitializer::GetDefaultAudioDevice(
+            IMMDeviceEnumerator* enumerator,
+            wrl::ComPtr<IMMDevice>& device
+        ) const {
+            HRESULT hr = enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device);
             return CheckResult(hr, "Failed to get default audio endpoint");
         }
 
-        bool WasapiInitializer::InitializeClient(
-            wrl::ComPtr<IMMDevice>& device,
-            WasapiInitData& data
+        bool WasapiInitializer::ActivateClientInterface(
+            IMMDevice* device,
+            wrl::ComPtr<IAudioClient>& client
         ) const {
             HRESULT hr = device->Activate(
                 __uuidof(IAudioClient),
                 CLSCTX_ALL,
                 nullptr,
-                &data.audioClient
+                &client
             );
-            if (!CheckResult(hr, "Failed to activate audio client")) {
-                return false;
-            }
+            return CheckResult(hr, "Failed to activate audio client");
+        }
 
-            hr = data.audioClient->GetMixFormat(&data.waveFormat);
-            if (!CheckResult(hr, "Failed to get mix format")) {
-                return false;
-            }
+        bool WasapiInitializer::GetClientMixFormat(
+            IAudioClient* client,
+            WAVEFORMATEX** waveFormat
+        ) const {
+            HRESULT hr = client->GetMixFormat(waveFormat);
+            return CheckResult(hr, "Failed to get mix format");
+        }
 
+        bool WasapiInitializer::TryInitializeInPreferredMode(
+            WasapiInitData& data,
+            wrl::ComPtr<IMMDevice>& device
+        ) const {
             data.samplesEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
             if (!data.samplesEvent) {
                 LOG_ERROR("Failed to create capture event");
                 return false;
             }
 
+            if (TryEventDrivenInitialization(data)) return true;
+            if (TryPollingInitialization(data, device)) return true;
+
+            CloseHandle(data.samplesEvent);
+            data.samplesEvent = nullptr;
+            return false;
+        }
+
+        bool WasapiInitializer::TryEventDrivenInitialization(WasapiInitData& data) const {
             const DWORD eventFlags = AUDCLNT_STREAMFLAGS_LOOPBACK |
                 AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
                 AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM;
-
             if (TryInitializeMode(data.audioClient.Get(), data.waveFormat, eventFlags, true, data.samplesEvent)) {
                 data.useEventMode = true;
+                return true;
             }
-            else {
-                ResetClient(device, data.audioClient);
-                const DWORD pollingFlags = AUDCLNT_STREAMFLAGS_LOOPBACK |
-                    AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM;
-                if (TryInitializeMode(data.audioClient.Get(), data.waveFormat, pollingFlags, false, nullptr)) {
-                    data.useEventMode = false;
-                }
-                else {
-                    return false;
-                }
-            }
+            return false;
+        }
 
-            return SetupCaptureClient(data.audioClient.Get(), data.captureClient.GetAddressOf());
+        bool WasapiInitializer::TryPollingInitialization(
+            WasapiInitData& data,
+            wrl::ComPtr<IMMDevice>& device
+        ) const {
+            ResetClient(device, data.audioClient);
+            const DWORD pollingFlags = AUDCLNT_STREAMFLAGS_LOOPBACK |
+                AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM;
+            if (TryInitializeMode(data.audioClient.Get(), data.waveFormat, pollingFlags, false, nullptr)) {
+                data.useEventMode = false;
+                CloseHandle(data.samplesEvent);
+                data.samplesEvent = nullptr;
+                return true;
+            }
+            return false;
         }
 
         bool WasapiInitializer::TryInitializeMode(
@@ -134,9 +162,7 @@ namespace Spectrum {
                 wf,
                 nullptr
             );
-            if (SUCCEEDED(hr) && setEvent) {
-                hr = client->SetEventHandle(h);
-            }
+            if (SUCCEEDED(hr) && setEvent) hr = client->SetEventHandle(h);
             return SUCCEEDED(hr);
         }
 
@@ -145,9 +171,7 @@ namespace Spectrum {
             wrl::ComPtr<IAudioClient>& client
         ) const {
             client.Reset();
-            if (device) {
-                device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, &client);
-            }
+            if (device) device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, &client);
         }
 
         bool WasapiInitializer::SetupCaptureClient(
@@ -174,37 +198,49 @@ namespace Spectrum {
             m_callback = callback;
         }
 
+        void AudioPacketProcessor::InvokeCallbackWithData(
+            BYTE* data,
+            UINT32 frames,
+            DWORD flags
+        ) {
+            if (frames > 0 && data != nullptr && !(flags & AUDCLNT_BUFFERFLAGS_SILENT)) {
+                std::lock_guard<std::mutex> lock(m_callbackMutex);
+                if (m_callback) {
+                    m_callback->OnAudioData(
+                        reinterpret_cast<float*>(data),
+                        static_cast<size_t>(frames) * m_channels,
+                        m_channels
+                    );
+                }
+            }
+        }
+
+        HRESULT AudioPacketProcessor::ProcessSinglePacket() {
+            BYTE* data = nullptr;
+            UINT32 frames = 0;
+            DWORD flags = 0;
+
+            HRESULT hr = m_captureClient->GetBuffer(
+                &data,
+                &frames,
+                &flags,
+                nullptr,
+                nullptr
+            );
+            if (FAILED(hr)) return hr;
+
+            InvokeCallbackWithData(data, frames, flags);
+
+            return m_captureClient->ReleaseBuffer(frames);
+        }
+
         HRESULT AudioPacketProcessor::ProcessAvailablePackets() {
             HRESULT hr = S_OK;
             UINT32 packetLen = 0;
 
             while (SUCCEEDED(hr = m_captureClient->GetNextPacketSize(&packetLen)) && packetLen > 0) {
-                BYTE* data = nullptr;
-                UINT32 frames = 0;
-                DWORD flags = 0;
-
-                hr = m_captureClient->GetBuffer(
-                    &data,
-                    &frames,
-                    &flags,
-                    nullptr,
-                    nullptr
-                );
-                if (FAILED(hr)) return hr;
-
-                if (frames > 0 && data != nullptr && !(flags & AUDCLNT_BUFFERFLAGS_SILENT)) {
-                    std::lock_guard<std::mutex> lock(m_callbackMutex);
-                    if (m_callback) {
-                        m_callback->OnAudioData(
-                            reinterpret_cast<float*>(data),
-                            static_cast<size_t>(frames) * m_channels,
-                            m_channels
-                        );
-                    }
-                }
-
-                hr = m_captureClient->ReleaseBuffer(frames);
-                if (FAILED(hr)) return hr;
+                hr = ProcessSinglePacket();
+                if (FAILED(hr)) break;
             }
             return hr;
         }
@@ -228,9 +264,7 @@ namespace Spectrum {
 
                 if (waitResult == WAIT_OBJECT_0) {
                     hr = processor.ProcessAvailablePackets();
-                    if (FAILED(hr)) {
-                        break;
-                    }
+                    if (FAILED(hr)) break;
                 }
                 else if (waitResult != WAIT_TIMEOUT) {
                     LOG_ERROR("Event-driven capture loop failed on wait.");
@@ -250,9 +284,7 @@ namespace Spectrum {
 
             while (!stopRequested) {
                 hr = processor.ProcessAvailablePackets();
-                if (FAILED(hr)) {
-                    break;
-                }
+                if (FAILED(hr)) break;
                 std::this_thread::sleep_for(kPollingInterval);
             }
             return hr;

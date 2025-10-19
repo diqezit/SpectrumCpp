@@ -1,10 +1,9 @@
-// FrequencyMapper.cpp
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 // FrequencyMapper.cpp: Implementation of the FrequencyMapper class.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 #include "FrequencyMapper.h"
-#include "Utils.h"
+#include "MathUtils.h"
 
 namespace Spectrum {
 
@@ -111,37 +110,27 @@ namespace Spectrum {
         return startBin < endBin;
     }
 
-    float FrequencyMapper::AggregateValues(
-        const SpectrumData& data,
-        size_t start,
-        size_t end,
-        bool useAverage
-    ) const {
-        if (start >= end || start >= data.size()) return 0.0f;
-
-        end = std::min(end, data.size());
-
-        if (useAverage) {
-            float sum = 0.0f;
-            for (size_t i = start; i < end; ++i) {
-                sum += data[i];
-            }
-            return sum / static_cast<float>(end - start);
+    float FrequencyMapper::AverageRange(const SpectrumData& data, size_t start, size_t end) const {
+        float sum = 0.0f;
+        for (size_t i = start; i < end; ++i) {
+            sum += data[i];
         }
-        else {
-            float maxVal = 0.0f;
-            for (size_t i = start; i < end; ++i) {
-                maxVal = std::max(maxVal, data[i]);
-            }
-            return maxVal;
+        return sum / static_cast<float>(end - start);
+    }
+
+    float FrequencyMapper::MaxInRange(const SpectrumData& data, size_t start, size_t end) const {
+        float maxVal = 0.0f;
+        for (size_t i = start; i < end; ++i) {
+            maxVal = std::max(maxVal, data[i]);
         }
+        return maxVal;
     }
 
     float FrequencyMapper::CalculateBarValue(
         const SpectrumData& magnitudes,
         size_t startBin,
         size_t endBin,
-        bool useAverage
+        AggregationFunc aggFunc
     ) const {
         size_t validStart = startBin;
         size_t validEnd = endBin;
@@ -150,34 +139,36 @@ namespace Spectrum {
             return 0.0f;
         }
 
-        return AggregateValues(magnitudes, validStart, validEnd, useAverage);
+        const size_t clampedEnd = std::min(validEnd, magnitudes.size());
+        if (validStart >= clampedEnd) return 0.0f;
+
+        return (this->*aggFunc)(magnitudes, validStart, clampedEnd);
+    }
+
+    void FrequencyMapper::MapGenericScale(
+        const SpectrumData& mags,
+        SpectrumData& bars,
+        RangeFunc getRange,
+        AggregationFunc aggFunc
+    ) {
+        for (size_t i = 0; i < m_barCount; ++i) {
+            auto range = (this->*getRange)(i);
+            const size_t startBin = GetBinForFrequency(range.start, m_currentFFTSize);
+            const size_t endBin = GetBinForFrequency(range.end, m_currentFFTSize);
+            bars[i] = CalculateBarValue(mags, startBin, endBin, aggFunc);
+        }
     }
 
     void FrequencyMapper::MapLinearScale(const SpectrumData& mags, SpectrumData& bars) {
-        for (size_t i = 0; i < m_barCount; ++i) {
-            auto range = GetLinearRange(i);
-            const size_t startBin = GetBinForFrequency(range.start, m_currentFFTSize);
-            const size_t endBin = GetBinForFrequency(range.end, m_currentFFTSize);
-            bars[i] = CalculateBarValue(mags, startBin, endBin, false);
-        }
+        MapGenericScale(mags, bars, &FrequencyMapper::GetLinearRange, &FrequencyMapper::MaxInRange);
     }
 
     void FrequencyMapper::MapLogarithmicScale(const SpectrumData& mags, SpectrumData& bars) {
-        for (size_t i = 0; i < m_barCount; ++i) {
-            auto range = GetLogarithmicRange(i);
-            const size_t startBin = GetBinForFrequency(range.start, m_currentFFTSize);
-            const size_t endBin = GetBinForFrequency(range.end, m_currentFFTSize);
-            bars[i] = CalculateBarValue(mags, startBin, endBin, true);
-        }
+        MapGenericScale(mags, bars, &FrequencyMapper::GetLogarithmicRange, &FrequencyMapper::AverageRange);
     }
 
     void FrequencyMapper::MapMelScale(const SpectrumData& mags, SpectrumData& bars) {
-        for (size_t i = 0; i < m_barCount; ++i) {
-            auto range = GetMelRange(i);
-            const size_t startBin = GetBinForFrequency(range.start, m_currentFFTSize);
-            const size_t endBin = GetBinForFrequency(range.end, m_currentFFTSize);
-            bars[i] = CalculateBarValue(mags, startBin, endBin, false);
-        }
+        MapGenericScale(mags, bars, &FrequencyMapper::GetMelRange, &FrequencyMapper::MaxInRange);
     }
 
 } // namespace Spectrum

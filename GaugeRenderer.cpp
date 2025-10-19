@@ -1,180 +1,146 @@
-// =-=-=-=-=-=-=-=-=-=-=
-// GaugeRenderer.cpp
-// =-=-=-=-=-=-=-=-=-=-=
-
 #include "GaugeRenderer.h"
-#include "Utils.h"
+#include "MathUtils.h"
+#include "ColorUtils.h"
 #include <algorithm>
-#include <numeric>
-#include <vector>
+#include <cmath>
 
 namespace Spectrum {
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-    // Constants and static data
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Constants
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     namespace {
-        // Value constants
+        // VU meter standard range matches analog equipment
         constexpr float DB_MAX = 5.0f;
         constexpr float DB_MIN = -30.0f;
         constexpr float DB_PEAK_THRESHOLD = 3.0f;
+
+        // needle sweep matches physical meter response time
         constexpr float ANGLE_START = -150.0f;
         constexpr float ANGLE_END = -30.0f;
-        constexpr float ANGLE_TOTAL_RANGE = ANGLE_END - ANGLE_START;
-        constexpr int   PEAK_HOLD_DURATION = 15;
+        constexpr float ANGLE_RANGE = ANGLE_END - ANGLE_START;
 
-        // Geometry constants (standard mode)
-        constexpr float BG_OUTER_CORNER_RADIUS = 8.0f;
-        constexpr float BG_INNER_PADDING = 4.0f;
-        constexpr float BG_INNER_CORNER_RADIUS = 6.0f;
-        constexpr float BG_BACKGROUND_PADDING = 4.0f;
-        constexpr float BG_VU_TEXT_SIZE_RATIO = 0.2f;
-        constexpr float BG_VU_TEXT_BOTTOM_OFFSET = 0.2f;
-        constexpr float NEEDLE_CENTER_Y_OFFSET = 0.4f;
-        constexpr float NEEDLE_LENGTH_MULTIPLIER = 1.55f;
-        constexpr float NEEDLE_BASE_WIDTH = 2.5f;
-        constexpr float NEEDLE_CENTER_RADIUS = 0.02f;
-        constexpr float SCALE_CENTER_Y_OFFSET = 0.15f;
-        constexpr float SCALE_RADIUS_X = 0.45f;
-        constexpr float SCALE_RADIUS_Y = 0.5f;
-        constexpr float SCALE_TICK_LENGTH_ZERO = 0.15f;
-        constexpr float SCALE_TICK_LENGTH = 0.08f;
-        constexpr float SCALE_TICK_LENGTH_MINOR = 0.06f;
-        constexpr float SCALE_TEXT_OFFSET = 0.12f;
-        constexpr float SCALE_TEXT_SIZE_RATIO = 0.1f;
-        constexpr float SCALE_TEXT_SIZE_ZERO_MULTIPLIER = 1.15f;
-        constexpr float PEAK_LAMP_RADIUS = 0.05f;
-        constexpr float PEAK_LAMP_X_OFFSET = 0.1f;
-        constexpr float PEAK_LAMP_Y_OFFSET = 0.2f;
-        constexpr float PEAK_LAMP_TEXT_Y_OFFSET = 2.5f;
-        constexpr float PEAK_LAMP_GLOW_RADIUS = 1.5f;
-        constexpr float PEAK_LAMP_INNER_RADIUS = 0.8f;
+        // peak lamp holds like analog VU meter
+        constexpr int PEAK_HOLD_DURATION = 15;
 
-        // Geometry constants (overlay mode)
-        constexpr float NEEDLE_CENTER_Y_OFFSET_OVERLAY = 0.35f;
-        constexpr float NEEDLE_LENGTH_MULTIPLIER_OVERLAY = 1.6f;
-        constexpr float NEEDLE_CENTER_RADIUS_OVERLAY = 0.015f;
-        constexpr float SCALE_RADIUS_X_OVERLAY = 0.4f;
-        constexpr float SCALE_RADIUS_Y_OVERLAY = 0.45f;
-        constexpr float SCALE_TICK_LENGTH_ZERO_OVERLAY = 0.12f;
-        constexpr float SCALE_TICK_LENGTH_OVERLAY = 0.07f;
-        constexpr float SCALE_TICK_LENGTH_MINOR_OVERLAY = 0.05f;
-        constexpr float SCALE_TEXT_OFFSET_OVERLAY = 0.1f;
-        constexpr float SCALE_TEXT_SIZE_RATIO_OVERLAY = 0.08f;
-        constexpr float PEAK_LAMP_RADIUS_OVERLAY = 0.04f;
-        constexpr float PEAK_LAMP_X_OFFSET_OVERLAY = 0.12f;
-        constexpr float PEAK_LAMP_Y_OFFSET_OVERLAY = 0.18f;
-
-        // Scale marks
+        // VU meter standard scale divisions
         const std::vector<std::pair<float, const wchar_t*>> MAJOR_MARKS = {
             {-30.0f, L"-30"}, {-20.0f, L"-20"}, {-10.0f, L"-10"},
-            {-7.0f,  L"-7"},  {-5.0f,  L"-5"},  {-3.0f,  L"-3"},
-            {0.0f,   L"0"},   {3.0f,   L"+3"},  {5.0f,   L"+5"}
+            {-7.0f, L"-7"}, {-5.0f, L"-5"}, {-3.0f, L"-3"},
+            {0.0f, L"0"}, {3.0f, L"+3"}, {5.0f, L"+5"}
         };
 
-        // Fills gaps between major marks for better readability
-        std::vector<float> InitializeMinorMarks() {
-            std::vector<float> minorMarks;
-            constexpr int MINOR_MARKS_DIVISOR = 3;
-            std::vector<float> majorValues;
-            for (const auto& mark : MAJOR_MARKS) majorValues.push_back(mark.first);
-            std::sort(majorValues.begin(), majorValues.end());
-            for (size_t i = 0; i < majorValues.size() - 1; ++i) {
-                float start = majorValues[i];
-                float end = majorValues[i + 1];
-                float interval = end - start;
-                if (interval <= 1.1f) continue;
-                float step = interval / (interval > 5.0f ? 5.0f : MINOR_MARKS_DIVISOR);
-                for (float val = start + step; val < end - 0.1f; val += step) {
-                    minorMarks.push_back(val);
-                }
-            }
-            return minorMarks;
-        }
-        const std::vector<float> MINOR_MARK_VALUES = InitializeMinorMarks();
+        // minor marks follow VU meter subdivision pattern
+        const std::vector<float> MINOR_MARKS = {
+            -25.0f,             // single mark between wide -30 to -20 range
+            -15.0f, -12.5f,     // two marks between -20 to -10 range
+            -9.0f, -8.0f,       // fill between -10 to -7
+            -6.0f,              // single between -7 to -5
+            -4.0f,              // single between -5 to -3
+            -2.0f, -1.0f,       // fill between -3 to 0
+            1.0f, 2.0f,         // fill between 0 to +3
+            4.0f                // single between +3 to +5
+        };
 
-        // Color palettes and gradient stops
-        const std::vector<D2D1_GRADIENT_STOP> GAUGE_BACKGROUND_STOPS = {
-            {0.0f, D2D1::ColorF(250 / 255.f, 250 / 255.f, 240 / 255.f)},
-            {1.0f, D2D1::ColorF(230 / 255.f, 230 / 255.f, 215 / 255.f)}
+        // vintage VU meter face colors
+        const std::vector<D2D1_GRADIENT_STOP> GAUGE_BG_GRADIENT = {
+            {0.0f, D2D1::ColorF(0.98f, 0.98f, 0.94f)},
+            {1.0f, D2D1::ColorF(0.90f, 0.90f, 0.84f)}
         };
-        const std::vector<D2D1_GRADIENT_STOP> NEEDLE_CENTER_STOPS = {
+
+        const std::vector<D2D1_GRADIENT_STOP> NEEDLE_CENTER_GRADIENT = {
             {0.0f, D2D1::ColorF(D2D1::ColorF::White)},
-            {0.3f, D2D1::ColorF(180 / 255.f, 180 / 255.f, 180 / 255.f)},
-            {1.0f, D2D1::ColorF(60 / 255.f, 60 / 255.f, 60 / 255.f)}
+            {0.3f, D2D1::ColorF(0.7f, 0.7f, 0.7f)},
+            {1.0f, D2D1::ColorF(0.23f, 0.23f, 0.23f)}
         };
-        const std::vector<D2D1_GRADIENT_STOP> ACTIVE_LAMP_STOPS = {
+
+        const std::vector<D2D1_GRADIENT_STOP> PEAK_ACTIVE_GRADIENT = {
             {0.0f, D2D1::ColorF(D2D1::ColorF::White)},
-            {0.3f, D2D1::ColorF(1.0f, 180 / 255.f, 180 / 255.f)},
+            {0.3f, D2D1::ColorF(1.0f, 0.7f, 0.7f)},
             {1.0f, D2D1::ColorF(D2D1::ColorF::Red)}
         };
-        const std::vector<D2D1_GRADIENT_STOP> INACTIVE_LAMP_STOPS = {
-            {0.0f, D2D1::ColorF(220 / 255.f, 220 / 255.f, 220 / 255.f)},
-            {0.3f, D2D1::ColorF(180 / 255.f, 0.f, 0.f)},
-            {1.0f, D2D1::ColorF(80 / 255.f, 0.f, 0.f)}
+
+        const std::vector<D2D1_GRADIENT_STOP> PEAK_INACTIVE_GRADIENT = {
+            {0.0f, D2D1::ColorF(0.86f, 0.86f, 0.86f)},
+            {0.3f, D2D1::ColorF(0.7f, 0.0f, 0.0f)},
+            {1.0f, D2D1::ColorF(0.31f, 0.0f, 0.0f)}
         };
     }
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-    // Class Implementation
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Constructor
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     GaugeRenderer::GaugeRenderer()
-        : m_currentDbValue(DB_MIN),
-        m_currentNeedleAngle(ANGLE_START),
-        m_peakHoldCounter(0),
-        m_peakActive(false) {
-        // This renderer requires a fixed aspect ratio
+        : m_currentDbValue(DB_MIN)
+        , m_currentNeedleAngle(ANGLE_START)
+        , m_peakHoldCounter(0)
+        , m_peakActive(false)
+        , m_smoothingFactorInc(0.2f)
+        , m_smoothingFactorDec(0.05f)
+        , m_riseSpeed(0.15f)
+    {
         m_aspectRatio = 2.0f;
         m_padding = 0.8f;
         UpdateSettings();
     }
 
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Settings Management
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // balance visual smoothness with responsiveness
     void GaugeRenderer::UpdateSettings() {
         switch (m_quality) {
         case RenderQuality::Low:
-            m_currentSettings = {
-                false, false, false,
-                0.2f, 0.05f,
-                0.15f
-            };
+            m_smoothingFactorInc = 0.25f;
+            m_smoothingFactorDec = 0.06f;
+            m_riseSpeed = 0.12f;
             break;
         case RenderQuality::High:
-            m_currentSettings = {
-                true, true, true,
-                0.15f, 0.04f,
-                0.2f
-            };
+            m_smoothingFactorInc = 0.15f;
+            m_smoothingFactorDec = 0.04f;
+            m_riseSpeed = 0.20f;
             break;
         case RenderQuality::Medium:
         default:
-            m_currentSettings = {
-                true, true, true,
-                0.2f, 0.05f,
-                0.15f
-            };
+            m_smoothingFactorInc = 0.20f;
+            m_smoothingFactorDec = 0.05f;
+            m_riseSpeed = 0.15f;
             break;
         }
     }
 
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Animation
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // needle moves faster up than down like real VU meter
     void GaugeRenderer::UpdateAnimation(
         const SpectrumData& spectrum,
         float /*deltaTime*/
     ) {
         float targetDb = CalculateLoudness(spectrum);
 
-        float smoothingFactor = (targetDb > m_currentDbValue)
-            ? m_currentSettings.smoothingFactorIncrease
-            : m_currentSettings.smoothingFactorDecrease;
+        float smoothing = (targetDb > m_currentDbValue)
+            ? m_smoothingFactorInc
+            : m_smoothingFactorDec;
 
-        if (m_isOverlay) smoothingFactor *= 0.5f;
+        // overlay mode needs slower response to avoid distraction
+        if (m_isOverlay)
+            smoothing *= 0.5f;
 
-        m_currentDbValue = Utils::Lerp(m_currentDbValue, targetDb, smoothingFactor);
-        float targetAngle = DbToAngle(m_currentDbValue);
-        m_currentNeedleAngle = Utils::Lerp(
-            m_currentNeedleAngle, targetAngle, m_currentSettings.riseSpeed
+        m_currentDbValue = Utils::Lerp(
+            m_currentDbValue,
+            targetDb,
+            smoothing
         );
 
+        float targetAngle = DbToAngle(m_currentDbValue);
+        m_currentNeedleAngle = Utils::Lerp(
+            m_currentNeedleAngle,
+            targetAngle,
+            m_riseSpeed
+        );
+
+        // peak lamp triggers at +3dB like hardware meters
         if (targetDb >= DB_PEAK_THRESHOLD) {
             m_peakActive = true;
             m_peakHoldCounter = PEAK_HOLD_DURATION;
@@ -187,299 +153,391 @@ namespace Spectrum {
         }
     }
 
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Main Render
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     void GaugeRenderer::DoRender(
         GraphicsContext& context,
         const SpectrumData& /*spectrum*/
     ) {
-        // Use the helper from BaseRenderer to get the main drawing area
         Rect gaugeRect = CalculatePaddedRect();
+        if (gaugeRect.width <= 0 || gaugeRect.height <= 0)
+            return;
 
-        if (gaugeRect.width <= 0 || gaugeRect.height <= 0) return;
-
-        DrawGaugeBackground(context, gaugeRect);
+        DrawBackground(context, gaugeRect);
         DrawScale(context, gaugeRect);
+        DrawPeakIndicator(context, gaugeRect);
         DrawNeedle(context, gaugeRect);
-        DrawPeakLamp(context, gaugeRect);
     }
 
-    // Creates a layered look for the gauge casing
-    void GaugeRenderer::DrawGaugeBackground(
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Background Drawing
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // recreate vintage VU meter appearance
+    void GaugeRenderer::DrawBackground(
         GraphicsContext& context,
         const Rect& rect
-    ) {
+    ) const {
+        // black bezel frame
         context.DrawRoundedRectangle(
-            rect, BG_OUTER_CORNER_RADIUS, Color::FromRGB(80, 80, 80), true
+            rect,
+            8.0f,
+            Color::FromRGB(80, 80, 80),
+            true
         );
 
+        // chrome inner ring
         Rect innerRect(
-            rect.x + BG_INNER_PADDING,
-            rect.y + BG_INNER_PADDING,
-            rect.width - BG_INNER_PADDING * 2,
-            rect.height - BG_INNER_PADDING * 2
+            rect.x + 4,
+            rect.y + 4,
+            rect.width - 8,
+            rect.height - 8
         );
         context.DrawRoundedRectangle(
-            innerRect, BG_INNER_CORNER_RADIUS, Color::FromRGB(105, 105, 105), true
+            innerRect,
+            6.0f,
+            Color::FromRGB(105, 105, 105),
+            true
         );
 
-        Rect backgroundRect(
-            innerRect.x + BG_BACKGROUND_PADDING,
-            innerRect.y + BG_BACKGROUND_PADDING,
-            innerRect.width - BG_BACKGROUND_PADDING * 2,
-            innerRect.height - BG_BACKGROUND_PADDING * 2
+        // cream colored meter face
+        Rect bgRect(
+            innerRect.x + 4,
+            innerRect.y + 4,
+            innerRect.width - 8,
+            innerRect.height - 8
         );
-        context.DrawGradientRectangle(backgroundRect, GAUGE_BACKGROUND_STOPS, false);
+        context.DrawGradientRectangle(
+            bgRect,
+            GAUGE_BG_GRADIENT,
+            false
+        );
 
-        DrawVuText(context, backgroundRect, rect.height);
-    }
-
-    void GaugeRenderer::DrawVuText(
-        GraphicsContext& context,
-        const Rect& backgroundRect,
-        float fullHeight
-    ) {
-        Point pos = {
-            backgroundRect.x + backgroundRect.width * 0.5f,
-            backgroundRect.GetBottom()
-                - backgroundRect.height * BG_VU_TEXT_BOTTOM_OFFSET
+        // VU label centered at bottom
+        float vuTextSize = rect.height * 0.15f;
+        Point textPos = {
+            bgRect.x + bgRect.width * 0.5f,
+            bgRect.GetBottom() - vuTextSize * 1.5f
         };
         context.DrawText(
             L"VU",
-            pos,
+            textPos,
             Color::Black(),
-            fullHeight * BG_VU_TEXT_SIZE_RATIO,
+            vuTextSize,
             DWRITE_TEXT_ALIGNMENT_CENTER
         );
     }
 
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Scale Drawing
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     void GaugeRenderer::DrawScale(
         GraphicsContext& context,
         const Rect& rect
-    ) {
-        float centerX = rect.x + rect.width / 2.0f;
-        float centerY = rect.y + rect.height / 2.0f
-            + rect.height * SCALE_CENTER_Y_OFFSET;
-        Point center = { centerX, centerY };
+    ) const {
+        Point center = GetScaleCenter(rect);
+        float radiusX = rect.width * (m_isOverlay ? 0.4f : 0.45f);
+        float radiusY = rect.height * (m_isOverlay ? 0.45f : 0.5f);
 
-        float radiusX = rect.width
-            * (m_isOverlay ? SCALE_RADIUS_X_OVERLAY : SCALE_RADIUS_X);
-        float radiusY = rect.height
-            * (m_isOverlay ? SCALE_RADIUS_Y_OVERLAY : SCALE_RADIUS_Y);
-        Point radius = { radiusX, radiusY };
+        // draw major marks with labels
+        for (const auto& [value, label] : MAJOR_MARKS)
+            DrawMajorTick(context, center, radiusX, radiusY, value, label);
 
-        for (const auto& mark : MAJOR_MARKS) {
-            DrawMark(context, center, radius, mark.first, mark.second);
-        }
-        for (const auto& value : MINOR_MARK_VALUES) {
-            DrawMark(context, center, radius, value, nullptr);
-        }
+        // draw minor marks
+        for (float value : MINOR_MARKS)
+            DrawMinorTick(context, center, radiusX, radiusY, value);
     }
 
-    // Renders a single tick mark and its optional label
-    void GaugeRenderer::DrawMark(
+    // major ticks with labels for primary scale divisions
+    void GaugeRenderer::DrawMajorTick(
         GraphicsContext& context,
         const Point& center,
-        const Point& radius,
+        float radiusX,
+        float radiusY,
         float value,
         const wchar_t* label
-    ) {
+    ) const {
         float angle = DbToAngle(value);
         float rad = Utils::DegToRad(angle);
-        float tickLength = radius.y * GetTickLength(value, label != nullptr);
-
-        float cos_rad = std::cos(rad);
-        float sin_rad = std::sin(rad);
+        float tickLength = GetTickLength(value, true) * radiusY;
 
         Point start = {
-            center.x + (radius.x - tickLength) * cos_rad,
-            center.y + (radius.y - tickLength) * sin_rad
+            center.x + (radiusX - tickLength) * std::cos(rad),
+            center.y + (radiusY - tickLength) * std::sin(rad)
         };
         Point end = {
-            center.x + radius.x * cos_rad,
-            center.y + radius.y * sin_rad
+            center.x + radiusX * std::cos(rad),
+            center.y + radiusY * std::sin(rad)
         };
 
+        // red zone starts at 0dB
         Color tickColor = (value >= 0)
             ? Color::FromRGB(220, 0, 0)
             : Color::FromRGB(80, 80, 80);
         context.DrawLine(start, end, tickColor, 1.8f);
 
-        if (label) {
-            DrawTickLabel(context, center, radius, value, label, angle);
-        }
-    }
+        if (!label)
+            return;
 
-    void GaugeRenderer::DrawTickLabel(
-        GraphicsContext& context,
-        const Point& center,
-        const Point& radius,
-        float value,
-        const std::wstring& label,
-        float angle
-    ) {
-        float rad = Utils::DegToRad(angle);
-        float textOffset = radius.y
-            * (m_isOverlay ? SCALE_TEXT_OFFSET_OVERLAY : SCALE_TEXT_OFFSET);
-        float textSize = radius.y
-            * (m_isOverlay ? SCALE_TEXT_SIZE_RATIO_OVERLAY : SCALE_TEXT_SIZE_RATIO);
+        float textOffset = radiusY * (m_isOverlay ? 0.1f : 0.12f);
+        float textSize = radiusY * (m_isOverlay ? 0.08f : 0.1f);
+        // zero mark larger for emphasis
+        if (value == 0.0f)
+            textSize *= 1.15f;
 
-        if (value == 0.0f) textSize *= SCALE_TEXT_SIZE_ZERO_MULTIPLIER;
-
-        Point pos = {
-            center.x + (radius.x + textOffset) * std::cos(rad),
-            center.y + (radius.y + textOffset) * std::sin(rad)
+        Point labelPos = {
+            center.x + (radiusX + textOffset) * std::cos(rad),
+            center.y + (radiusY + textOffset) * std::sin(rad)
         };
 
-        DWRITE_TEXT_ALIGNMENT alignment = (angle < -120.0f)
-            ? DWRITE_TEXT_ALIGNMENT_TRAILING
-            : (angle > -60.0f)
-            ? DWRITE_TEXT_ALIGNMENT_LEADING
-            : DWRITE_TEXT_ALIGNMENT_CENTER;
+        // align text based on position around arc
+        DWRITE_TEXT_ALIGNMENT align = DWRITE_TEXT_ALIGNMENT_CENTER;
+        if (angle < -120.0f)
+            align = DWRITE_TEXT_ALIGNMENT_TRAILING;
+        else if (angle > -60.0f)
+            align = DWRITE_TEXT_ALIGNMENT_LEADING;
 
-        Color textColor = (value >= 0) ? Color::FromRGB(200, 0, 0) : Color::Black();
-        context.DrawText(label, pos, textColor, textSize, alignment);
+        Color textColor = (value >= 0)
+            ? Color::FromRGB(200, 0, 0)
+            : Color::Black();
+        context.DrawText(
+            label,
+            labelPos,
+            textColor,
+            textSize,
+            align
+        );
     }
 
+    // minor ticks for fine reading between majors
+    void GaugeRenderer::DrawMinorTick(
+        GraphicsContext& context,
+        const Point& center,
+        float radiusX,
+        float radiusY,
+        float value
+    ) const {
+        float angle = DbToAngle(value);
+        float rad = Utils::DegToRad(angle);
+        float tickLength = GetTickLength(value, false) * radiusY;
+
+        Point start = {
+            center.x + (radiusX - tickLength) * std::cos(rad),
+            center.y + (radiusY - tickLength) * std::sin(rad)
+        };
+        Point end = {
+            center.x + radiusX * std::cos(rad),
+            center.y + radiusY * std::sin(rad)
+        };
+
+        // lighter color for minor marks
+        Color minorColor = (value >= 0)
+            ? Color::FromRGB(180, 100, 100)
+            : Color::FromRGB(100, 100, 100);
+        context.DrawLine(start, end, minorColor, 1.0f);
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Needle Drawing
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     void GaugeRenderer::DrawNeedle(
         GraphicsContext& context,
         const Rect& rect
-    ) {
-        float centerYOffset = rect.height
-            * (m_isOverlay ? NEEDLE_CENTER_Y_OFFSET_OVERLAY : NEEDLE_CENTER_Y_OFFSET);
-        Point center = {
-            rect.x + rect.width / 2.0f,
-            rect.y + rect.height / 2.0f + centerYOffset
-        };
+    ) const {
+        Point center = GetNeedleCenter(rect);
+        float needleLength = std::min(rect.width, rect.height) *
+            (m_isOverlay ? 0.64f : 0.7f);
 
-        float radiusX = rect.width * (m_isOverlay ? SCALE_RADIUS_X_OVERLAY : SCALE_RADIUS_X);
-        float radiusY = rect.height * (m_isOverlay ? SCALE_RADIUS_Y_OVERLAY : SCALE_RADIUS_Y);
-
-        float needleLength = std::min(radiusX, radiusY)
-            * (m_isOverlay ? NEEDLE_LENGTH_MULTIPLIER_OVERLAY : NEEDLE_LENGTH_MULTIPLIER);
-        float centerRadius = rect.width
-            * (m_isOverlay ? NEEDLE_CENTER_RADIUS_OVERLAY : NEEDLE_CENTER_RADIUS);
-
-        DrawNeedleShape(context, center, m_currentNeedleAngle, needleLength);
-        DrawNeedleCenter(context, center, centerRadius);
+        DrawNeedleBody(context, center, needleLength);
+        DrawNeedlePivot(context, center, rect.width * (m_isOverlay ? 0.015f : 0.02f));
     }
 
-    // Draws the needle using transformations for cleaner code
-    void GaugeRenderer::DrawNeedleShape(
+    // simple triangle needle like classic meters
+    void GaugeRenderer::DrawNeedleBody(
         GraphicsContext& context,
         const Point& center,
-        float angle,
-        float needleLength
-    ) {
-        // Defines a simple triangle shape in local space (pointing up)
-        Point tip = { 0.0f, -needleLength };
-        Point baseLeft = { -NEEDLE_BASE_WIDTH, 0.0f };
-        Point baseRight = { NEEDLE_BASE_WIDTH, 0.0f };
-
-        // Creates rotation and translation matrices
-        D2D1_MATRIX_3X2_F rotation = D2D1::Matrix3x2F::Rotation(
-            angle + 90.0f, // Add 90 because our model points up, not right
-            D2D1::Point2F(0.0f, 0.0f)
-        );
-        D2D1_MATRIX_3X2_F translation = D2D1::Matrix3x2F::Translation(
-            center.x, center.y
-        );
-
-        // Apply transform, draw, then reset
-        context.SetTransform(rotation * translation);
-        context.DrawPolygon({ tip, baseLeft, baseRight }, Color::Black(), true);
-        context.ResetTransform();
-    }
-
-    // Adds a metallic-looking pivot for the needle
-    void GaugeRenderer::DrawNeedleCenter(
-        GraphicsContext& context,
-        const Point& center,
-        float radius
-    ) {
-        if (m_currentSettings.useGradients) {
-            context.DrawRadialGradient(center, radius, NEEDLE_CENTER_STOPS);
-        }
-        else {
-            context.DrawCircle(center, radius, Color::FromRGB(60, 60, 60), true);
-        }
-
-        if (m_currentSettings.useHighlights) {
-            Point highlightCenter = { center.x - radius * 0.25f, center.y - radius * 0.25f };
-            context.DrawCircle(highlightCenter, radius * 0.4f, Color(1, 1, 1, 0.6f), true);
-        }
-    }
-
-    void GaugeRenderer::DrawPeakLamp(
-        GraphicsContext& context,
-        const Rect& rect
-    ) {
-        float lampRadius = std::min(rect.width, rect.height)
-            * (m_isOverlay ? PEAK_LAMP_RADIUS_OVERLAY : PEAK_LAMP_RADIUS);
-        Point lampCenter = {
-            rect.GetRight() - rect.width * (m_isOverlay ? PEAK_LAMP_X_OFFSET_OVERLAY : PEAK_LAMP_X_OFFSET),
-            rect.y + rect.height * (m_isOverlay ? PEAK_LAMP_Y_OFFSET_OVERLAY : PEAK_LAMP_Y_OFFSET)
+        float length
+    ) const {
+        std::vector<Point> needlePoints = {
+            {0.0f, -length},
+            {-2.5f, 0.0f},
+            {2.5f, 0.0f}
         };
 
-        if (m_peakActive && m_currentSettings.useGlow) {
-            std::vector<D2D1_GRADIENT_STOP> glowStops = {
-                {0.0f, D2D1::ColorF(1.f, 0.f, 0.f, 0.3f)},
-                {1.0f, D2D1::ColorF(1.f, 0.f, 0.f, 0.0f)}
-            };
-            context.DrawRadialGradient(
-                lampCenter,
-                lampRadius * PEAK_LAMP_GLOW_RADIUS * 2.f,
-                glowStops
+        // shadow for depth
+        if (m_quality != RenderQuality::Low) {
+            context.DrawWithShadow(
+                [&]() {
+                    context.PushTransform();
+                    context.TranslateBy(center.x, center.y);
+                    context.RotateAt({ 0, 0 }, m_currentNeedleAngle + 90.0f);
+                    context.DrawPolygon(needlePoints, Color::Black(), true);
+                    context.PopTransform();
+                },
+                { 2.0f, 2.0f },
+                2.0f,
+                Color(0, 0, 0, 0.3f)
             );
         }
 
-        context.DrawRadialGradient(
-            lampCenter,
-            lampRadius * PEAK_LAMP_INNER_RADIUS,
-            m_peakActive ? ACTIVE_LAMP_STOPS : INACTIVE_LAMP_STOPS
+        // main needle
+        context.PushTransform();
+        context.TranslateBy(center.x, center.y);
+        context.RotateAt({ 0, 0 }, m_currentNeedleAngle + 90.0f);
+        context.DrawPolygon(needlePoints, Color::Black(), true);
+        context.PopTransform();
+    }
+
+    // metallic pivot cap at needle base
+    void GaugeRenderer::DrawNeedlePivot(
+        GraphicsContext& context,
+        const Point& center,
+        float radius
+    ) const {
+        if (m_quality != RenderQuality::Low) {
+            context.DrawRadialGradient(
+                center,
+                radius,
+                NEEDLE_CENTER_GRADIENT
+            );
+
+            // specular highlight simulates metal cap
+            Point highlightPos = {
+                center.x - radius * 0.25f,
+                center.y - radius * 0.25f
+            };
+            context.DrawCircle(
+                highlightPos,
+                radius * 0.4f,
+                Color(1, 1, 1, 0.6f),
+                true
+            );
+        }
+        else {
+            context.DrawCircle(
+                center,
+                radius,
+                Color::FromRGB(60, 60, 60),
+                true
+            );
+        }
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Peak Indicator
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // peak lamp matches vintage meter style
+    void GaugeRenderer::DrawPeakIndicator(
+        GraphicsContext& context,
+        const Rect& rect
+    ) const {
+        float lampRadius = std::min(rect.width, rect.height) *
+            (m_isOverlay ? 0.04f : 0.05f);
+
+        // positioned in top right corner, clear of scale
+        float lampX = rect.GetRight() - lampRadius * 2.5f;
+        float lampY = rect.y + lampRadius * 2.5f;
+        Point lampPos = { lampX, lampY };
+
+        // glow simulates incandescent bulb
+        if (m_peakActive && m_quality != RenderQuality::Low)
+            context.DrawGlow(lampPos, lampRadius * 2.0f, Color::Red(), 0.3f);
+
+        // jeweled lamp appearance
+        if (m_quality != RenderQuality::Low) {
+            context.DrawRadialGradient(
+                lampPos,
+                lampRadius * 0.8f,
+                m_peakActive ? PEAK_ACTIVE_GRADIENT : PEAK_INACTIVE_GRADIENT
+            );
+        }
+        else {
+            Color lampColor = m_peakActive
+                ? Color::Red()
+                : Color::FromRGB(180, 0, 0);
+            context.DrawCircle(lampPos, lampRadius * 0.8f, lampColor, true);
+        }
+
+        // chrome bezel around lamp
+        context.DrawCircle(
+            lampPos,
+            lampRadius,
+            Color::FromRGB(40, 40, 40),
+            false,
+            1.2f
         );
-        context.DrawCircle(lampCenter, lampRadius, Color::FromRGB(40, 40, 40), false, 1.2f);
 
+        // label aligned below lamp
+        float textSize = lampRadius;
         Point textPos = {
-            lampCenter.x,
-            lampCenter.y + lampRadius + PEAK_LAMP_TEXT_Y_OFFSET
+            lampPos.x,
+            lampPos.y + lampRadius + textSize * 0.5f
         };
-        Color textColor = m_peakActive ? Color::Red() : Color::FromRGB(180, 0, 0);
-
+        Color textColor = m_peakActive
+            ? Color::Red()
+            : Color::FromRGB(180, 0, 0);
         context.DrawText(
             L"PEAK",
             textPos,
             textColor,
-            lampRadius,
+            textSize,
             DWRITE_TEXT_ALIGNMENT_CENTER
         );
     }
 
-    float GaugeRenderer::GetTickLength(float value, bool isMajor) const {
-        if (!isMajor) return m_isOverlay
-            ? SCALE_TICK_LENGTH_MINOR_OVERLAY
-            : SCALE_TICK_LENGTH_MINOR;
-
-        if (value == 0.0f) return m_isOverlay
-            ? SCALE_TICK_LENGTH_ZERO_OVERLAY
-            : SCALE_TICK_LENGTH_ZERO;
-
-        return m_isOverlay
-            ? SCALE_TICK_LENGTH_OVERLAY
-            : SCALE_TICK_LENGTH;
-    }
-
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Calculation Helpers
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // RMS gives perceived loudness better than peak
     float GaugeRenderer::CalculateLoudness(const SpectrumData& spectrum) const {
-        if (spectrum.empty()) return DB_MIN;
-        float sumOfSquares = 0.0f;
-        for (float val : spectrum) sumOfSquares += val * val;
-        float rms = std::sqrt(sumOfSquares / spectrum.size());
-        // Protect against log(0) which is -infinity
+        if (spectrum.empty())
+            return DB_MIN;
+
+        float sum = 0.0f;
+        for (float val : spectrum)
+            sum += val * val;
+
+        float rms = std::sqrt(sum / spectrum.size());
+        // prevent log of zero
         float db = 20.0f * std::log10(std::max(rms, 1e-10f));
+
         return Utils::Clamp(db, DB_MIN, DB_MAX);
     }
 
+    // map db range to needle sweep angle
     float GaugeRenderer::DbToAngle(float db) const {
-        float normalized = (Utils::Clamp(db, DB_MIN, DB_MAX) - DB_MIN) / (DB_MAX - DB_MIN);
-        return ANGLE_START + normalized * ANGLE_TOTAL_RANGE;
+        float normalized = (Utils::Clamp(db, DB_MIN, DB_MAX) - DB_MIN) /
+            (DB_MAX - DB_MIN);
+        return ANGLE_START + normalized * ANGLE_RANGE;
     }
 
-}
+    // scale arc positioned in upper portion
+    Point GaugeRenderer::GetScaleCenter(const Rect& rect) const {
+        return {
+            rect.x + rect.width * 0.5f,
+            rect.y + rect.height * 0.5f + rect.height * 0.15f
+        };
+    }
+
+    // needle pivot below scale for proper arc intersection
+    Point GaugeRenderer::GetNeedleCenter(const Rect& rect) const {
+        return {
+            rect.x + rect.width * 0.5f,
+            rect.y + rect.height * 0.5f +
+                rect.height * (m_isOverlay ? 0.35f : 0.4f)
+        };
+    }
+
+    // zero mark longer for visual reference
+    float GaugeRenderer::GetTickLength(float value, bool isMajor) const {
+        // use relative length to radiusY
+        if (!isMajor)
+            return (m_isOverlay ? 0.05f : 0.06f);
+
+        if (value == 0.0f)
+            return (m_isOverlay ? 0.12f : 0.15f);
+
+        return (m_isOverlay ? 0.064f : 0.08f);
+    }
+
+} // namespace Spectrum

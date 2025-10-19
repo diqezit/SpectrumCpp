@@ -2,12 +2,15 @@
 // RealtimeAudioSource.cpp: Implementation of the live audio source.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 #include "RealtimeAudioSource.h"
-#include "Utils.h"
 
 namespace Spectrum {
 
     RealtimeAudioSource::RealtimeAudioSource(const AudioConfig& config) : m_config(config) {
         m_analyzer = std::make_unique<SpectrumAnalyzer>(m_config.barCount, m_config.fftSize);
+        ConfigureAnalyzer();
+    }
+
+    void RealtimeAudioSource::ConfigureAnalyzer() {
         m_analyzer->SetAmplification(m_config.amplification);
         m_analyzer->SetSmoothing(m_config.smoothing);
         m_analyzer->SetFFTWindow(m_config.windowType);
@@ -19,11 +22,15 @@ namespace Spectrum {
         return m_audioCapture != nullptr;
     }
 
-    void RealtimeAudioSource::Update(float /*deltaTime*/) {
+    void RealtimeAudioSource::HandleCaptureFaults() {
         if (m_isCapturing && m_audioCapture && m_audioCapture->IsFaulted()) {
             LOG_ERROR("Realtime source detected a fault. Capture stopped.");
             StopCapture();
         }
+    }
+
+    void RealtimeAudioSource::Update(float /*deltaTime*/) {
+        HandleCaptureFaults();
         m_analyzer->Update();
     }
 
@@ -31,15 +38,18 @@ namespace Spectrum {
         return m_analyzer->GetSpectrum();
     }
 
-    void RealtimeAudioSource::StartCapture() {
-        if (m_isCapturing) return;
-
+    bool RealtimeAudioSource::EnsureCaptureIsReady() {
         if (!m_audioCapture || m_audioCapture->IsFaulted()) {
             LOG_INFO("Audio device is in a faulted state. Attempting to recover...");
             ReinitializeCapture();
         }
+        return m_audioCapture != nullptr;
+    }
 
-        if (m_audioCapture && m_audioCapture->Start()) {
+    void RealtimeAudioSource::StartCapture() {
+        if (m_isCapturing) return;
+
+        if (EnsureCaptureIsReady() && m_audioCapture->Start()) {
             m_isCapturing = true;
             LOG_INFO("Realtime source: capture started.");
         }
@@ -58,15 +68,25 @@ namespace Spectrum {
         }
     }
 
-    void RealtimeAudioSource::ReinitializeCapture() {
+    bool RealtimeAudioSource::TryCreateCaptureDevice() {
         m_audioCapture = std::make_unique<AudioCapture>();
         if (!m_audioCapture->Initialize()) {
             m_audioCapture = nullptr;
-            LOG_ERROR("Failed to re-initialize audio capture device.");
-            return;
+            LOG_ERROR("Failed to initialize audio capture device.");
+            return false;
         }
+        return true;
+    }
+
+    void RealtimeAudioSource::SetupNewCaptureDevice() {
         m_audioCapture->SetCallback(m_analyzer.get());
         LOG_INFO("Audio capture device initialized successfully.");
+    }
+
+    void RealtimeAudioSource::ReinitializeCapture() {
+        if (TryCreateCaptureDevice()) {
+            SetupNewCaptureDevice();
+        }
     }
 
     void RealtimeAudioSource::SetAmplification(float amp) { m_analyzer->SetAmplification(amp); }

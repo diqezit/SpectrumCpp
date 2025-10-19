@@ -1,7 +1,3 @@
-// =-=-=-=-=-=-=-=-=-=-=
-// GaugeRenderer.h
-// =-=-=-=-=-=-=-=-=-=-=
-
 #ifndef SPECTRUM_CPP_GAUGE_RENDERER_H
 #define SPECTRUM_CPP_GAUGE_RENDERER_H
 
@@ -14,17 +10,17 @@ namespace Spectrum {
         GaugeRenderer();
         ~GaugeRenderer() override = default;
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // IRenderer Implementation
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         RenderStyle GetStyle() const override { return RenderStyle::Gauge; }
         std::string_view GetName() const override { return "Gauge"; }
         bool SupportsPrimaryColor() const override { return false; }
 
     protected:
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // BaseRenderer Overrides
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         void UpdateSettings() override;
 
         void UpdateAnimation(
@@ -38,94 +34,71 @@ namespace Spectrum {
         ) override;
 
     private:
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // Settings
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        struct QualitySettings {
-            bool useGlow;
-            bool useGradients;
-            bool useHighlights;
-            float smoothingFactorIncrease;
-            float smoothingFactorDecrease;
-            float riseSpeed;
-        };
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Main Drawing Components
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        void DrawBackground(GraphicsContext& context, const Rect& rect) const;
+        void DrawScale(GraphicsContext& context, const Rect& rect) const;
+        void DrawNeedle(GraphicsContext& context, const Rect& rect) const;
+        void DrawPeakIndicator(GraphicsContext& context, const Rect& rect) const;
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // Drawing Helpers
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        void DrawGaugeBackground(
-            GraphicsContext& context,
-            const Rect& rect
-        );
-
-        void DrawVuText(
-            GraphicsContext& context,
-            const Rect& backgroundRect,
-            float fullHeight
-        );
-
-        void DrawScale(
-            GraphicsContext& context,
-            const Rect& rect
-        );
-
-        void DrawMark(
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Scale Drawing Helpers
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        void DrawMajorTick(
             GraphicsContext& context,
             const Point& center,
-            const Point& radius,
+            float radiusX,
+            float radiusY,
             float value,
             const wchar_t* label
-        );
+        ) const;
 
-        void DrawTickLabel(
+        void DrawMinorTick(
             GraphicsContext& context,
             const Point& center,
-            const Point& radius,
-            float value,
-            const std::wstring& label,
-            float angle
-        );
+            float radiusX,
+            float radiusY,
+            float value
+        ) const;
 
-        void DrawNeedle(
-            GraphicsContext& context,
-            const Rect& rect
-        );
-
-        void DrawNeedleShape(
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Needle Components
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        void DrawNeedleBody(
             GraphicsContext& context,
             const Point& center,
-            float angle,
-            float needleLength
-        );
+            float length
+        ) const;
 
-        void DrawNeedleCenter(
+        void DrawNeedlePivot(
             GraphicsContext& context,
             const Point& center,
             float radius
-        );
+        ) const;
 
-        void DrawPeakLamp(
-            GraphicsContext& context,
-            const Rect& rect
-        );
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Calculation Helpers
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         float CalculateLoudness(const SpectrumData& spectrum) const;
         float DbToAngle(float db) const;
+        Point GetScaleCenter(const Rect& rect) const;
+        Point GetNeedleCenter(const Rect& rect) const;
         float GetTickLength(float value, bool isMajor) const;
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // Member State
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        QualitySettings m_currentSettings;
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Member Variables
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         float m_currentDbValue;
         float m_currentNeedleAngle;
         int m_peakHoldCounter;
         bool m_peakActive;
+
+        float m_smoothingFactorInc;
+        float m_smoothingFactorDec;
+        float m_riseSpeed;
     };
 
-}
+} // namespace Spectrum
 
-#endif
+#endif // SPECTRUM_CPP_GAUGE_RENDERER_H

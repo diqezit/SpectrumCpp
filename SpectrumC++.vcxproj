@@ -28,8 +28,10 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="AnimatedAudioSource.h" />
+    <ClInclude Include="AudioBuffer.h" />
     <ClInclude Include="AudioCaptureEngine.h" />
     <ClInclude Include="AudioManager.h" />
+    <ClInclude Include="ColorUtils.h" />
     <ClInclude Include="ControllerCore.h" />
     <ClInclude Include="AudioCapture.h" />
     <ClInclude Include="BarsRenderer.h" />
@@ -38,25 +40,41 @@
     <ClInclude Include="ColorPicker.h" />
     <ClInclude Include="Common.h" />
     <ClInclude Include="CubesRenderer.h" />
+    <ClInclude Include="EffectsRenderer.h" />
     <ClInclude Include="EventBus.h" />
     <ClInclude Include="FFTProcessor.h" />
     <ClInclude Include="FireRenderer.h" />
     <ClInclude Include="FrequencyMapper.h" />
+    <ClInclude Include="GainNormalizer.h" />
     <ClInclude Include="GaugeRenderer.h" />
+    <ClInclude Include="GeometryBuilder.h" />
+    <ClInclude Include="GradientRenderer.h" />
     <ClInclude Include="GraphicsContext.h" />
     <ClInclude Include="IAudioSource.h" />
     <ClInclude Include="InputManager.h" />
     <ClInclude Include="IRenderer.h" />
     <ClInclude Include="KenwoodBarsRenderer.h" />
     <ClInclude Include="LedPanelRenderer.h" />
+    <ClInclude Include="MathUtils.h" />
+    <ClInclude Include="PlatformUtils.h" />
+    <ClInclude Include="PrimitiveRenderer.h" />
+    <ClInclude Include="Random.h" />
     <ClInclude Include="RealtimeAudioSource.h" />
     <ClInclude Include="RendererManager.h" />
     <ClInclude Include="RenderUtils.h" />
+    <ClInclude Include="Resource.h" />
+    <ClInclude Include="ResourceCache.h" />
     <ClInclude Include="SpectrumAnalyzer.h" />
     <ClInclude Include="SpectrumPostProcessor.h" />
+    <ClInclude Include="SpectrumRenderer.h" />
+    <ClInclude Include="SpectrumTypes.h" />
+    <ClInclude Include="StringUtils.h" />
+    <ClInclude Include="TemplateUtils.h" />
+    <ClInclude Include="TextRenderer.h" />
+    <ClInclude Include="Timer.h" />
+    <ClInclude Include="TransformManager.h" />
     <ClInclude Include="Types.h" />
     <ClInclude Include="UIManager.h" />
-    <ClInclude Include="Utils.h" />
     <ClInclude Include="WASAPIHelper.h" />
     <ClInclude Include="WaveRenderer.h" />
     <ClInclude Include="MainWindow.h" />
@@ -68,8 +86,10 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="AnimatedAudioSource.cpp" />
+    <ClCompile Include="AudioBuffer.cpp" />
     <ClCompile Include="AudioCaptureEngine.cpp" />
     <ClCompile Include="AudioManager.cpp" />
+    <ClCompile Include="ColorUtils.cpp" />
     <ClCompile Include="ControllerCore.cpp" />
     <ClCompile Include="AudioCapture.cpp" />
     <ClCompile Include="BarsRenderer.cpp" />
@@ -77,27 +97,44 @@
     <ClCompile Include="CircularWaveRenderer.cpp" />
     <ClCompile Include="ColorPicker.cpp" />
     <ClCompile Include="CubesRenderer.cpp" />
+    <ClCompile Include="EffectsRenderer.cpp" />
     <ClCompile Include="FFTProcessor.cpp" />
     <ClCompile Include="FireRenderer.cpp" />
     <ClCompile Include="FrequencyMapper.cpp" />
+    <ClCompile Include="GainNormalizer.cpp" />
     <ClCompile Include="GaugeRenderer.cpp" />
+    <ClCompile Include="GeometryBuilder.cpp" />
+    <ClCompile Include="GradientRenderer.cpp" />
     <ClCompile Include="GraphicsContext.cpp" />
     <ClCompile Include="InputManager.cpp" />
     <ClCompile Include="KenwoodBarsRenderer.cpp" />
     <ClCompile Include="LedPanelRenderer.cpp" />
     <ClCompile Include="Application.cpp" />
+    <ClCompile Include="PrimitiveRenderer.cpp" />
+    <ClCompile Include="Random.cpp" />
     <ClCompile Include="RealtimeAudioSource.cpp" />
     <ClCompile Include="RendererManager.cpp" />
     <ClCompile Include="RenderUtils.cpp" />
+    <ClCompile Include="ResourceCache.cpp" />
     <ClCompile Include="SpectrumAnalyzer.cpp" />
     <ClCompile Include="SpectrumPostProcessor.cpp" />
+    <ClCompile Include="SpectrumRenderer.cpp" />
+    <ClCompile Include="StringUtils.cpp" />
+    <ClCompile Include="TextRenderer.cpp" />
+    <ClCompile Include="Timer.cpp" />
+    <ClCompile Include="TransformManager.cpp" />
     <ClCompile Include="UIManager.cpp" />
-    <ClCompile Include="Utils.cpp" />
     <ClCompile Include="WASAPIHelper.cpp" />
     <ClCompile Include="WaveRenderer.cpp" />
     <ClCompile Include="MainWindow.cpp" />
     <ClCompile Include="WindowHelper.cpp" />
     <ClCompile Include="WindowManager.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="resource.rc.in" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="app.ico" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>

@@ -1,4 +1,3 @@
-// FrequencyMapper.h
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 // FrequencyMapper.h: Maps FFT bins to frequency bars using different scaling modes.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
@@ -36,12 +35,23 @@ namespace Spectrum {
         float GetNyquistFrequency() const noexcept { return m_nyquistFrequency; }
 
     private:
-        // Frequency range calculators
+        // Helper types for function pointers
         struct FrequencyRange {
-            float start;
-            float end;
+            float start = 0.0f;
+            float end = 0.0f;
         };
+        using RangeFunc = FrequencyRange(FrequencyMapper::*)(size_t) const;
+        using AggregationFunc = float (FrequencyMapper::*)(const SpectrumData&, size_t, size_t) const;
 
+        // Generic mapping function
+        void MapGenericScale(
+            const SpectrumData& mags,
+            SpectrumData& bars,
+            RangeFunc getRange,
+            AggregationFunc aggFunc
+        );
+
+        // Frequency range calculators
         FrequencyRange GetLinearRange(size_t barIndex) const;
         FrequencyRange GetLogarithmicRange(size_t barIndex) const;
         FrequencyRange GetMelRange(size_t barIndex) const;
@@ -56,17 +66,15 @@ namespace Spectrum {
             const SpectrumData& magnitudes,
             size_t startBin,
             size_t endBin,
-            bool useAverage
+            AggregationFunc aggFunc
         ) const;
+
+        // Aggregation methods
+        float AverageRange(const SpectrumData& data, size_t start, size_t end) const;
+        float MaxInRange(const SpectrumData& data, size_t start, size_t end) const;
 
         // Helper methods
         bool ValidateBinRange(size_t& startBin, size_t& endBin, size_t maxBin) const;
-        float AggregateValues(
-            const SpectrumData& data,
-            size_t start,
-            size_t end,
-            bool useAverage
-        ) const;
 
     private:
         static constexpr float LOG_MIN_FREQ = 20.0f;

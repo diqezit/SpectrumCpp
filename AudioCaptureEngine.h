@@ -24,18 +24,38 @@ namespace Spectrum {
         };
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // SRP: Handles low-level WASAPI device initialization.
+        // Handles low-level WASAPI device initialization.
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
         class WasapiInitializer {
         public:
             std::unique_ptr<WasapiInitData> Initialize();
 
         private:
-            bool InitializeDevice(wrl::ComPtr<IMMDevice>& device) const;
+            bool TryInitializeOnce(std::unique_ptr<WasapiInitData>& data);
 
-            bool InitializeClient(
-                wrl::ComPtr<IMMDevice>& device,
-                WasapiInitData& data
+            bool CreateDeviceEnumerator(wrl::ComPtr<IMMDeviceEnumerator>& enumerator) const;
+            bool GetDefaultAudioDevice(
+                IMMDeviceEnumerator* enumerator,
+                wrl::ComPtr<IMMDevice>& device
+            ) const;
+
+            bool ActivateClientInterface(
+                IMMDevice* device,
+                wrl::ComPtr<IAudioClient>& client
+            ) const;
+            bool GetClientMixFormat(
+                IAudioClient* client,
+                WAVEFORMATEX** waveFormat
+            ) const;
+
+            bool TryInitializeInPreferredMode(
+                WasapiInitData& data,
+                wrl::ComPtr<IMMDevice>& device
+            ) const;
+            bool TryEventDrivenInitialization(WasapiInitData& data) const;
+            bool TryPollingInitialization(
+                WasapiInitData& data,
+                wrl::ComPtr<IMMDevice>& device
             ) const;
 
             bool TryInitializeMode(
@@ -58,7 +78,7 @@ namespace Spectrum {
         };
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // SRP: Processes audio packets from the buffer.
+        // Processes audio packets from the buffer.
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
         class AudioPacketProcessor {
         public:
@@ -67,6 +87,13 @@ namespace Spectrum {
             HRESULT ProcessAvailablePackets();
 
         private:
+            HRESULT ProcessSinglePacket();
+            void InvokeCallbackWithData(
+                BYTE* data,
+                UINT32 frames,
+                DWORD flags
+            );
+
             IAudioCaptureClient* m_captureClient;
             int m_channels;
             IAudioCaptureCallback* m_callback;
@@ -74,7 +101,7 @@ namespace Spectrum {
         };
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // SRP: Defines the strategy for the capture loop.
+        // Defines the strategy for the capture loop.
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
         class ICaptureEngine {
         public:
@@ -107,4 +134,4 @@ namespace Spectrum {
     }
 }
 
-#endif
+#endif // SPECTRUM_CPP_AUDIO_CAPTURE_ENGINE_H

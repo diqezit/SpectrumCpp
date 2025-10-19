@@ -27,7 +27,15 @@ namespace Spectrum {
         void StopCapture() override;
 
     private:
+        // Initialization and Configuration
+        void ConfigureAnalyzer();
         void ReinitializeCapture();
+        bool TryCreateCaptureDevice();
+        void SetupNewCaptureDevice();
+
+        // State Management
+        void HandleCaptureFaults();
+        bool EnsureCaptureIsReady();
 
         std::unique_ptr<AudioCapture> m_audioCapture;
         std::unique_ptr<SpectrumAnalyzer> m_analyzer;

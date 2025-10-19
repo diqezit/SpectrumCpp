@@ -5,27 +5,15 @@
 #define SPECTRUM_CPP_SPECTRUM_ANALYZER_H
 
 #include "Common.h"
+#include "AudioCapture.h"
+#include "AudioBuffer.h"
 #include "FFTProcessor.h"
 #include "FrequencyMapper.h"
 #include "SpectrumPostProcessor.h"
-#include "AudioCapture.h"
 
 namespace Spectrum {
 
     class SpectrumAnalyzer : public IAudioCaptureCallback {
-    private:
-        class AudioBufferManager {
-        public:
-            void Add(const float* data, size_t frames, int channels);
-            bool HasEnoughData(size_t required) const;
-            void CopyTo(AudioBuffer& dest, size_t size);
-            void Consume(size_t size);
-
-        private:
-            AudioBuffer m_buffer;
-            std::mutex m_mutex;
-        };
-
     public:
         SpectrumAnalyzer(size_t barCount = DEFAULT_BAR_COUNT, size_t fftSize = DEFAULT_FFT_SIZE);
 
@@ -46,7 +34,15 @@ namespace Spectrum {
         SpectrumScale GetScaleType() const;
 
     private:
+        // Processing pipeline
         void ProcessSingleFFTChunk();
+        void CopyChunkToProcessBuffer();
+        void ExecuteFFT();
+        void MapMagnitudesToBars(SpectrumData& outBars);
+        void ApplyPostProcessing(SpectrumData& bars);
+
+        // Helpers
+        bool ValidateAudioInput(const float* data, size_t samples, int channels, size_t& outFrames) const;
 
         size_t m_barCount;
         SpectrumScale m_scaleType;
@@ -55,7 +51,7 @@ namespace Spectrum {
         FFTProcessor m_fftProcessor;
         FrequencyMapper m_frequencyMapper;
         SpectrumPostProcessor m_postProcessor;
-        AudioBufferManager m_bufferManager;
+        ThreadSafeAudioBuffer m_bufferManager;
 
         AudioBuffer m_processBuffer;
         std::mutex m_mutex;

@@ -1,5 +1,6 @@
 #include "AnimatedAudioSource.h"
-#include "Utils.h"
+#include "Random.h"
+#include "MathUtils.h"
 
 namespace Spectrum {
 
@@ -32,14 +33,32 @@ namespace Spectrum {
     SpectrumData AnimatedAudioSource::GenerateTestSpectrum(float timeOffset) {
         SpectrumData testData(m_barCount, 0.0f);
         for (size_t i = 0; i < m_barCount; ++i) {
-            const float frequency = static_cast<float>(i) / static_cast<float>(m_barCount);
-            const float phase = timeOffset * 2.0f + static_cast<float>(i) * 0.3f;
-            float value = (std::sin(phase) + 1.0f) * 0.5f;
-            value *= (1.0f - frequency * 0.7f);
-            value += Utils::Random::Instance().Float(-0.05f, 0.05f);
-            testData[i] = Utils::Saturate(value);
+            testData[i] = CalculateBarValue(i, timeOffset);
         }
         return testData;
+    }
+
+    float AnimatedAudioSource::CalculateBaseSineValue(float phase) const {
+        return (std::sin(phase) + 1.0f) * 0.5f;
+    }
+
+    float AnimatedAudioSource::ApplyFrequencyFalloff(float value, float normalizedFrequency) const {
+        return value * (1.0f - normalizedFrequency * 0.7f);
+    }
+
+    float AnimatedAudioSource::AddRandomNoise(float value) const {
+        return value + Utils::Random::Instance().Float(-0.05f, 0.05f);
+    }
+
+    float AnimatedAudioSource::CalculateBarValue(size_t barIndex, float timeOffset) const {
+        const float frequency = static_cast<float>(barIndex) / static_cast<float>(m_barCount);
+        const float phase = timeOffset * 2.0f + static_cast<float>(barIndex) * 0.3f;
+
+        float value = CalculateBaseSineValue(phase);
+        value = ApplyFrequencyFalloff(value, frequency);
+        value = AddRandomNoise(value);
+
+        return Utils::Saturate(value);
     }
 
 }

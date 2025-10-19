@@ -1,6 +1,6 @@
-// InputManager.h
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-// InputManager.h: Manages keyboard input and generates actions.
+// Defines the InputManager, responsible for capturing keyboard input and
+// translating it into a queue of actionable commands for the application.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 #ifndef SPECTRUM_CPP_INPUT_MANAGER_H
@@ -21,10 +21,12 @@ namespace Spectrum {
         std::vector<InputAction> GetActions();
 
     private:
+        void InitializeKeyMappings();
         void PollKeys();
-        void QueueAction(int key);
+        void ProcessSingleKey(int key, InputAction action);
 
         std::map<int, bool> m_keyStates;
+        std::map<int, InputAction> m_keyMappings;
         std::vector<InputAction> m_actionQueue;
     };
 

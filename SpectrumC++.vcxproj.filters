@@ -16,9 +16,6 @@
     <Filter Include="Graphics">
       <UniqueIdentifier>{6d01e6a5-d032-4be0-ba30-744d08268182}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Graphics\Renderers">
-      <UniqueIdentifier>{4ed6eb12-70b9-4de9-b223-38e5e7834543}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Platform">
       <UniqueIdentifier>{92b45025-a744-4638-8a8b-302a832c694a}</UniqueIdentifier>
     </Filter>
@@ -34,11 +31,23 @@
     <Filter Include="Audio\Sources">
       <UniqueIdentifier>{e7a61504-8bf0-4738-9e2c-47fd96855602}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Graphics\Core">
+    <Filter Include="Graphics\API">
+      <UniqueIdentifier>{1239c239-129f-41f9-9f62-3fa5d99a3306}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Graphics\API\Core">
+      <UniqueIdentifier>{f60cd035-8c86-4eaf-bbb1-585bdd15d21b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Graphics\API\Renderers">
+      <UniqueIdentifier>{7b6246fc-7e73-4650-9a21-33ecc353b787}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Graphics\Base">
       <UniqueIdentifier>{bc39d05e-b8ed-421c-a5cb-ab6e291d5eb0}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Graphics\Service">
-      <UniqueIdentifier>{1239c239-129f-41f9-9f62-3fa5d99a3306}</UniqueIdentifier>
+    <Filter Include="Graphics\Visualizers">
+      <UniqueIdentifier>{4ed6eb12-70b9-4de9-b223-38e5e7834543}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Resources">
+      <UniqueIdentifier>{4bb54b4a-8034-40f7-b62b-df9db918dbc8}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -72,26 +81,23 @@
     <ClCompile Include="AudioManager.cpp">
       <Filter>Audio</Filter>
     </ClCompile>
-    <ClCompile Include="Utils.cpp">
-      <Filter>Common</Filter>
-    </ClCompile>
     <ClCompile Include="BarsRenderer.cpp">
-      <Filter>Graphics\Renderers</Filter>
+      <Filter>Graphics\Visualizers</Filter>
     </ClCompile>
     <ClCompile Include="CircularWaveRenderer.cpp">
-      <Filter>Graphics\Renderers</Filter>
+      <Filter>Graphics\Visualizers</Filter>
     </ClCompile>
     <ClCompile Include="CubesRenderer.cpp">
-      <Filter>Graphics\Renderers</Filter>
+      <Filter>Graphics\Visualizers</Filter>
     </ClCompile>
     <ClCompile Include="FireRenderer.cpp">
-      <Filter>Graphics\Renderers</Filter>
+      <Filter>Graphics\Visualizers</Filter>
     </ClCompile>
     <ClCompile Include="LedPanelRenderer.cpp">
-      <Filter>Graphics\Renderers</Filter>
+      <Filter>Graphics\Visualizers</Filter>
     </ClCompile>
     <ClCompile Include="WaveRenderer.cpp">
-      <Filter>Graphics\Renderers</Filter>
+      <Filter>Graphics\Visualizers</Filter>
     </ClCompile>
     <ClCompile Include="RendererManager.cpp">
       <Filter>Graphics</Filter>
@@ -121,19 +127,61 @@
       <Filter>Audio\Sources</Filter>
     </ClCompile>
     <ClCompile Include="BaseRenderer.cpp">
-      <Filter>Graphics\Core</Filter>
+      <Filter>Graphics\Base</Filter>
     </ClCompile>
     <ClCompile Include="RenderUtils.cpp">
-      <Filter>Graphics\Core</Filter>
-    </ClCompile>
-    <ClCompile Include="GraphicsContext.cpp">
-      <Filter>Graphics\Service</Filter>
+      <Filter>Graphics\Base</Filter>
     </ClCompile>
     <ClCompile Include="GaugeRenderer.cpp">
-      <Filter>Graphics\Renderers</Filter>
+      <Filter>Graphics\Visualizers</Filter>
     </ClCompile>
     <ClCompile Include="KenwoodBarsRenderer.cpp">
-      <Filter>Graphics\Renderers</Filter>
+      <Filter>Graphics\Visualizers</Filter>
+    </ClCompile>
+    <ClCompile Include="ResourceCache.cpp">
+      <Filter>Graphics\API\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="GraphicsContext.cpp">
+      <Filter>Graphics\API\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="TransformManager.cpp">
+      <Filter>Graphics\API\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="GradientRenderer.cpp">
+      <Filter>Graphics\API\Renderers</Filter>
+    </ClCompile>
+    <ClCompile Include="PrimitiveRenderer.cpp">
+      <Filter>Graphics\API\Renderers</Filter>
+    </ClCompile>
+    <ClCompile Include="SpectrumRenderer.cpp">
+      <Filter>Graphics\API\Renderers</Filter>
+    </ClCompile>
+    <ClCompile Include="TextRenderer.cpp">
+      <Filter>Graphics\API\Renderers</Filter>
+    </ClCompile>
+    <ClCompile Include="EffectsRenderer.cpp">
+      <Filter>Graphics\API\Renderers</Filter>
+    </ClCompile>
+    <ClCompile Include="GeometryBuilder.cpp">
+      <Filter>Graphics\API\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Timer.cpp">
+      <Filter>Common</Filter>
+    </ClCompile>
+    <ClCompile Include="StringUtils.cpp">
+      <Filter>Common</Filter>
+    </ClCompile>
+    <ClCompile Include="Random.cpp">
+      <Filter>Common</Filter>
+    </ClCompile>
+    <ClCompile Include="ColorUtils.cpp">
+      <Filter>Common</Filter>
+    </ClCompile>
+    <ClCompile Include="AudioBuffer.cpp">
+      <Filter>Audio\Processing</Filter>
+    </ClCompile>
+    <ClCompile Include="GainNormalizer.cpp">
+      <Filter>Audio\Processing</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -173,26 +221,23 @@
     <ClInclude Include="Types.h">
       <Filter>Common</Filter>
     </ClInclude>
-    <ClInclude Include="Utils.h">
-      <Filter>Common</Filter>
-    </ClInclude>
     <ClInclude Include="BarsRenderer.h">
-      <Filter>Graphics\Renderers</Filter>
+      <Filter>Graphics\Visualizers</Filter>
     </ClInclude>
     <ClInclude Include="CircularWaveRenderer.h">
-      <Filter>Graphics\Renderers</Filter>
+      <Filter>Graphics\Visualizers</Filter>
     </ClInclude>
     <ClInclude Include="CubesRenderer.h">
-      <Filter>Graphics\Renderers</Filter>
+      <Filter>Graphics\Visualizers</Filter>
     </ClInclude>
     <ClInclude Include="FireRenderer.h">
-      <Filter>Graphics\Renderers</Filter>
+      <Filter>Graphics\Visualizers</Filter>
     </ClInclude>
     <ClInclude Include="LedPanelRenderer.h">
-      <Filter>Graphics\Renderers</Filter>
+      <Filter>Graphics\Visualizers</Filter>
     </ClInclude>
     <ClInclude Include="WaveRenderer.h">
-      <Filter>Graphics\Renderers</Filter>
+      <Filter>Graphics\Visualizers</Filter>
     </ClInclude>
     <ClInclude Include="IRenderer.h">
       <Filter>Graphics</Filter>
@@ -228,24 +273,91 @@
       <Filter>Audio\Sources</Filter>
     </ClInclude>
     <ClInclude Include="BaseRenderer.h">
-      <Filter>Graphics\Core</Filter>
+      <Filter>Graphics\Base</Filter>
     </ClInclude>
     <ClInclude Include="RenderUtils.h">
-      <Filter>Graphics\Core</Filter>
-    </ClInclude>
-    <ClInclude Include="GraphicsContext.h">
-      <Filter>Graphics\Service</Filter>
+      <Filter>Graphics\Base</Filter>
     </ClInclude>
     <ClInclude Include="GaugeRenderer.h">
-      <Filter>Graphics\Renderers</Filter>
+      <Filter>Graphics\Visualizers</Filter>
     </ClInclude>
     <ClInclude Include="KenwoodBarsRenderer.h">
-      <Filter>Graphics\Renderers</Filter>
+      <Filter>Graphics\Visualizers</Filter>
+    </ClInclude>
+    <ClInclude Include="SpectrumTypes.h">
+      <Filter>Common</Filter>
+    </ClInclude>
+    <ClInclude Include="ResourceCache.h">
+      <Filter>Graphics\API\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="GraphicsContext.h">
+      <Filter>Graphics\API\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="TransformManager.h">
+      <Filter>Graphics\API\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="GradientRenderer.h">
+      <Filter>Graphics\API\Renderers</Filter>
+    </ClInclude>
+    <ClInclude Include="PrimitiveRenderer.h">
+      <Filter>Graphics\API\Renderers</Filter>
+    </ClInclude>
+    <ClInclude Include="SpectrumRenderer.h">
+      <Filter>Graphics\API\Renderers</Filter>
+    </ClInclude>
+    <ClInclude Include="TextRenderer.h">
+      <Filter>Graphics\API\Renderers</Filter>
+    </ClInclude>
+    <ClInclude Include="EffectsRenderer.h">
+      <Filter>Graphics\API\Renderers</Filter>
+    </ClInclude>
+    <ClInclude Include="GeometryBuilder.h">
+      <Filter>Graphics\API\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Resource.h">
+      <Filter>Resources</Filter>
+    </ClInclude>
+    <ClInclude Include="Timer.h">
+      <Filter>Common</Filter>
+    </ClInclude>
+    <ClInclude Include="TemplateUtils.h">
+      <Filter>Common</Filter>
+    </ClInclude>
+    <ClInclude Include="StringUtils.h">
+      <Filter>Common</Filter>
+    </ClInclude>
+    <ClInclude Include="Random.h">
+      <Filter>Common</Filter>
+    </ClInclude>
+    <ClInclude Include="PlatformUtils.h">
+      <Filter>Common</Filter>
+    </ClInclude>
+    <ClInclude Include="MathUtils.h">
+      <Filter>Common</Filter>
+    </ClInclude>
+    <ClInclude Include="ColorUtils.h">
+      <Filter>Common</Filter>
+    </ClInclude>
+    <ClInclude Include="AudioBuffer.h">
+      <Filter>Audio\Processing</Filter>
+    </ClInclude>
+    <ClInclude Include="GainNormalizer.h">
+      <Filter>Audio\Processing</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Text Include="CMakeLists.txt">
       <Filter>Project Files</Filter>
     </Text>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="resource.rc.in">
+      <Filter>Resources</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="app.ico">
+      <Filter>Resources</Filter>
+    </Image>
   </ItemGroup>
 </Project>

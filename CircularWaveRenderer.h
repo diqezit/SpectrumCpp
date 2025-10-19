@@ -1,6 +1,4 @@
-// =-=-=-=-=-=-=-=-=-=-=
-// CircularWaveRenderer.h
-// =-=-=-=-=-=-=-=-=-=-=
+// Renders spectrum as animated concentric rings
 
 #ifndef SPECTRUM_CPP_CIRCULAR_WAVE_RENDERER_H
 #define SPECTRUM_CPP_CIRCULAR_WAVE_RENDERER_H
@@ -14,99 +12,87 @@ namespace Spectrum {
         CircularWaveRenderer();
         ~CircularWaveRenderer() override = default;
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // IRenderer Implementation
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        RenderStyle GetStyle() const override { return RenderStyle::CircularWave; }
-        std::string_view GetName() const override { return "Circular Wave"; }
+        RenderStyle GetStyle() const override {
+            return RenderStyle::CircularWave;
+        }
 
-        void OnActivate(int width, int height) override;
+        std::string_view GetName() const override {
+            return "Circular Wave";
+        }
 
     protected:
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // BaseRenderer Overrides
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // map quality preference to concrete render settings
         void UpdateSettings() override;
+
+        // advance animation timers based on spectrum intensity
         void UpdateAnimation(
             const SpectrumData& spectrum,
             float deltaTime
         ) override;
+
         void DoRender(
             GraphicsContext& context,
             const SpectrumData& spectrum
         ) override;
 
     private:
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // Settings
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // settings that change with quality level
         struct QualitySettings {
-            int pointsPerCircle;
             bool useGlow;
             float maxStroke;
             int maxRings;
             float rotationSpeed;
             float waveSpeed;
-            float centerRadius;
-            float maxRadiusFactor;
-            float minStroke;
-            float waveInfluence;
-            float glowThreshold;
-            float glowFactor;
-            float glowWidthFactor;
-            float rotationIntensityFactor;
-            float wavePhaseOffset;
-            float strokeClampFactor;
-            float minMagnitudeThreshold;
         };
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // Logic & Drawing Helpers
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        void EnsureCirclePoints();
-        void RenderRing(
-            GraphicsContext& context,
-            const SpectrumData& spectrum,
-            int index,
-            int totalRings,
-            float ringStep,
-            const Point& center,
-            float maxRadius
-        );
-        void RenderGlowLayer(
+        // --- SRP Refactored Render Steps ---
+        void RenderCalculatedRing(
             GraphicsContext& context,
             const Point& center,
             float radius,
-            float alpha,
-            float strokeWidth
+            float magnitude,
+            float distanceFactor
         );
+
+        void RenderGlowForRing(
+            GraphicsContext& context,
+            const Point& center,
+            float radius,
+            float strokeWidth,
+            float magnitude,
+            const Color& baseColor
+        );
+
         void RenderMainRing(
             GraphicsContext& context,
             const Point& center,
             float radius,
-            float alpha,
-            float strokeWidth
-        );
-        void DrawCirclePath(
-            GraphicsContext& context,
-            const Point& center,
-            float radius,
-            const Color& color,
-            float strokeWidth
+            float strokeWidth,
+            const Color& color
         );
 
-        float CalculateRingRadius(int index, float ringStep, float magnitude) const;
+        // --- Calculation Helpers ---
+        Color CalculateRingColor(float magnitude, float distanceFactor) const;
+
+        float CalculateRingRadius(
+            int index,
+            float ringStep,
+            float magnitude
+        ) const;
+
         float CalculateStrokeWidth(float magnitude) const;
-        static float GetRingMagnitude(const SpectrumData& spectrum, int ringIndex, int ringCount);
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // Member State
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+        static float GetRingMagnitude(
+            const SpectrumData& spectrum,
+            int ringIndex,
+            int ringCount
+        );
+
         QualitySettings m_settings;
         float m_angle;
         float m_waveTime;
-        std::vector<Point> m_circlePoints;
     };
 }
 
-#endif
+#endif // SPECTRUM_CPP_CIRCULAR_WAVE_RENDERER_H

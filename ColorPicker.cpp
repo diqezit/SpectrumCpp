@@ -1,15 +1,16 @@
-// ColorPicker.cpp
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-// ColorPicker.cpp: Implementation of the ColorPicker class.
+// Implements the ColorPicker, a UI component that provides a visual
+// way to select colors from an HSV spectrum.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 #include "ColorPicker.h"
-#include "Utils.h"
+#include "MathUtils.h"
+#include "ColorUtils.h"
 
 namespace Spectrum {
 
     namespace {
-        inline uint32_t MakeWheelPixel(float dx, float dy, float radius) {
+        uint32_t MakeWheelPixel(float dx, float dy, float radius) {
             const float dist = std::sqrt(dx * dx + dy * dy);
             if (dist > radius) return 0u;
 
@@ -19,10 +20,14 @@ namespace Spectrum {
             return Utils::ColorToARGB(rgb);
         }
 
-        inline D2D1_COLOR_F ToD2D(const Color& c) {
-            return D2D1::ColorF(c.r, c.g, c.b, c.a);
+        D2D1_RECT_F MakeRect(const Point& pos, float r) {
+            return D2D1::RectF(pos.x, pos.y, pos.x + r * 2.0f, pos.y + r * 2.0f);
         }
-    } // anonymous
+
+        Point Center(const Point& pos, float r) {
+            return { pos.x + r, pos.y + r };
+        }
+    }
 
     ColorPicker::ColorPicker(const Point& position, float radius)
         : m_position(position)
@@ -46,30 +51,27 @@ namespace Spectrum {
         return CreateColorWheelBitmap(context);
     }
 
-    bool ColorPicker::CreateColorWheelBitmap(GraphicsContext& context) {
+    bool ColorPicker::CreateD2D1BitmapFromData(GraphicsContext& context, const std::vector<uint32_t>& data) {
         ID2D1HwndRenderTarget* rt = context.GetRenderTarget();
         if (!rt) return false;
 
         const int size = static_cast<int>(m_radius * 2.0f);
-        auto bitmapData = CreateBitmapData();
-
         const D2D1_SIZE_U bmpSize = D2D1::SizeU(size, size);
         const D2D1_BITMAP_PROPERTIES bmpProps = D2D1::BitmapProperties(
             D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED)
         );
 
         HRESULT hr = rt->CreateBitmap(
-            bmpSize,
-            bitmapData.data(),
-            size * sizeof(uint32_t),
-            &bmpProps,
-            m_colorWheelBitmap.GetAddressOf()
+            bmpSize, data.data(), size * sizeof(uint32_t), &bmpProps, m_colorWheelBitmap.GetAddressOf()
         );
-        if (FAILED(hr)) {
-            m_colorWheelBitmap.Reset();
-            return false;
-        }
-        return true;
+
+        if (FAILED(hr)) m_colorWheelBitmap.Reset();
+        return SUCCEEDED(hr);
+    }
+
+    bool ColorPicker::CreateColorWheelBitmap(GraphicsContext& context) {
+        auto bitmapData = CreateBitmapData();
+        return CreateD2D1BitmapFromData(context, bitmapData);
     }
 
     std::vector<uint32_t> ColorPicker::CreateBitmapData() {
@@ -80,11 +82,16 @@ namespace Spectrum {
             const float fy = static_cast<float>(y) - m_radius;
             for (int x = 0; x < size; ++x) {
                 const float fx = static_cast<float>(x) - m_radius;
-                pixels[static_cast<size_t>(y) * size + x] =
-                    MakeWheelPixel(fx, fy, m_radius);
+                pixels[static_cast<size_t>(y) * size + x] = MakeWheelPixel(fx, fy, m_radius);
             }
         }
         return pixels;
+    }
+
+    Color ColorPicker::GetBorderColor() const {
+        return m_isMouseOver
+            ? Color(0.5f, 0.5f, 0.5f, 1.0f)
+            : Color(0.3f, 0.3f, 0.3f, 1.0f);
     }
 
     void ColorPicker::Draw(GraphicsContext& context) {
@@ -93,14 +100,8 @@ namespace Spectrum {
 
         const D2D1_RECT_F rect = MakeRect(m_position, m_radius);
         DrawWheel(context, rect);
-
-        const Color border = m_isMouseOver
-            ? Color(0.5f, 0.5f, 0.5f, 1.0f)
-            : Color(0.3f, 0.3f, 0.3f, 1.0f);
-
-        DrawBorder(context, rect, border);
-
-        if (m_isMouseOver) DrawHoverPreview(context, rect, border);
+        DrawBorder(context, rect);
+        if (m_isMouseOver) DrawHoverPreview(context, rect);
     }
 
     void ColorPicker::DrawWheel(GraphicsContext& context, const D2D1_RECT_F& rect) {
@@ -108,16 +109,12 @@ namespace Spectrum {
         context.GetRenderTarget()->DrawBitmap(m_colorWheelBitmap.Get(), rect);
     }
 
-    void ColorPicker::DrawBorder(GraphicsContext& context,
-        const D2D1_RECT_F& rect,
-        const Color& borderColor) {
+    void ColorPicker::DrawBorder(GraphicsContext& context, const D2D1_RECT_F& rect) {
         const Point c = Center(m_position, m_radius);
-        context.DrawCircle(c, m_radius + 2.0f, borderColor, false);
+        context.DrawCircle(c, m_radius + 2.0f, GetBorderColor(), false);
     }
 
-    void ColorPicker::DrawHoverPreview(GraphicsContext& context,
-        const D2D1_RECT_F& rect,
-        const Color& borderColor) {
+    void ColorPicker::DrawHoverPreview(GraphicsContext& context, const D2D1_RECT_F& rect) {
         constexpr float previewSize = 24.0f;
         const float x = rect.left + m_radius - previewSize * 0.5f;
         const float y = rect.top - previewSize - 4.0f;
@@ -126,7 +123,7 @@ namespace Spectrum {
         context.DrawRectangle(r, m_hoverColor, true);
 
         const Rect border(x - 1.0f, y - 1.0f, previewSize + 2.0f, previewSize + 2.0f);
-        context.DrawRectangle(border, borderColor, false);
+        context.DrawRectangle(border, GetBorderColor(), false);
     }
 
     bool ColorPicker::IsPointInside(int x, int y) const {
@@ -136,16 +133,20 @@ namespace Spectrum {
         return (dx * dx + dy * dy) <= (m_radius * m_radius);
     }
 
-    void ColorPicker::UpdateHoverColor(int x, int y) {
+    Color ColorPicker::CalculateColorFromPosition(int x, int y) const {
         const Point c = Center(m_position, m_radius);
         const float dx = static_cast<float>(x) - c.x;
         const float dy = static_cast<float>(y) - c.y;
 
         const float dist = std::sqrt(dx * dx + dy * dy);
         const float hue = (std::atan2(dy, dx) / PI + 1.0f) * 0.5f;
-        const float sat = Utils::Clamp(dist / m_radius, 0.0f, 1.0f);
+        const float sat = Utils::Saturate(dist / m_radius);
 
-        m_hoverColor = Utils::HSVtoRGB({ hue, sat, 1.0f });
+        return Utils::HSVtoRGB({ hue, sat, 1.0f });
+    }
+
+    void ColorPicker::UpdateHoverColor(int x, int y) {
+        m_hoverColor = CalculateColorFromPosition(x, y);
     }
 
     bool ColorPicker::HandleMouseMove(int x, int y) {
@@ -155,18 +156,14 @@ namespace Spectrum {
         return m_isMouseOver;
     }
 
-    bool ColorPicker::HandleMouseClick(int x, int y) {
-        if (!m_isVisible || !m_isMouseOver) return false;
+    void ColorPicker::InvokeColorSelectionCallback() {
         if (m_onColorSelected) m_onColorSelected(m_hoverColor);
+    }
+
+    bool ColorPicker::HandleMouseClick(int x, int y) {
+        if (!m_isVisible || !IsPointInside(x, y)) return false;
+        InvokeColorSelectionCallback();
         return true;
-    }
-
-    D2D1_RECT_F ColorPicker::MakeRect(const Point& pos, float r) {
-        return D2D1::RectF(pos.x, pos.y, pos.x + r * 2.0f, pos.y + r * 2.0f);
-    }
-
-    Point ColorPicker::Center(const Point& pos, float r) {
-        return { pos.x + r, pos.y + r };
     }
 
 } // namespace Spectrum

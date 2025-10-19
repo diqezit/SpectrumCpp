@@ -1,9 +1,11 @@
-// =-=-=-=-=-=-=-=-=-=-=
-// GraphicsContext.cpp
-// =-=-=-=-=-=-=-=-=-=-=
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// This file implements the GraphicsContext, the central facade for the
+// entire rendering system. It manages D2D/DWrite resources and delegates
+// all drawing calls to specialized sub-components
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "GraphicsContext.h"
-#include "Utils.h"
+#include "StringUtils.h"
 
 namespace Spectrum {
 
@@ -12,35 +14,29 @@ namespace Spectrum {
             return D2D1::ColorF(c.r, c.g, c.b, c.a);
         }
 
-        inline D2D1_SIZE_U ClientSize(HWND hwnd) {
+        inline D2D1_SIZE_U GetClientSize(HWND hwnd) {
             RECT rc{};
             GetClientRect(hwnd, &rc);
-            return D2D1::SizeU(rc.right - rc.left, rc.bottom - rc.top);
-        }
-
-        inline bool CreateGradientStopCollection(
-            ID2D1RenderTarget* rt,
-            const std::vector<D2D1_GRADIENT_STOP>& stops,
-            wrl::ComPtr<ID2D1GradientStopCollection>& out
-        ) {
-            if (stops.empty() || !rt) return false;
-            HRESULT hr = rt->CreateGradientStopCollection(
-                stops.data(),
-                static_cast<UINT32>(stops.size()),
-                D2D1_GAMMA_2_2,
-                D2D1_EXTEND_MODE_CLAMP,
-                out.GetAddressOf()
+            return D2D1::SizeU(
+                static_cast<UINT32>(rc.right - rc.left),
+                static_cast<UINT32>(rc.bottom - rc.top)
             );
-            return SUCCEEDED(hr);
         }
     }
 
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // CONSTRUCTOR & DESTRUCTOR
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
     GraphicsContext::GraphicsContext(HWND hwnd)
-        : m_hwnd(hwnd), m_width(0), m_height(0) {
-        RECT rect;
-        if (GetClientRect(hwnd, &rect)) {
-            m_width = rect.right - rect.left;
-            m_height = rect.bottom - rect.top;
+        : m_hwnd(hwnd)
+        , m_width(0)
+        , m_height(0)
+    {
+        if (m_hwnd) {
+            auto size = GetClientSize(m_hwnd);
+            m_width = size.width;
+            m_height = size.height;
         }
     }
 
@@ -48,101 +44,249 @@ namespace Spectrum {
         DiscardDeviceResources();
     }
 
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // INITIALIZATION & LIFECYCLE
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
     bool GraphicsContext::Initialize() {
-        HRESULT hr = D2D1CreateFactory(
-            D2D1_FACTORY_TYPE_SINGLE_THREADED,
-            m_d2dFactory.GetAddressOf()
-        );
-        if (FAILED(hr)) return false;
+        if (!CreateD2DFactory()) {
+            return false;
+        }
+        if (!CreateDWriteFactory()) {
+            return false;
+        }
+        if (!CreateDeviceResources()) {
+            return false;
+        }
 
-        hr = DWriteCreateFactory(
-            DWRITE_FACTORY_TYPE_SHARED,
-            __uuidof(IDWriteFactory),
-            reinterpret_cast<IUnknown**>(m_writeFactory.GetAddressOf())
+        // create all sub-components in correct dependency order
+        m_resourceCache = std::make_unique<ResourceCache>(
+            m_d2dFactory.Get(),
+            m_renderTarget.Get()
         );
-        if (FAILED(hr)) return false;
 
-        return CreateDeviceResources();
+        m_geometryBuilder = std::make_unique<GeometryBuilder>(
+            m_d2dFactory.Get()
+        );
+
+        m_primitiveRenderer = std::make_unique<PrimitiveRenderer>(
+            m_renderTarget.Get(),
+            m_solidBrush.Get(),
+            m_geometryBuilder.get()
+        );
+
+        m_gradientRenderer = std::make_unique<GradientRenderer>(
+            m_renderTarget.Get(),
+            m_solidBrush.Get(),
+            m_resourceCache.get(),
+            m_geometryBuilder.get()
+        );
+
+        m_textRenderer = std::make_unique<TextRenderer>(
+            m_renderTarget.Get(),
+            m_writeFactory.Get(),
+            m_solidBrush.Get()
+        );
+
+        m_effectsRenderer = std::make_unique<EffectsRenderer>(
+            m_renderTarget.Get(),
+            m_solidBrush.Get()
+        );
+
+        m_transformManager = std::make_unique<TransformManager>(
+            m_renderTarget.Get()
+        );
+
+        m_spectrumRenderer = std::make_unique<SpectrumRenderer>(
+            m_primitiveRenderer.get(),
+            m_gradientRenderer.get(),
+            m_geometryBuilder.get()
+        );
+
+        return true;
+    }
+
+    // single threaded factory for performance
+    // user expects smooth animation so we avoid multithread overhead
+    bool GraphicsContext::CreateD2DFactory() {
+        return SUCCEEDED(
+            D2D1CreateFactory(
+                D2D1_FACTORY_TYPE_SINGLE_THREADED,
+                m_d2dFactory.GetAddressOf()
+            )
+        );
+    }
+
+    // shared factory allows text resources to be shared across app
+    bool GraphicsContext::CreateDWriteFactory() {
+        return SUCCEEDED(
+            DWriteCreateFactory(
+                DWRITE_FACTORY_TYPE_SHARED,
+                __uuidof(IDWriteFactory),
+                reinterpret_cast<IUnknown**>(m_writeFactory.GetAddressOf())
+            )
+        );
     }
 
     bool GraphicsContext::CreateDeviceResources() {
-        if (m_renderTarget) return true;
+        if (m_renderTarget) {
+            return true;
+        }
+        if (!CreateHwndRenderTarget()) {
+            return false;
+        }
+        return CreateSolidBrush();
+    }
+
+    // create render target for window
+    // set antialiasing for smooth visuals
+    bool GraphicsContext::CreateHwndRenderTarget() {
+        if (!m_hwnd || !m_d2dFactory) {
+            return false;
+        }
 
         HRESULT hr = m_d2dFactory->CreateHwndRenderTarget(
             D2D1::RenderTargetProperties(),
-            D2D1::HwndRenderTargetProperties(m_hwnd, ClientSize(m_hwnd)),
+            D2D1::HwndRenderTargetProperties(
+                m_hwnd,
+                GetClientSize(m_hwnd)
+            ),
             m_renderTarget.GetAddressOf()
         );
-        if (FAILED(hr)) return false;
 
-        hr = m_renderTarget->CreateSolidColorBrush(
-            D2D1::ColorF(D2D1::ColorF::White),
-            m_solidBrush.GetAddressOf()
-        );
-        return SUCCEEDED(hr);
+        if (FAILED(hr)) {
+            return false;
+        }
+
+        // user expects sharp text and smooth shapes
+        m_renderTarget->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE);
+        m_renderTarget->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+        return true;
     }
 
+    // create single brush for solid colors
+    // its color will be updated before each draw call
+    bool GraphicsContext::CreateSolidBrush() {
+        if (!m_renderTarget) {
+            return false;
+        }
+        return SUCCEEDED(
+            m_renderTarget->CreateSolidColorBrush(
+                ToD2DColor(Color::White()),
+                m_solidBrush.GetAddressOf()
+            )
+        );
+    }
+
+    // release all device-dependent resources
+    // must be called when device is lost (e.g. display driver update)
     void GraphicsContext::DiscardDeviceResources() {
-        m_radialBrush.Reset();
-        m_linearBrush.Reset();
+        // release components in reverse order of creation
+        m_spectrumRenderer.reset();
+        m_transformManager.reset();
+        m_effectsRenderer.reset();
+        m_textRenderer.reset();
+        m_gradientRenderer.reset();
+        m_primitiveRenderer.reset();
+        m_geometryBuilder.reset();
+        m_resourceCache.reset();
+
         m_solidBrush.Reset();
         m_renderTarget.Reset();
     }
 
-    void GraphicsContext::BeginDraw() {
-        if (!m_renderTarget) CreateDeviceResources();
-        if (m_renderTarget) m_renderTarget->BeginDraw();
+    // update render target pointer in all sub-components after device is recreated
+    void GraphicsContext::UpdateComponentsRenderTarget() {
+        if (!m_renderTarget) {
+            return;
+        }
+
+        if (m_resourceCache) {
+            m_resourceCache->UpdateRenderTarget(m_renderTarget.Get());
+        }
+        if (m_primitiveRenderer) {
+            m_primitiveRenderer->UpdateRenderTarget(m_renderTarget.Get());
+        }
+        if (m_gradientRenderer) {
+            m_gradientRenderer->UpdateRenderTarget(m_renderTarget.Get());
+        }
+        if (m_textRenderer) {
+            m_textRenderer->UpdateRenderTarget(m_renderTarget.Get());
+        }
+        if (m_effectsRenderer) {
+            m_effectsRenderer->UpdateRenderTarget(m_renderTarget.Get());
+        }
+        if (m_transformManager) {
+            m_transformManager->UpdateRenderTarget(m_renderTarget.Get());
+        }
     }
 
-    HRESULT GraphicsContext::EndDraw() {
-        if (!m_renderTarget) return S_OK;
-        HRESULT hr = m_renderTarget->EndDraw();
-        if (FAILED(hr)) DiscardDeviceResources();
-        return hr;
-    }
-
+    // on window resize, update render target size
+    // if this fails, device is lost and we must recreate everything
     void GraphicsContext::Resize(int width, int height) {
         m_width = width;
         m_height = height;
+
         if (m_renderTarget) {
-            HRESULT hr = m_renderTarget->Resize(D2D1::SizeU(width, height));
-            if (FAILED(hr)) DiscardDeviceResources();
+            if (FAILED(m_renderTarget->Resize(
+                D2D1::SizeU(
+                    static_cast<UINT32>(width),
+                    static_cast<UINT32>(height)
+                )
+            ))) {
+                DiscardDeviceResources();
+            }
         }
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // CORE DRAWING LOOP
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    // prepare for drawing
+    // if device was lost, try to recreate it
+    void GraphicsContext::BeginDraw() {
+        if (!m_renderTarget) {
+            CreateDeviceResources();
+            UpdateComponentsRenderTarget();
+        }
+        if (m_renderTarget) {
+            m_renderTarget->BeginDraw();
+        }
+    }
+
+    // finish drawing and present frame
+    // D2DERR_RECREATE_TARGET means device was lost and needs to be rebuilt
+    HRESULT GraphicsContext::EndDraw() {
+        if (!m_renderTarget) {
+            return S_OK;
+        }
+
+        HRESULT hr = m_renderTarget->EndDraw();
+        if (hr == D2DERR_RECREATE_TARGET) {
+            DiscardDeviceResources();
+        }
+        return hr;
     }
 
     void GraphicsContext::Clear(const Color& color) {
-        if (m_renderTarget) m_renderTarget->Clear(ToD2DColor(color));
-    }
-
-    ID2D1SolidColorBrush* GraphicsContext::GetSolidBrush(const Color& color) {
-        if (!m_solidBrush && m_renderTarget) {
-            m_renderTarget->CreateSolidColorBrush(
-                ToD2DColor(color), m_solidBrush.GetAddressOf()
-            );
+        if (m_renderTarget) {
+            m_renderTarget->Clear(ToD2DColor(color));
         }
-        if (m_solidBrush) m_solidBrush->SetColor(ToD2DColor(color));
-        return m_solidBrush.Get();
     }
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-    // Drawing Primitives
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // PRIMITIVES - DELEGATION TO PrimitiveRenderer
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
     void GraphicsContext::DrawRectangle(
         const Rect& rect,
         const Color& color,
         bool filled,
         float strokeWidth
     ) {
-        if (!m_renderTarget) return;
-        ID2D1SolidColorBrush* b = GetSolidBrush(color);
-        if (!b) return;
-
-        D2D1_RECT_F r = D2D1::RectF(rect.x, rect.y, rect.GetRight(), rect.GetBottom());
-        if (filled) {
-            m_renderTarget->FillRectangle(&r, b);
-        }
-        else {
-            m_renderTarget->DrawRectangle(&r, b, strokeWidth);
+        if (m_primitiveRenderer) {
+            m_primitiveRenderer->DrawRectangle(rect, color, filled, strokeWidth);
         }
     }
 
@@ -153,20 +297,8 @@ namespace Spectrum {
         bool filled,
         float strokeWidth
     ) {
-        if (!m_renderTarget) return;
-        ID2D1SolidColorBrush* b = GetSolidBrush(color);
-        if (!b) return;
-
-        D2D1_ROUNDED_RECT rr = D2D1::RoundedRect(
-            D2D1::RectF(rect.x, rect.y, rect.GetRight(), rect.GetBottom()),
-            radius,
-            radius
-        );
-        if (filled) {
-            m_renderTarget->FillRoundedRectangle(&rr, b);
-        }
-        else {
-            m_renderTarget->DrawRoundedRectangle(&rr, b, strokeWidth);
+        if (m_primitiveRenderer) {
+            m_primitiveRenderer->DrawRoundedRectangle(rect, radius, color, filled, strokeWidth);
         }
     }
 
@@ -177,7 +309,9 @@ namespace Spectrum {
         bool filled,
         float strokeWidth
     ) {
-        DrawEllipse(center, radius, radius, color, filled, strokeWidth);
+        if (m_primitiveRenderer) {
+            m_primitiveRenderer->DrawCircle(center, radius, color, filled, strokeWidth);
+        }
     }
 
     void GraphicsContext::DrawEllipse(
@@ -188,16 +322,8 @@ namespace Spectrum {
         bool filled,
         float strokeWidth
     ) {
-        if (!m_renderTarget) return;
-        ID2D1SolidColorBrush* b = GetSolidBrush(color);
-        if (!b) return;
-
-        D2D1_ELLIPSE e = D2D1::Ellipse(D2D1::Point2F(center.x, center.y), radiusX, radiusY);
-        if (filled) {
-            m_renderTarget->FillEllipse(&e, b);
-        }
-        else {
-            m_renderTarget->DrawEllipse(&e, b, strokeWidth);
+        if (m_primitiveRenderer) {
+            m_primitiveRenderer->DrawEllipse(center, radiusX, radiusY, color, filled, strokeWidth);
         }
     }
 
@@ -207,15 +333,9 @@ namespace Spectrum {
         const Color& color,
         float strokeWidth
     ) {
-        if (!m_renderTarget) return;
-        ID2D1SolidColorBrush* b = GetSolidBrush(color);
-        if (!b) return;
-        m_renderTarget->DrawLine(
-            D2D1::Point2F(start.x, start.y),
-            D2D1::Point2F(end.x, end.y),
-            b,
-            strokeWidth
-        );
+        if (m_primitiveRenderer) {
+            m_primitiveRenderer->DrawLine(start, end, color, strokeWidth);
+        }
     }
 
     void GraphicsContext::DrawPolyline(
@@ -223,33 +343,9 @@ namespace Spectrum {
         const Color& color,
         float strokeWidth
     ) {
-        if (!m_renderTarget || points.size() < 2) return;
-
-        wrl::ComPtr<ID2D1PathGeometry> geo;
-        HRESULT hr = m_d2dFactory->CreatePathGeometry(geo.GetAddressOf());
-        if (FAILED(hr)) return;
-
-        wrl::ComPtr<ID2D1GeometrySink> sink;
-        hr = geo->Open(sink.GetAddressOf());
-        if (FAILED(hr)) return;
-
-        sink->BeginFigure(
-            D2D1::Point2F(points[0].x, points[0].y),
-            D2D1_FIGURE_BEGIN_HOLLOW
-        );
-        std::vector<D2D1_POINT_2F> d2dPoints;
-        for (size_t i = 1; i < points.size(); ++i) {
-            d2dPoints.push_back(D2D1::Point2F(points[i].x, points[i].y));
+        if (m_primitiveRenderer) {
+            m_primitiveRenderer->DrawPolyline(points, color, strokeWidth);
         }
-        sink->AddLines(d2dPoints.data(), static_cast<UINT32>(d2dPoints.size()));
-        sink->EndFigure(D2D1_FIGURE_END_OPEN);
-        hr = sink->Close();
-        if (FAILED(hr)) return;
-
-        ID2D1SolidColorBrush* b = GetSolidBrush(color);
-        if (!b) return;
-
-        m_renderTarget->DrawGeometry(geo.Get(), b, strokeWidth);
     }
 
     void GraphicsContext::DrawPolygon(
@@ -258,65 +354,119 @@ namespace Spectrum {
         bool filled,
         float strokeWidth
     ) {
-        if (!m_renderTarget || points.size() < 3) return;
-        wrl::ComPtr<ID2D1PathGeometry> geo;
-        HRESULT hr = m_d2dFactory->CreatePathGeometry(geo.GetAddressOf());
-        if (FAILED(hr)) return;
-
-        wrl::ComPtr<ID2D1GeometrySink> sink;
-        hr = geo->Open(sink.GetAddressOf());
-        if (FAILED(hr)) return;
-
-        sink->BeginFigure(
-            D2D1::Point2F(points[0].x, points[0].y),
-            filled ? D2D1_FIGURE_BEGIN_FILLED : D2D1_FIGURE_BEGIN_HOLLOW
-        );
-        for (size_t i = 1; i < points.size(); ++i) {
-            sink->AddLine(D2D1::Point2F(points[i].x, points[i].y));
-        }
-        sink->EndFigure(D2D1_FIGURE_END_CLOSED);
-        hr = sink->Close();
-        if (FAILED(hr)) return;
-
-        ID2D1SolidColorBrush* b = GetSolidBrush(color);
-        if (!b) return;
-
-        if (filled) {
-            m_renderTarget->FillGeometry(geo.Get(), b);
-        }
-        else {
-            m_renderTarget->DrawGeometry(geo.Get(), b, strokeWidth);
+        if (m_primitiveRenderer) {
+            m_primitiveRenderer->DrawPolygon(points, color, filled, strokeWidth);
         }
     }
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-    // Gradients
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    void GraphicsContext::DrawArc(
+        const Point& center,
+        float radius,
+        float startAngle,
+        float sweepAngle,
+        const Color& color,
+        float strokeWidth
+    ) {
+        if (m_primitiveRenderer) {
+            m_primitiveRenderer->DrawArc(center, radius, startAngle, sweepAngle, color, strokeWidth);
+        }
+    }
+
+    void GraphicsContext::DrawRing(
+        const Point& center,
+        float innerRadius,
+        float outerRadius,
+        const Color& color
+    ) {
+        if (m_primitiveRenderer) {
+            m_primitiveRenderer->DrawRing(center, innerRadius, outerRadius, color);
+        }
+    }
+
+    void GraphicsContext::DrawSector(
+        const Point& center,
+        float radius,
+        float startAngle,
+        float sweepAngle,
+        const Color& color,
+        bool filled
+    ) {
+        if (m_primitiveRenderer) {
+            m_primitiveRenderer->DrawSector(center, radius, startAngle, sweepAngle, color, filled);
+        }
+    }
+
+    void GraphicsContext::DrawRegularPolygon(
+        const Point& center,
+        float radius,
+        int sides,
+        float rotation,
+        const Color& color,
+        bool filled,
+        float strokeWidth
+    ) {
+        if (m_primitiveRenderer) {
+            m_primitiveRenderer->DrawRegularPolygon(center, radius, sides, rotation, color, filled, strokeWidth);
+        }
+    }
+
+    void GraphicsContext::DrawStar(
+        const Point& center,
+        float outerRadius,
+        float innerRadius,
+        int points,
+        const Color& color,
+        bool filled
+    ) {
+        if (m_primitiveRenderer) {
+            m_primitiveRenderer->DrawStar(center, outerRadius, innerRadius, points, color, filled);
+        }
+    }
+
+    void GraphicsContext::DrawGrid(
+        const Rect& bounds,
+        int rows,
+        int cols,
+        const Color& color,
+        float strokeWidth
+    ) {
+        if (m_primitiveRenderer) {
+            m_primitiveRenderer->DrawGrid(bounds, rows, cols, color, strokeWidth);
+        }
+    }
+
+    void GraphicsContext::DrawCircleBatch(
+        const std::vector<Point>& centers,
+        float radius,
+        const Color& color,
+        bool filled
+    ) {
+        if (m_primitiveRenderer) {
+            m_primitiveRenderer->DrawCircleBatch(centers, radius, color, filled);
+        }
+    }
+
+    void GraphicsContext::DrawRectangleBatch(
+        const std::vector<Rect>& rects,
+        const Color& color,
+        bool filled
+    ) {
+        if (m_primitiveRenderer) {
+            m_primitiveRenderer->DrawRectangleBatch(rects, color, filled);
+        }
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // GRADIENTS - DELEGATION TO GradientRenderer
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
     void GraphicsContext::DrawGradientRectangle(
         const Rect& rect,
         const std::vector<D2D1_GRADIENT_STOP>& stops,
         bool horizontal
     ) {
-        if (!m_renderTarget) return;
-
-        wrl::ComPtr<ID2D1GradientStopCollection> stopCollection;
-        if (!CreateGradientStopCollection(m_renderTarget.Get(), stops, stopCollection)) return;
-
-        D2D1_POINT_2F start = D2D1::Point2F(rect.x, rect.y);
-        D2D1_POINT_2F end = horizontal
-            ? D2D1::Point2F(rect.GetRight(), rect.y)
-            : D2D1::Point2F(rect.x, rect.GetBottom());
-
-        m_linearBrush.Reset();
-        HRESULT hr = m_renderTarget->CreateLinearGradientBrush(
-            D2D1::LinearGradientBrushProperties(start, end),
-            stopCollection.Get(),
-            m_linearBrush.GetAddressOf()
-        );
-
-        if (SUCCEEDED(hr)) {
-            D2D1_RECT_F r = D2D1::RectF(rect.x, rect.y, rect.GetRight(), rect.GetBottom());
-            m_renderTarget->FillRectangle(&r, m_linearBrush.Get());
+        if (m_gradientRenderer) {
+            m_gradientRenderer->DrawGradientRectangle(rect, stops, horizontal);
         }
     }
 
@@ -325,32 +475,155 @@ namespace Spectrum {
         float radius,
         const std::vector<D2D1_GRADIENT_STOP>& stops
     ) {
-        if (!m_renderTarget) return;
-
-        wrl::ComPtr<ID2D1GradientStopCollection> stopCollection;
-        if (!CreateGradientStopCollection(m_renderTarget.Get(), stops, stopCollection)) return;
-
-        m_radialBrush.Reset();
-        HRESULT hr = m_renderTarget->CreateRadialGradientBrush(
-            D2D1::RadialGradientBrushProperties(
-                D2D1::Point2F(center.x, center.y),
-                D2D1::Point2F(0, 0),
-                radius,
-                radius
-            ),
-            stopCollection.Get(),
-            m_radialBrush.GetAddressOf()
-        );
-
-        if (SUCCEEDED(hr)) {
-            D2D1_ELLIPSE e = D2D1::Ellipse(D2D1::Point2F(center.x, center.y), radius, radius);
-            m_renderTarget->FillEllipse(&e, m_radialBrush.Get());
+        if (m_gradientRenderer) {
+            m_gradientRenderer->DrawRadialGradient(center, radius, stops);
         }
     }
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-    // Text
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    void GraphicsContext::DrawGradientCircle(
+        const Point& center,
+        float radius,
+        const std::vector<D2D1_GRADIENT_STOP>& stops,
+        bool filled
+    ) {
+        if (m_gradientRenderer) {
+            m_gradientRenderer->DrawGradientCircle(center, radius, stops, filled);
+        }
+    }
+
+    void GraphicsContext::DrawGradientPath(
+        const std::vector<Point>& points,
+        const std::vector<D2D1_GRADIENT_STOP>& stops,
+        float strokeWidth
+    ) {
+        if (m_gradientRenderer) {
+            m_gradientRenderer->DrawGradientPath(points, stops, strokeWidth);
+        }
+    }
+
+    void GraphicsContext::DrawAngularGradient(
+        const Point& center,
+        float radius,
+        float startAngle,
+        float endAngle,
+        const Color& startColor,
+        const Color& endColor
+    ) {
+        if (m_gradientRenderer) {
+            m_gradientRenderer->DrawAngularGradient(center, radius, startAngle, endAngle, startColor, endColor);
+        }
+    }
+
+    void GraphicsContext::DrawVerticalGradientBar(
+        const Rect& rect,
+        const std::vector<D2D1_GRADIENT_STOP>& stops,
+        float cornerRadius
+    ) {
+        if (m_gradientRenderer) {
+            m_gradientRenderer->DrawVerticalGradientBar(rect, stops, cornerRadius);
+        }
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // EFFECTS - DELEGATION TO EffectsRenderer
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    void GraphicsContext::DrawWithShadow(
+        std::function<void()> drawCallback,
+        const Point& offset,
+        float blur,
+        const Color& shadowColor
+    ) {
+        if (m_effectsRenderer) {
+            m_effectsRenderer->DrawWithShadow(drawCallback, offset, blur, shadowColor);
+        }
+    }
+
+    void GraphicsContext::DrawGlow(
+        const Point& center,
+        float radius,
+        const Color& glowColor,
+        float intensity
+    ) {
+        if (m_effectsRenderer) {
+            m_effectsRenderer->DrawGlow(center, radius, glowColor, intensity);
+        }
+    }
+
+    void GraphicsContext::BeginOpacityLayer(float opacity) {
+        if (m_effectsRenderer) {
+            m_effectsRenderer->BeginOpacityLayer(opacity);
+        }
+    }
+
+    void GraphicsContext::EndOpacityLayer() {
+        if (m_effectsRenderer) {
+            m_effectsRenderer->EndOpacityLayer();
+        }
+    }
+
+    void GraphicsContext::PushClipRect(const Rect& rect) {
+        if (m_effectsRenderer) {
+            m_effectsRenderer->PushClipRect(rect);
+        }
+    }
+
+    void GraphicsContext::PopClipRect() {
+        if (m_effectsRenderer) {
+            m_effectsRenderer->PopClipRect();
+        }
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // TRANSFORMS - DELEGATION TO TransformManager
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    void GraphicsContext::PushTransform() {
+        if (m_transformManager) {
+            m_transformManager->PushTransform();
+        }
+    }
+
+    void GraphicsContext::PopTransform() {
+        if (m_transformManager) {
+            m_transformManager->PopTransform();
+        }
+    }
+
+    void GraphicsContext::RotateAt(const Point& center, float angleDegrees) {
+        if (m_transformManager) {
+            m_transformManager->RotateAt(center, angleDegrees);
+        }
+    }
+
+    void GraphicsContext::ScaleAt(const Point& center, float scaleX, float scaleY) {
+        if (m_transformManager) {
+            m_transformManager->ScaleAt(center, scaleX, scaleY);
+        }
+    }
+
+    void GraphicsContext::TranslateBy(float dx, float dy) {
+        if (m_transformManager) {
+            m_transformManager->TranslateBy(dx, dy);
+        }
+    }
+
+    void GraphicsContext::SetTransform(const D2D1_MATRIX_3X2_F& transform) {
+        if (m_transformManager) {
+            m_transformManager->SetTransform(transform);
+        }
+    }
+
+    void GraphicsContext::ResetTransform() {
+        if (m_transformManager) {
+            m_transformManager->ResetTransform();
+        }
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // TEXT - DELEGATION TO TextRenderer
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
     void GraphicsContext::DrawText(
         const std::wstring& text,
         const Point& position,
@@ -358,69 +631,77 @@ namespace Spectrum {
         float fontSize,
         DWRITE_TEXT_ALIGNMENT alignment
     ) {
-        if (!m_renderTarget || text.empty() || !m_writeFactory) return;
-
-        wrl::ComPtr<IDWriteTextFormat> tf;
-        HRESULT hr = m_writeFactory->CreateTextFormat(
-            L"Arial",
-            nullptr,
-            DWRITE_FONT_WEIGHT_BOLD,
-            DWRITE_FONT_STYLE_NORMAL,
-            DWRITE_FONT_STRETCH_NORMAL,
-            fontSize,
-            L"en-US",
-            tf.GetAddressOf()
-        );
-        if (FAILED(hr)) return;
-
-        tf->SetTextAlignment(alignment);
-        tf->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
-
-        ID2D1SolidColorBrush* b = GetSolidBrush(color);
-        if (!b) return;
-
-        D2D1_RECT_F layoutRect;
-        constexpr float boxWidth = 1000.f;
-        if (alignment == DWRITE_TEXT_ALIGNMENT_CENTER) {
-            layoutRect = D2D1::RectF(
-                position.x - boxWidth / 2.f, position.y - fontSize,
-                position.x + boxWidth / 2.f, position.y + fontSize
-            );
-        }
-        else if (alignment == DWRITE_TEXT_ALIGNMENT_LEADING) {
-            layoutRect = D2D1::RectF(
-                position.x, position.y - fontSize,
-                position.x + boxWidth, position.y + fontSize
-            );
-        }
-        else { // Trailing
-            layoutRect = D2D1::RectF(
-                position.x - boxWidth, position.y - fontSize,
-                position.x, position.y + fontSize
-            );
-        }
-
-        m_renderTarget->DrawTextW(
-            text.c_str(),
-            static_cast<UINT32>(text.length()),
-            tf.Get(),
-            &layoutRect,
-            b
-        );
-    }
-
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-    // Transformations
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-    void GraphicsContext::SetTransform(const D2D1_MATRIX_3X2_F& transform) {
-        if (m_renderTarget) {
-            m_renderTarget->SetTransform(transform);
+        if (m_textRenderer) {
+            m_textRenderer->DrawText(text, position, color, fontSize, alignment);
         }
     }
 
-    void GraphicsContext::ResetTransform() {
-        if (m_renderTarget) {
-            m_renderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+    void GraphicsContext::DrawTextWithOutline(
+        const std::wstring& text,
+        const Point& position,
+        const Color& fillColor,
+        const Color& outlineColor,
+        float fontSize,
+        float outlineWidth
+    ) {
+        if (m_textRenderer) {
+            m_textRenderer->DrawTextWithOutline(text, position, fillColor, outlineColor, fontSize, outlineWidth);
         }
     }
-}
+
+    void GraphicsContext::DrawTextRotated(
+        const std::wstring& text,
+        const Point& position,
+        float angleDegrees,
+        const Color& color,
+        float fontSize
+    ) {
+        if (m_textRenderer) {
+            m_textRenderer->DrawTextRotated(text, position, angleDegrees, color, fontSize);
+        }
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // SPECTRUM - DELEGATION TO SpectrumRenderer
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    void GraphicsContext::DrawSpectrumBars(
+        const SpectrumData& spectrum,
+        const Rect& bounds,
+        const BarStyle& style,
+        const Color& color
+    ) {
+        if (m_spectrumRenderer) {
+            m_spectrumRenderer->DrawSpectrumBars(spectrum, bounds, style, color);
+        }
+    }
+
+    void GraphicsContext::DrawWaveform(
+        const SpectrumData& spectrum,
+        const Rect& bounds,
+        const Color& color,
+        float strokeWidth,
+        bool mirror
+    ) {
+        if (m_spectrumRenderer) {
+            m_spectrumRenderer->DrawWaveform(spectrum, bounds, color, strokeWidth, mirror);
+        }
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // GETTERS
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    ID2D1HwndRenderTarget* GraphicsContext::GetRenderTarget() const noexcept {
+        return m_renderTarget.Get();
+    }
+
+    int GraphicsContext::GetWidth() const noexcept {
+        return m_width;
+    }
+
+    int GraphicsContext::GetHeight() const noexcept {
+        return m_height;
+    }
+
+} // namespace Spectrum

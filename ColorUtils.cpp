@@ -1,16 +1,8 @@
-// Utils.cpp
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-// Utils.cpp: Implementation of utility functions.
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-
-#include "Utils.h"
+#include "ColorUtils.h"
+#include "MathUtils.h"
 
 namespace Spectrum {
     namespace Utils {
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Color utilities implementation
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         Color HSVtoRGB(const HSV& hsv) {
             float h = hsv.h;
@@ -132,111 +124,6 @@ namespace Spectrum {
             Color out = HSVtoRGB(hsv);
             out.a = color.a; // preserve alpha
             return out;
-        }
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // String utilities implementation
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-        std::wstring StringToWString(const std::string& str) {
-            if (str.empty()) {
-                return std::wstring();
-            }
-
-            const int sizeW = MultiByteToWideChar(
-                CP_UTF8, 0, str.c_str(), -1, nullptr, 0
-            );
-            if (sizeW <= 0) {
-                return std::wstring();
-            }
-
-            std::wstring out(static_cast<size_t>(sizeW), L'\0');
-            MultiByteToWideChar(
-                CP_UTF8, 0, str.c_str(), -1, out.data(), sizeW
-            );
-
-            if (!out.empty() && out.back() == L'\0') {
-                out.pop_back();
-            }
-            return out;
-        }
-
-        std::string WStringToString(const std::wstring& wstr) {
-            if (wstr.empty()) {
-                return std::string();
-            }
-
-            const int sizeA = WideCharToMultiByte(
-                CP_UTF8, 0, wstr.c_str(), -1, nullptr, 0, nullptr, nullptr
-            );
-            if (sizeA <= 0) {
-                return std::string();
-            }
-
-            std::string out(static_cast<size_t>(sizeA), '\0');
-            WideCharToMultiByte(
-                CP_UTF8, 0, wstr.c_str(), -1, out.data(), sizeA, nullptr, nullptr
-            );
-
-            if (!out.empty() && out.back() == '\0') {
-                out.pop_back();
-            }
-            return out;
-        }
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Timer implementation
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-        Timer::Timer()
-            : m_startTime(std::chrono::steady_clock::now()) {
-        }
-
-        void Timer::Reset() noexcept {
-            m_startTime = std::chrono::steady_clock::now();
-        }
-
-        float Timer::GetElapsedSeconds() const noexcept {
-            const auto now = std::chrono::steady_clock::now();
-            return std::chrono::duration<float>(now - m_startTime).count();
-        }
-
-        float Timer::GetElapsedMilliseconds() const noexcept {
-            return GetElapsedSeconds() * 1000.0f;
-        }
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Random implementation
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-        Random& Random::Instance() {
-            static Random inst;
-            return inst;
-        }
-
-        Random::Random()
-            : m_generator(std::random_device{}())
-            , m_unitDist(0.0f, 1.0f) {
-        }
-
-        float Random::Float(float min, float max) {
-            if (max < min) {
-                std::swap(min, max);
-            }
-            return min + m_unitDist(m_generator) * (max - min);
-        }
-
-        int Random::Int(int min, int max) {
-            if (max < min) {
-                std::swap(min, max);
-            }
-            std::uniform_int_distribution<int> dist(min, max);
-            return dist(m_generator);
-        }
-
-        bool Random::Bool(float probability) {
-            const float p = Saturate(probability);
-            return m_unitDist(m_generator) < p;
         }
 
     } // namespace Utils

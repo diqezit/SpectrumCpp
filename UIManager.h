@@ -1,11 +1,12 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-// UIManager.h: Manages all UI components and their interactions.
+// Defines the UIManager, which orchestrates the lifecycle, drawing,
+// and interaction of all user interface components.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
 #ifndef SPECTRUM_CPP_UI_MANAGER_H
 #define SPECTRUM_CPP_UI_MANAGER_H
 
 #include "Common.h"
-#include "ColorPicker.h"
 #include <memory>
 #include <vector>
 
@@ -13,6 +14,7 @@ namespace Spectrum {
 
     class GraphicsContext;
     class ControllerCore;
+    class ColorPicker;
 
     class UIManager {
     public:
@@ -27,9 +29,14 @@ namespace Spectrum {
         ColorPicker* GetColorPicker() const { return m_colorPicker.get(); }
 
     private:
-        ControllerCore* m_controller; // For callbacks
+        bool CreateUIComponents(GraphicsContext& context);
+        void SetupCallbacks();
+
+        bool HandleMouseMove(int x, int y);
+        bool HandleMouseClick(int x, int y);
+
+        ControllerCore* m_controller;
         std::unique_ptr<ColorPicker> m_colorPicker;
-        // Future UI elements will be added here
     };
 
 }
