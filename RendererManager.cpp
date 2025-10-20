@@ -1,7 +1,7 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // Implements the RendererManager, which is responsible for managing
 // all available visualizers, handling switching between them, and
-// orchestrating the main scene rendering process.
+// applying global settings like render quality.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "RendererManager.h"
@@ -16,24 +16,106 @@
 #include "TemplateUtils.h"
 #include "EventBus.h"
 #include "WindowManager.h"
-#include "ColorPicker.h"
 
 namespace Spectrum {
 
-    RendererManager::RendererManager(EventBus* bus, WindowManager* windowManager)
-        : m_windowManager(windowManager)
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // Lifecycle Management
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+    RendererManager::RendererManager(
+        EventBus* bus,
+        WindowManager* windowManager
+    ) :
+        m_currentRenderer(nullptr),
+        m_currentStyle(RenderStyle::Bars),
+        m_currentQuality(RenderQuality::Medium),
+        m_windowManager(windowManager)
     {
         SubscribeToEvents(bus);
     }
 
     RendererManager::~RendererManager() = default;
 
+    bool RendererManager::Initialize() {
+        CreateRenderers();
+        ActivateInitialRenderer();
+        return true;
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // Public Interface
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+    void RendererManager::OnResize(int width, int height) {
+        if (m_currentRenderer)
+            m_currentRenderer->OnActivate(width, height);
+    }
+
+    void RendererManager::SetCurrentRenderer(
+        RenderStyle style,
+        GraphicsContext* graphics
+    ) {
+        DeactivateCurrentRenderer();
+        ActivateNewRenderer(style, graphics);
+    }
+
+    void RendererManager::SwitchToNextRenderer(GraphicsContext* graphics) {
+        RenderStyle nextStyle = Utils::CycleEnum(m_currentStyle, 1);
+        SetCurrentRenderer(nextStyle, graphics);
+    }
+
+    void RendererManager::SwitchToPrevRenderer(GraphicsContext* graphics) {
+        RenderStyle nextStyle = Utils::CycleEnum(m_currentStyle, -1);
+        SetCurrentRenderer(nextStyle, graphics);
+    }
+
+    void RendererManager::CycleQuality(int direction) {
+        RenderQuality nextQuality = Utils::CycleEnum(m_currentQuality, direction);
+        SetQuality(nextQuality);
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // Getters
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+    [[nodiscard]] IRenderer* RendererManager::GetCurrentRenderer() const {
+        return m_currentRenderer;
+    }
+
+    [[nodiscard]] RenderStyle RendererManager::GetCurrentStyle() const {
+        return m_currentStyle;
+    }
+
+    [[nodiscard]] RenderQuality RendererManager::GetQuality() const {
+        return m_currentQuality;
+    }
+
+    [[nodiscard]] std::string_view RendererManager::GetCurrentRendererName() const {
+        if (m_currentRenderer)
+            return m_currentRenderer->GetName();
+        return "None";
+    }
+
+    [[nodiscard]] std::string_view RendererManager::GetQualityName() const {
+        switch (m_currentQuality) {
+        case RenderQuality::Low:    return "Low";
+        case RenderQuality::Medium: return "Medium";
+        case RenderQuality::High:   return "High";
+        default:                    return "Unknown";
+        }
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // Private Implementation
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
     void RendererManager::SubscribeToEvents(EventBus* bus) {
         bus->Subscribe(InputAction::SwitchRenderer, [this]() {
             if (m_windowManager) this->SwitchToNextRenderer(m_windowManager->GetGraphics());
             });
         bus->Subscribe(InputAction::CycleQuality, [this]() {
-            this->CycleQuality();
+            this->CycleQuality(1);
             });
     }
 
@@ -54,101 +136,38 @@ namespace Spectrum {
         SetQuality(m_currentQuality);
     }
 
-    bool RendererManager::Initialize() {
-        CreateRenderers();
-        ActivateInitialRenderer();
-        return true;
-    }
-
-    bool RendererManager::ShouldSkipRendering(GraphicsContext& graphics) const {
-        auto rt = graphics.GetRenderTarget();
-        if (rt && (rt->CheckWindowState() & D2D1_WINDOW_STATE_OCCLUDED)) return true;
-        return false;
-    }
-
-    Color RendererManager::GetClearColor(bool isOverlay) const {
-        return isOverlay ? Color::Transparent() : Color::FromRGB(13, 13, 26);
-    }
-
-    void RendererManager::RenderVisualizer(GraphicsContext& graphics, const SpectrumData& spectrum) {
-        if (m_currentRenderer) m_currentRenderer->Render(graphics, spectrum);
-    }
-
-    void RendererManager::RenderUI(GraphicsContext& graphics, ColorPicker* colorPicker, bool isOverlay) {
-        if (colorPicker && colorPicker->IsVisible() && !isOverlay) {
-            colorPicker->Draw(graphics);
-        }
-    }
-
-    void RendererManager::RenderScene(
-        GraphicsContext& graphics,
-        const SpectrumData& spectrum,
-        ColorPicker* colorPicker,
-        bool isOverlay
-    ) {
-        if (ShouldSkipRendering(graphics)) return;
-
-        graphics.BeginDraw();
-        graphics.Clear(GetClearColor(isOverlay));
-
-        RenderVisualizer(graphics, spectrum);
-        RenderUI(graphics, colorPicker, isOverlay);
-    }
-
     void RendererManager::DeactivateCurrentRenderer() {
-        if (m_currentRenderer) m_currentRenderer->OnDeactivate();
+        if (m_currentRenderer)
+            m_currentRenderer->OnDeactivate();
     }
 
-    void RendererManager::ActivateNewRenderer(RenderStyle style, GraphicsContext* graphics) {
-        m_currentRenderer = m_renderers[style].get();
-        m_currentStyle = style;
+    void RendererManager::ActivateNewRenderer(
+        RenderStyle style,
+        GraphicsContext* graphics
+    ) {
+        if (m_renderers.count(style)) {
+            m_currentRenderer = m_renderers[style].get();
+            m_currentStyle = style;
+        }
 
         if (!m_currentRenderer || !graphics) return;
 
         int w = graphics->GetWidth();
         int h = graphics->GetHeight();
         m_currentRenderer->OnActivate(w, h);
+        m_currentRenderer->SetQuality(m_currentQuality); // Apply current quality to new renderer
+
         LOG_INFO("Switched to " << m_currentRenderer->GetName().data() << " renderer");
-    }
-
-    void RendererManager::SetCurrentRenderer(
-        RenderStyle style, GraphicsContext* graphics
-    ) {
-        DeactivateCurrentRenderer();
-        ActivateNewRenderer(style, graphics);
-    }
-
-    void RendererManager::SwitchToNextRenderer(GraphicsContext* graphics) {
-        RenderStyle nextStyle = Utils::CycleEnum(m_currentStyle, 1);
-        SetCurrentRenderer(nextStyle, graphics);
-    }
-
-    const char* RendererManager::GetQualityName(RenderQuality quality) const {
-        switch (quality) {
-        case RenderQuality::Low:    return "Low";
-        case RenderQuality::Medium: return "Medium";
-        case RenderQuality::High:   return "High";
-        default:                    return "Unknown";
-        }
     }
 
     void RendererManager::SetQuality(RenderQuality quality) {
         m_currentQuality = quality;
+        // Apply to all renderers so the setting is consistent when switching
         for (auto& [style, renderer] : m_renderers) {
-            if (renderer) renderer->SetQuality(quality);
+            if (renderer)
+                renderer->SetQuality(quality);
         }
-        LOG_INFO("Render quality set to " << GetQualityName(quality));
-    }
-
-    void RendererManager::CycleQuality() {
-        RenderQuality nextQuality = Utils::CycleEnum(m_currentQuality, 1);
-        SetQuality(nextQuality);
-    }
-
-    void RendererManager::OnResize(int width, int height) {
-        if (m_currentRenderer) {
-            m_currentRenderer->OnActivate(width, height);
-        }
+        LOG_INFO("Render quality set to " << GetQualityName().data());
     }
 
 } // namespace Spectrum

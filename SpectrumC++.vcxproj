@@ -32,6 +32,8 @@
     <ClInclude Include="AudioCaptureEngine.h" />
     <ClInclude Include="AudioManager.h" />
     <ClInclude Include="ColorUtils.h" />
+    <ClInclude Include="ColorWheelGenerator.h" />
+    <ClInclude Include="ColorWheelRenderer.h" />
     <ClInclude Include="ControllerCore.h" />
     <ClInclude Include="AudioCapture.h" />
     <ClInclude Include="BarsRenderer.h" />
@@ -39,6 +41,7 @@
     <ClInclude Include="CircularWaveRenderer.h" />
     <ClInclude Include="ColorPicker.h" />
     <ClInclude Include="Common.h" />
+    <ClInclude Include="ControlPanel.h" />
     <ClInclude Include="CubesRenderer.h" />
     <ClInclude Include="EffectsRenderer.h" />
     <ClInclude Include="EventBus.h" />
@@ -56,6 +59,8 @@
     <ClInclude Include="KenwoodBarsRenderer.h" />
     <ClInclude Include="LedPanelRenderer.h" />
     <ClInclude Include="MathUtils.h" />
+    <ClInclude Include="PanelAnimator.h" />
+    <ClInclude Include="PanelDrawHelper.h" />
     <ClInclude Include="PlatformUtils.h" />
     <ClInclude Include="PrimitiveRenderer.h" />
     <ClInclude Include="Random.h" />
@@ -74,7 +79,11 @@
     <ClInclude Include="Timer.h" />
     <ClInclude Include="TransformManager.h" />
     <ClInclude Include="Types.h" />
+    <ClInclude Include="UIButton.h" />
+    <ClInclude Include="UILayout.h" />
     <ClInclude Include="UIManager.h" />
+    <ClInclude Include="AudioSettingsPanel.h" />
+    <ClInclude Include="UISlider.h" />
     <ClInclude Include="WASAPIHelper.h" />
     <ClInclude Include="WaveRenderer.h" />
     <ClInclude Include="MainWindow.h" />
@@ -96,6 +105,7 @@
     <ClCompile Include="BaseRenderer.cpp" />
     <ClCompile Include="CircularWaveRenderer.cpp" />
     <ClCompile Include="ColorPicker.cpp" />
+    <ClCompile Include="ControlPanel.cpp" />
     <ClCompile Include="CubesRenderer.cpp" />
     <ClCompile Include="EffectsRenderer.cpp" />
     <ClCompile Include="FFTProcessor.cpp" />
@@ -123,7 +133,10 @@
     <ClCompile Include="TextRenderer.cpp" />
     <ClCompile Include="Timer.cpp" />
     <ClCompile Include="TransformManager.cpp" />
+    <ClCompile Include="UIButton.cpp" />
     <ClCompile Include="UIManager.cpp" />
+    <ClCompile Include="AudioSettingsPanel.cpp" />
+    <ClCompile Include="UISlider.cpp" />
     <ClCompile Include="WASAPIHelper.cpp" />
     <ClCompile Include="WaveRenderer.cpp" />
     <ClCompile Include="MainWindow.cpp" />

@@ -2,6 +2,11 @@
 // This file defines the MainWindow class, a high-level wrapper around a
 // native Win32 window (HWND). It handles window creation, registration,
 // the message loop, and delegates message handling to the controller
+//
+// Defines the MainWindow, a RAII-compliant C++ wrapper for a Win32 HWND. It
+// encapsulates the complexities of window class registration, creation, and
+// message processing, delegating application-specific logic to a designated
+// message handler.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #ifndef SPECTRUM_CPP_MAINWINDOW_H
@@ -9,17 +14,23 @@
 
 #include "Common.h"
 #include "WindowHelper.h"
+#include <atomic>
 
 namespace Spectrum {
 
+    // Forward declarations
     class WindowManager;
 
-    class MainWindow {
+    class MainWindow final {
     public:
-        explicit MainWindow(HINSTANCE hInstance);
-        ~MainWindow();
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // Lifecycle Management
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-        bool Initialize(
+        explicit MainWindow(HINSTANCE hInstance);
+        ~MainWindow() noexcept;
+
+        [[nodiscard]] bool Initialize(
             const std::wstring& title,
             int width,
             int height,
@@ -27,35 +38,59 @@ namespace Spectrum {
             void* userPtr
         );
 
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // Main Execution Loop
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
         void ProcessMessages();
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // State Queries & Management
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
         void Show(int cmdShow = SW_SHOW) const;
         void Hide() const;
         void Close();
 
-        HWND GetHwnd() const { return m_hwnd; }
-        bool IsRunning() const { return m_running; }
-        void SetRunning(bool running) { m_running = running; }
+        [[nodiscard]] bool IsRunning() const noexcept;
+        void SetRunning(bool running);
 
-        int GetWidth() const { return m_width; }
-        int GetHeight() const { return m_height; }
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // Public Getters
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+        [[nodiscard]] HWND GetHwnd() const noexcept;
+        [[nodiscard]] int GetWidth() const noexcept;
+        [[nodiscard]] int GetHeight() const noexcept;
 
     private:
-        bool Register();
-        WNDCLASSEXW CreateWindowClass() const;
-        bool CreateWindowInstance(
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // Private Implementation / Internal Helpers
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+        struct WindowRectParams {
+            int x, y, w, h;
+        };
+
+        [[nodiscard]] bool RegisterWindowClass();
+        [[nodiscard]] WNDCLASSEXW CreateWindowClass() const;
+        [[nodiscard]] bool CreateAndConfigureWindow(
             const std::wstring& title,
             int width,
             int height,
             void* userPtr
         );
-        struct WindowRectParams { int x, y, w, h; };
-        WindowRectParams CalculateWindowRect(
+        [[nodiscard]] WindowRectParams CalculateWindowRect(
             int width,
             int height,
             const WindowUtils::Styles& styles
         ) const;
 
-        void ApplyStyles() const;
+        void ApplyPostCreationStyles() const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // Win32 Message Handling
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
         static LRESULT CALLBACK WndProc(
             HWND hwnd,
@@ -65,6 +100,10 @@ namespace Spectrum {
         );
         static void StoreManagerPointer(HWND hwnd, LPARAM lParam);
         static WindowManager* GetManagerFromHwnd(HWND hwnd);
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // Member Variables
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
         HINSTANCE m_hInstance;
         HWND m_hwnd;
@@ -77,4 +116,4 @@ namespace Spectrum {
 
 } // namespace Spectrum
 
-#endif
+#endif // SPECTRUM_CPP_MAINWINDOW_H

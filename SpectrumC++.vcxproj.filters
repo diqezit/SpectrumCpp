@@ -49,6 +49,27 @@
     <Filter Include="Resources">
       <UniqueIdentifier>{4bb54b4a-8034-40f7-b62b-df9db918dbc8}</UniqueIdentifier>
     </Filter>
+    <Filter Include="UI\Components">
+      <UniqueIdentifier>{32f0b6f4-58ea-4eaf-ac29-8fabb03eb0da}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UI\Panels">
+      <UniqueIdentifier>{39429f30-a9d5-403b-b2c7-30bae9cccde0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UI\Core">
+      <UniqueIdentifier>{4e5d7c87-7916-49ce-880b-0b2f9d415ca5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UI\Common">
+      <UniqueIdentifier>{da852cc1-158c-4084-b3b4-11e3f7fa8bd8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UI\Panels\AudioSettingsPanel">
+      <UniqueIdentifier>{4638c6b0-dff6-44d5-8f79-767ae0634038}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UI\Panels\ColorPicker">
+      <UniqueIdentifier>{f5c181ff-b504-4469-87b1-7ebf29028e16}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UI\Panels\ControlPanel">
+      <UniqueIdentifier>{66bc9064-5736-4ee6-b980-c6344d2939b7}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Application.cpp">
@@ -114,12 +135,6 @@
     <ClCompile Include="InputManager.cpp">
       <Filter>Platform</Filter>
     </ClCompile>
-    <ClCompile Include="ColorPicker.cpp">
-      <Filter>UI</Filter>
-    </ClCompile>
-    <ClCompile Include="UIManager.cpp">
-      <Filter>UI</Filter>
-    </ClCompile>
     <ClCompile Include="RealtimeAudioSource.cpp">
       <Filter>Audio\Sources</Filter>
     </ClCompile>
@@ -182,6 +197,24 @@
     </ClCompile>
     <ClCompile Include="GainNormalizer.cpp">
       <Filter>Audio\Processing</Filter>
+    </ClCompile>
+    <ClCompile Include="UIButton.cpp">
+      <Filter>UI\Components</Filter>
+    </ClCompile>
+    <ClCompile Include="UISlider.cpp">
+      <Filter>UI\Components</Filter>
+    </ClCompile>
+    <ClCompile Include="UIManager.cpp">
+      <Filter>UI\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="AudioSettingsPanel.cpp">
+      <Filter>UI\Panels\AudioSettingsPanel</Filter>
+    </ClCompile>
+    <ClCompile Include="ColorPicker.cpp">
+      <Filter>UI\Panels\ColorPicker</Filter>
+    </ClCompile>
+    <ClCompile Include="ControlPanel.cpp">
+      <Filter>UI\Panels\ControlPanel</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -256,12 +289,6 @@
     </ClInclude>
     <ClInclude Include="WindowManager.h">
       <Filter>Platform</Filter>
-    </ClInclude>
-    <ClInclude Include="ColorPicker.h">
-      <Filter>UI</Filter>
-    </ClInclude>
-    <ClInclude Include="UIManager.h">
-      <Filter>UI</Filter>
     </ClInclude>
     <ClInclude Include="RealtimeAudioSource.h">
       <Filter>Audio\Sources</Filter>
@@ -343,6 +370,39 @@
     </ClInclude>
     <ClInclude Include="GainNormalizer.h">
       <Filter>Audio\Processing</Filter>
+    </ClInclude>
+    <ClInclude Include="UIButton.h">
+      <Filter>UI\Components</Filter>
+    </ClInclude>
+    <ClInclude Include="UISlider.h">
+      <Filter>UI\Components</Filter>
+    </ClInclude>
+    <ClInclude Include="UIManager.h">
+      <Filter>UI\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="UILayout.h">
+      <Filter>UI\Common</Filter>
+    </ClInclude>
+    <ClInclude Include="AudioSettingsPanel.h">
+      <Filter>UI\Panels\AudioSettingsPanel</Filter>
+    </ClInclude>
+    <ClInclude Include="ColorPicker.h">
+      <Filter>UI\Panels\ColorPicker</Filter>
+    </ClInclude>
+    <ClInclude Include="ColorWheelGenerator.h">
+      <Filter>UI\Panels\ColorPicker</Filter>
+    </ClInclude>
+    <ClInclude Include="ColorWheelRenderer.h">
+      <Filter>UI\Panels\ColorPicker</Filter>
+    </ClInclude>
+    <ClInclude Include="ControlPanel.h">
+      <Filter>UI\Panels\ControlPanel</Filter>
+    </ClInclude>
+    <ClInclude Include="PanelAnimator.h">
+      <Filter>UI\Panels</Filter>
+    </ClInclude>
+    <ClInclude Include="PanelDrawHelper.h">
+      <Filter>UI\Panels</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

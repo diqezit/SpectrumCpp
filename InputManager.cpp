@@ -1,18 +1,54 @@
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // Implements the InputManager, which polls keyboard state and maps key
 // presses to application-specific actions.
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+//
+// Implements the InputManager by providing the logic for polling key states,
+// detecting press events (state changes from up to down), and queuing the
+// corresponding actions for processing by the main application loop.
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "InputManager.h"
 #include "PlatformUtils.h"
 
 namespace Spectrum {
 
-    InputManager::InputManager() {
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // Lifecycle Management
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+    InputManager::InputManager()
+    {
         InitializeKeyMappings();
     }
 
-    void InputManager::InitializeKeyMappings() {
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // Main Execution Loop
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+    void InputManager::Update()
+    {
+        PollKeys();
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // Public Getters
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+    [[nodiscard]] std::vector<InputAction> InputManager::GetActions()
+    {
+        if (m_actionQueue.empty()) return {};
+
+        std::vector<InputAction> actions = std::move(m_actionQueue);
+        m_actionQueue.clear();
+        return actions;
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // Private Implementation / Internal Helpers
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+    void InputManager::InitializeKeyMappings()
+    {
         m_keyMappings[VK_SPACE] = InputAction::ToggleCapture;
         m_keyMappings['A'] = InputAction::ToggleAnimation;
         m_keyMappings['S'] = InputAction::CycleSpectrumScale;
@@ -30,32 +66,23 @@ namespace Spectrum {
         m_keyMappings[VK_ESCAPE] = InputAction::Exit;
     }
 
-    void InputManager::Update() {
-        PollKeys();
-    }
-
-    std::vector<InputAction> InputManager::GetActions() {
-        if (m_actionQueue.empty()) return {};
-
-        std::vector<InputAction> actions = std::move(m_actionQueue);
-        m_actionQueue.clear();
-        return actions;
-    }
-
-    void InputManager::PollKeys() {
-        for (const auto& [key, action] : m_keyMappings) {
+    void InputManager::PollKeys()
+    {
+        for (const auto& [key, action] : m_keyMappings)
             ProcessSingleKey(key, action);
-        }
     }
 
-    void InputManager::ProcessSingleKey(int key, InputAction action) {
-        bool isPressed = Utils::IsKeyPressed(key);
+    void InputManager::ProcessSingleKey(int key, InputAction action)
+    {
+        const bool isPressed = Utils::IsKeyPressed(key);
 
-        if (isPressed && !m_keyStates[key]) {
+        if (isPressed && !m_keyStates[key])
+        {
             m_keyStates[key] = true;
             m_actionQueue.push_back(action);
         }
-        else if (!isPressed) {
+        else if (!isPressed)
+        {
             m_keyStates[key] = false;
         }
     }

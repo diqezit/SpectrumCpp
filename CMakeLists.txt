@@ -69,8 +69,12 @@ set(SOURCES
     Platform/WindowManager.cpp
 
     # User Interface
-    UI/ColorPicker.cpp
-    UI/UIManager.cpp
+    UI/Core/UIManager.cpp
+    UI/Components/UIButton.cpp
+    UI/Components/UISlider.cpp
+    UI/Panels/AudioSettingsPanel.cpp
+    UI/Panels/ColorPicker.cpp
+    UI/Panels/ControlPanel.cpp
 )
 
 # ==============================================================================

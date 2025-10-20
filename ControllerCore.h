@@ -1,74 +1,87 @@
-#ifndef SPECTRUM_CPP_CONTROLLER_CORE_H
-#define SPECTRUM_CPP_CONTROLLER_CORE_H
-
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // This file defines ControllerCore, the central class that orchestrates
 // all major components of the application, including the window, audio,
 // rendering, and input managers. It drives the main application loop.
+//
+// Defines the ControllerCore, the application's central orchestrator. It is
+// responsible for initializing all major subsystems and driving the main
+// high-level update/render loop, completely decoupled from platform-specific
+// API details.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
+#ifndef SPECTRUM_CPP_CONTROLLER_CORE_H
+#define SPECTRUM_CPP_CONTROLLER_CORE_H
+
 #include "Common.h"
-#include "PlatformUtils.h"
-#include "Timer.h"
 #include "EventBus.h"
+#include "Timer.h"
 #include <memory>
 #include <vector>
 
 namespace Spectrum {
 
-    class WindowManager;
+    // Forward declarations
     class AudioManager;
-    class RendererManager;
-    class InputManager;
     class GraphicsContext;
+    class InputManager;
+    class RendererManager;
+    class WindowManager;
 
-    class ControllerCore {
+    class ControllerCore final {
     public:
-        explicit ControllerCore(HINSTANCE hInstance);
-        ~ControllerCore();
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // Lifecycle Management
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-        bool Initialize();
+        explicit ControllerCore(HINSTANCE hInstance);
+        ~ControllerCore() noexcept;
+
+        [[nodiscard]] bool Initialize();
         void Run();
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // System & Event Callbacks
+        // System Event Callbacks
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        LRESULT HandleWindowMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
         void OnResize(int width, int height);
-        void SetPrimaryColor(const Color& color);
-        void OnClose();
+        void OnCloseRequest();
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // Getters for Component Communication
+        // Public Setters
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        RendererManager* GetRendererManager() const { return m_rendererManager.get(); }
+
+        void SetPrimaryColor(const Color& color);
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // Public Getters
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+        [[nodiscard]] RendererManager* GetRendererManager() const noexcept;
+        [[nodiscard]] AudioManager* GetAudioManager() const noexcept;
+        [[nodiscard]] WindowManager* GetWindowManager() const noexcept;
 
     private:
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // Internal Logic
+        // Private Implementation / Internal Helpers
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        bool InitializeManagers();
-        bool InitializeEventBus();
-        bool InitializeWindowManager();
-        bool InitializeInputManager();
-        bool InitializeAudioManager();
-        bool InitializeRendererManager();
-        void PrintWelcomeMessage();
+
+        [[nodiscard]] bool InitializeManagers();
+
         void MainLoop();
         void ProcessInput();
         void Update(float deltaTime);
         void Render();
-        bool CanRender() const;
-        void PrepareFrame(GraphicsContext& graphics);
-        void RenderSpectrum(GraphicsContext& graphics);
-        void RenderUI(GraphicsContext& graphics);
-        void FinalizeFrame(GraphicsContext& graphics);
-        LRESULT HandleMouseMessage(UINT msg, LPARAM lParam);
 
-    private:
+        [[nodiscard]] bool CanRender() const;
+        void PrepareFrame(GraphicsContext& graphics) const;
+        void RenderSpectrum(GraphicsContext& graphics) const;
+        void RenderUI(GraphicsContext& graphics) const;
+        void FinalizeFrame(GraphicsContext& graphics) const;
+
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // Member State
+        // Member Variables
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
         HINSTANCE m_hInstance;
 
         std::unique_ptr<WindowManager> m_windowManager;
@@ -83,4 +96,4 @@ namespace Spectrum {
 
 } // namespace Spectrum
 
-#endif
+#endif // SPECTRUM_CPP_CONTROLLER_CORE_H

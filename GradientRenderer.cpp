@@ -7,6 +7,8 @@
 #include "GradientRenderer.h"
 #include "MathUtils.h"
 #include "ColorUtils.h"
+#include <sstream>
+#include <iomanip>
 
 namespace Spectrum {
 
@@ -21,6 +23,24 @@ namespace Spectrum {
 
         inline D2D1_RECT_F ToD2DRect(const Rect& r) {
             return D2D1::RectF(r.x, r.y, r.GetRight(), r.GetBottom());
+        }
+
+        std::string GenerateGradientKey(
+            const std::string& prefix,
+            const std::vector<D2D1_GRADIENT_STOP>& stops
+        ) {
+            std::ostringstream oss;
+            oss << prefix << "_";
+
+            for (const auto& stop : stops) {
+                oss << std::fixed << std::setprecision(2)
+                    << stop.position << "_"
+                    << stop.color.r << "_"
+                    << stop.color.g << "_"
+                    << stop.color.b << "_";
+            }
+
+            return oss.str();
         }
     }
 
@@ -51,7 +71,8 @@ namespace Spectrum {
             ? Point{ rect.GetRight(), rect.y }
         : Point{ rect.x, rect.GetBottom() };
 
-        auto* brush = m_cache->GetLinearGradient("gradient_rect", start, end, stops);
+        std::string key = GenerateGradientKey("gradient_rect", stops);
+        auto* brush = m_cache->GetLinearGradient(key, start, end, stops);
         if (brush) {
             D2D1_RECT_F d2dRect = ToD2DRect(rect);
             m_renderTarget->FillRectangle(&d2dRect, brush);
@@ -67,7 +88,8 @@ namespace Spectrum {
             return;
         }
 
-        auto* brush = m_cache->GetRadialGradient("radial_gradient", center, radius, stops);
+        std::string key = GenerateGradientKey("radial_gradient", stops);
+        auto* brush = m_cache->GetRadialGradient(key, center, radius, stops);
         if (brush) {
             D2D1_ELLIPSE ellipse = {};
             ellipse.point = ToD2DPoint(center);
@@ -78,8 +100,6 @@ namespace Spectrum {
         }
     }
 
-    // if user wants unfilled gradient circle, fall back to solid color outline
-    // true gradient outlines are complex and not a core requirement
     void GradientRenderer::DrawGradientCircle(
         const Point& center,
         float radius,
@@ -99,7 +119,6 @@ namespace Spectrum {
                 float stroke = 2.0f;
                 D2D1_ELLIPSE ellipse = {};
                 ellipse.point = ToD2DPoint(center);
-                // adjust radius to account for stroke width
                 ellipse.radiusX = radius - stroke / 2.0f;
                 ellipse.radiusY = radius - stroke / 2.0f;
 
@@ -118,8 +137,9 @@ namespace Spectrum {
             return;
         }
 
+        std::string key = GenerateGradientKey("path_gradient", stops);
         auto* brush = m_cache->GetLinearGradient(
-            "path_gradient",
+            key,
             points.front(),
             points.back(),
             stops
@@ -132,8 +152,6 @@ namespace Spectrum {
         }
     }
 
-    // D2D does not support angular gradients directly
-    // simulate it by drawing many small, colored triangles (slices)
     void GradientRenderer::DrawAngularGradient(
         const Point& center,
         float radius,
@@ -142,7 +160,6 @@ namespace Spectrum {
         const Color& startColor,
         const Color& endColor
     ) {
-        // more segments provide a smoother gradient at higher cost
         const int segments = 180;
         float sweep = endAngle - startAngle;
 
@@ -158,7 +175,6 @@ namespace Spectrum {
 
             auto geo = m_geometryBuilder->CreateAngularSlice(center, radius, a0, a1);
             if (geo) {
-                // interpolate color for the middle of the slice
                 Color midColor = Utils::InterpolateColor(
                     startColor,
                     endColor,
@@ -180,8 +196,9 @@ namespace Spectrum {
             return;
         }
 
+        std::string key = GenerateGradientKey("vbar_gradient", stops);
         auto* brush = m_cache->GetLinearGradient(
-            "vbar_gradient",
+            key,
             { rect.x, rect.y },
             { rect.x, rect.GetBottom() },
             stops
@@ -209,4 +226,4 @@ namespace Spectrum {
         m_renderTarget = renderTarget;
     }
 
-} // namespace Spectrum
+}

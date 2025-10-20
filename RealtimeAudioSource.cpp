@@ -1,20 +1,25 @@
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-// RealtimeAudioSource.cpp: Implementation of the live audio source.
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// This file implements the RealtimeAudioSource. It manages an AudioCapture
+// device and a SpectrumAnalyzer to provide live frequency data, and handles
+// device faults and re-initialization.
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
 #include "RealtimeAudioSource.h"
 
 namespace Spectrum {
 
-    RealtimeAudioSource::RealtimeAudioSource(const AudioConfig& config) : m_config(config) {
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // Lifecycle Management
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+    RealtimeAudioSource::RealtimeAudioSource(
+        const AudioConfig& config
+    ) :
+        m_config(config),
+        m_isCapturing(false)
+    {
         m_analyzer = std::make_unique<SpectrumAnalyzer>(m_config.barCount, m_config.fftSize);
         ConfigureAnalyzer();
-    }
-
-    void RealtimeAudioSource::ConfigureAnalyzer() {
-        m_analyzer->SetAmplification(m_config.amplification);
-        m_analyzer->SetSmoothing(m_config.smoothing);
-        m_analyzer->SetFFTWindow(m_config.windowType);
-        m_analyzer->SetScaleType(m_config.scaleType);
     }
 
     bool RealtimeAudioSource::Initialize() {
@@ -22,28 +27,40 @@ namespace Spectrum {
         return m_audioCapture != nullptr;
     }
 
-    void RealtimeAudioSource::HandleCaptureFaults() {
-        if (m_isCapturing && m_audioCapture && m_audioCapture->IsFaulted()) {
-            LOG_ERROR("Realtime source detected a fault. Capture stopped.");
-            StopCapture();
-        }
-    }
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // IAudioSource Implementation
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
     void RealtimeAudioSource::Update(float /*deltaTime*/) {
         HandleCaptureFaults();
-        m_analyzer->Update();
+        if (m_analyzer)
+            m_analyzer->Update();
     }
 
-    SpectrumData RealtimeAudioSource::GetSpectrum() {
-        return m_analyzer->GetSpectrum();
+    [[nodiscard]] SpectrumData RealtimeAudioSource::GetSpectrum() {
+        if (m_analyzer)
+            return m_analyzer->GetSpectrum();
+        return {};
     }
 
-    bool RealtimeAudioSource::EnsureCaptureIsReady() {
-        if (!m_audioCapture || m_audioCapture->IsFaulted()) {
-            LOG_INFO("Audio device is in a faulted state. Attempting to recover...");
-            ReinitializeCapture();
-        }
-        return m_audioCapture != nullptr;
+    void RealtimeAudioSource::SetAmplification(float amp) {
+        if (m_analyzer) m_analyzer->SetAmplification(amp);
+    }
+
+    void RealtimeAudioSource::SetBarCount(size_t count) {
+        if (m_analyzer) m_analyzer->SetBarCount(count);
+    }
+
+    void RealtimeAudioSource::SetFFTWindow(FFTWindowType type) {
+        if (m_analyzer) m_analyzer->SetFFTWindow(type);
+    }
+
+    void RealtimeAudioSource::SetScaleType(SpectrumScale type) {
+        if (m_analyzer) m_analyzer->SetScaleType(type);
+    }
+
+    void RealtimeAudioSource::SetSmoothing(float smoothing) {
+        if (m_analyzer) m_analyzer->SetSmoothing(smoothing);
     }
 
     void RealtimeAudioSource::StartCapture() {
@@ -59,16 +76,48 @@ namespace Spectrum {
     }
 
     void RealtimeAudioSource::StopCapture() {
-        if (m_audioCapture) {
+        if (m_audioCapture)
             m_audioCapture->Stop();
-        }
+
         if (m_isCapturing) {
             m_isCapturing = false;
             LOG_INFO("Realtime source: capture stopped.");
         }
     }
 
-    bool RealtimeAudioSource::TryCreateCaptureDevice() {
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // Private Implementation
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+    void RealtimeAudioSource::ConfigureAnalyzer() {
+        if (!m_analyzer) return;
+        m_analyzer->SetAmplification(m_config.amplification);
+        m_analyzer->SetSmoothing(m_config.smoothing);
+        m_analyzer->SetFFTWindow(m_config.windowType);
+        m_analyzer->SetScaleType(m_config.scaleType);
+    }
+
+    void RealtimeAudioSource::HandleCaptureFaults() {
+        if (m_isCapturing && m_audioCapture && m_audioCapture->IsFaulted()) {
+            LOG_ERROR("Realtime source detected a fault. Capture stopped.");
+            StopCapture();
+        }
+    }
+
+    [[nodiscard]] bool RealtimeAudioSource::EnsureCaptureIsReady() {
+        if (!m_audioCapture || m_audioCapture->IsFaulted()) {
+            LOG_INFO("Audio device is in a faulted state. Attempting to recover...");
+            ReinitializeCapture();
+        }
+        return m_audioCapture != nullptr;
+    }
+
+    void RealtimeAudioSource::ReinitializeCapture() {
+        if (TryCreateCaptureDevice())
+            SetupNewCaptureDevice();
+    }
+
+    [[nodiscard]] bool RealtimeAudioSource::TryCreateCaptureDevice() {
         m_audioCapture = std::make_unique<AudioCapture>();
         if (!m_audioCapture->Initialize()) {
             m_audioCapture = nullptr;
@@ -83,15 +132,4 @@ namespace Spectrum {
         LOG_INFO("Audio capture device initialized successfully.");
     }
 
-    void RealtimeAudioSource::ReinitializeCapture() {
-        if (TryCreateCaptureDevice()) {
-            SetupNewCaptureDevice();
-        }
-    }
-
-    void RealtimeAudioSource::SetAmplification(float amp) { m_analyzer->SetAmplification(amp); }
-    void RealtimeAudioSource::SetBarCount(size_t count) { m_analyzer->SetBarCount(count); }
-    void RealtimeAudioSource::SetFFTWindow(FFTWindowType type) { m_analyzer->SetFFTWindow(type); }
-    void RealtimeAudioSource::SetScaleType(SpectrumScale type) { m_analyzer->SetScaleType(type); }
-
-}
+} // namespace Spectrum

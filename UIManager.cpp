@@ -1,78 +1,182 @@
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-// Implements the UIManager, which creates and manages all UI components,
-// forwarding interactions to the appropriate handlers.
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// This file implements the UIManager. It manages the primary control panel,
+// the audio settings popup, and the color picker. It dispatches input to
+// the currently active component and handles mouse capture for dragging.
+//
+// Implements the UIManager by defining the creation of UI components and
+// the state-driven logic for routing mouse input. It ensures that input is
+// handled by the correct component based on a modal-first priority system.
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "UIManager.h"
-#include "GraphicsContext.h"
-#include "ControllerCore.h"
+#include "AudioSettingsPanel.h"
 #include "ColorPicker.h"
+#include "ControlPanel.h"
+#include "ControllerCore.h"
+#include "GraphicsContext.h"
+#include "IRenderer.h"
+#include "RendererManager.h"
+#include "UILayout.h"
+#include "UISlider.h"
+#include "WindowManager.h"
 
 namespace Spectrum {
 
-    UIManager::UIManager(ControllerCore* controller)
-        : m_controller(controller) {
+    UIManager::UIManager(
+        ControllerCore* controller,
+        WindowManager* windowManager
+    ) :
+        m_controller(controller),
+        m_windowManager(windowManager),
+        m_activeSlider(nullptr)
+    {
     }
 
-    bool UIManager::Initialize(GraphicsContext& context) {
-        if (!CreateUIComponents(context)) return false;
-        SetupCallbacks();
+    UIManager::~UIManager() noexcept = default;
+
+    [[nodiscard]] bool UIManager::Initialize()
+    {
+        m_controlPanel = std::make_unique<ControlPanel>(m_controller);
+        m_controlPanel->Initialize();
+        m_controlPanel->SetOnShowAudioSettings([this]() { this->ShowAudioSettings(); });
+
+        m_audioSettingsPanel = std::make_unique<AudioSettingsPanel>(m_controller);
+        m_audioSettingsPanel->Initialize();
+        m_audioSettingsPanel->SetOnCloseCallback([this]() { this->HideAudioSettings(); });
+
+        GraphicsContext* gfx = m_windowManager->GetGraphics();
+        if (!gfx) return false;
+
+        const Point pickerPos = { gfx->GetWidth() - UILayout::kPadding - 80.0f, UILayout::kPadding };
+
+        m_colorPicker = std::make_unique<ColorPicker>(pickerPos, 40.0f);
+        if (!m_colorPicker->Initialize(*gfx))
+            return false;
+
+        m_colorPicker->SetOnColorSelectedCallback([this](const Color& c) {
+            if (m_controller) m_controller->SetPrimaryColor(c);
+            });
+
         return true;
     }
 
-    bool UIManager::CreateUIComponents(GraphicsContext& context) {
-        m_colorPicker = std::make_unique<ColorPicker>(Point{ 20.0f, 20.0f }, 40.0f);
-        if (!m_colorPicker->Initialize(context)) return false;
-
-        // Future UI elements will be created here
-        return true;
-    }
-
-    void UIManager::SetupCallbacks() {
-        if (m_colorPicker) {
-            m_colorPicker->SetOnColorSelectedCallback([this](const Color& color) {
-                if (m_controller) m_controller->SetPrimaryColor(color);
-                });
-        }
-        // Future UI element callbacks will be set up here
-    }
-
-    void UIManager::RecreateResources(GraphicsContext& context) {
-        if (m_colorPicker) {
+    void UIManager::RecreateResources(GraphicsContext& context, int width, int height)
+    {
+        if (m_colorPicker)
+        {
             m_colorPicker->RecreateResources(context);
         }
+
+        if (m_controlPanel)
+        {
+            m_controlPanel->Initialize();
+        }
+
+        if (m_colorPicker)
+        {
+            const Point newPos = {
+                static_cast<float>(width) - UILayout::kPadding - 80.0f,
+                UILayout::kPadding
+            };
+
+            m_colorPicker = std::make_unique<ColorPicker>(newPos, 40.0f);
+
+            if (m_colorPicker->Initialize(context))
+            {
+                m_colorPicker->SetOnColorSelectedCallback([this](const Color& c) {
+                    if (m_controller) m_controller->SetPrimaryColor(c);
+                    });
+            }
+        }
     }
 
-    void UIManager::Draw(GraphicsContext& context) {
-        if (m_colorPicker && m_colorPicker->IsVisible()) {
-            m_colorPicker->Draw(context);
+    void UIManager::Update(const Point& mousePos, bool isMouseDown, float deltaTime)
+    {
+        if (m_activeSlider)
+        {
+            if (isMouseDown)
+            {
+                m_activeSlider->Drag(mousePos);
+            }
+            else
+            {
+                m_activeSlider->EndDrag();
+                m_activeSlider = nullptr;
+                ReleaseCapture();
+            }
+            return;
         }
-        // Future elements will be drawn here
+
+        if (IsModalActive())
+        {
+            m_audioSettingsPanel->Update(mousePos, isMouseDown, deltaTime);
+
+            if (isMouseDown && !m_activeSlider)
+            {
+                m_activeSlider = m_audioSettingsPanel->GetSliderAt(mousePos);
+                if (m_activeSlider)
+                {
+                    SetCapture(m_windowManager->GetCurrentHwnd());
+                    m_activeSlider->BeginDrag(mousePos);
+                }
+            }
+            return;
+        }
+
+        if (m_controlPanel)
+            m_controlPanel->Update(mousePos, isMouseDown, deltaTime);
+
+        if (ShouldDrawColorPicker() && m_colorPicker)
+            m_colorPicker->Update(mousePos, isMouseDown);
     }
 
-    bool UIManager::HandleMouseMove(int x, int y) {
-        if (m_colorPicker && m_colorPicker->IsVisible()) {
-            return m_colorPicker->HandleMouseMove(x, y);
+    void UIManager::Draw(GraphicsContext& context) const
+    {
+        if (m_controlPanel)
+            m_controlPanel->Draw(context);
+
+        if (ShouldDrawColorPicker())
+            if (m_colorPicker)
+                m_colorPicker->Draw(context);
+
+        if (IsModalActive())
+        {
+            const Rect screenRect = {
+                0.0f, 0.0f,
+                static_cast<float>(context.GetWidth()),
+                static_cast<float>(context.GetHeight())
+            };
+            context.DrawRectangle(screenRect, Color(0.0f, 0.0f, 0.0f, 0.5f));
+            m_audioSettingsPanel->Draw(context);
         }
-        return false;
     }
 
-    bool UIManager::HandleMouseClick(int x, int y) {
-        if (m_colorPicker && m_colorPicker->IsVisible()) {
-            return m_colorPicker->HandleMouseClick(x, y);
-        }
-        return false;
+    void UIManager::ShowAudioSettings()
+    {
+        if (m_audioSettingsPanel)
+            m_audioSettingsPanel->Show();
     }
 
-    bool UIManager::HandleMouseMessage(UINT msg, int x, int y) {
-        switch (msg) {
-        case WM_MOUSEMOVE:
-            return HandleMouseMove(x, y);
-        case WM_LBUTTONDOWN:
-            return HandleMouseClick(x, y);
-        default:
-            return false;
-        }
+    void UIManager::HideAudioSettings()
+    {
+        if (m_audioSettingsPanel)
+            m_audioSettingsPanel->Hide();
+    }
+
+    [[nodiscard]] bool UIManager::IsModalActive() const
+    {
+        return m_audioSettingsPanel && m_audioSettingsPanel->IsVisible();
+    }
+
+    [[nodiscard]] bool UIManager::ShouldDrawColorPicker() const
+    {
+        if (!m_controller) return false;
+
+        const auto* rendererManager = m_controller->GetRendererManager();
+        if (!rendererManager) return false;
+
+        const auto* renderer = rendererManager->GetCurrentRenderer();
+        return renderer && renderer->SupportsPrimaryColor();
     }
 
 }
