@@ -133,6 +133,10 @@ namespace Spectrum {
         return m_audioConfig.barCount;
     }
 
+    [[nodiscard]] std::string_view AudioManager::GetSpectrumScaleName() const {
+        return Utils::ToString(m_audioConfig.scaleType);
+    }
+
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
     // Private Implementation
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-

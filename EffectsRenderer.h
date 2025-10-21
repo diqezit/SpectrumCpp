@@ -1,51 +1,81 @@
+// EffectsRenderer.h
 #ifndef SPECTRUM_CPP_EFFECTS_RENDERER_H
 #define SPECTRUM_CPP_EFFECTS_RENDERER_H
 
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// This file defines the EffectsRenderer, a class for applying visual
-// effects like shadows, glows, and opacity layers. It encapsulates
-// the logic for D2D layers and custom effect implementations
+// Defines the EffectsRenderer, a class for applying visual effects like
+// shadows, glows, and opacity layers. It encapsulates the logic for D2D
+// layers and custom effect implementations.
+//
+// Key responsibilities:
+// - Shadow rendering through offset drawing (performance-optimized)
+// - Glow effects via layered radial gradients
+// - Opacity layer management with automatic cleanup
+// - Clip rectangle management for masking
+//
+// Design notes:
+// - All render methods are const (stateless rendering)
+// - Uses RAII wrappers from D2DHelpers for state management
+// - Non-owning pointers to render resources (lifetime managed externally)
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Common.h"
 #include <functional>
-#include <stack>
 
 namespace Spectrum {
 
-    class EffectsRenderer {
+    class EffectsRenderer final
+    {
     public:
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Lifecycle Management
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         EffectsRenderer(
             ID2D1RenderTarget* renderTarget,
             ID2D1SolidColorBrush* brush
         );
+
+        EffectsRenderer(const EffectsRenderer&) = delete;
+        EffectsRenderer& operator=(const EffectsRenderer&) = delete;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Effect Rendering
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void DrawWithShadow(
             std::function<void()> drawCallback,
             const Point& offset,
             float blur,
             const Color& shadowColor
-        );
+        ) const;
 
         void DrawGlow(
             const Point& center,
             float radius,
             const Color& glowColor,
             float intensity = 1.0f
-        );
+        ) const;
 
-        void BeginOpacityLayer(float opacity);
-        void EndOpacityLayer();
+        void BeginOpacityLayer(float opacity) const;
+        void EndOpacityLayer() const;
 
-        void PushClipRect(const Rect& rect);
-        void PopClipRect();
+        void PushClipRect(const Rect& rect) const;
+        void PopClipRect() const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // State Management
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void UpdateRenderTarget(ID2D1RenderTarget* renderTarget);
 
     private:
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Member Variables
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         ID2D1RenderTarget* m_renderTarget;
         ID2D1SolidColorBrush* m_brush;
-        std::stack<wrl::ComPtr<ID2D1Layer>> m_layerStack;
     };
 
 } // namespace Spectrum

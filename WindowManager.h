@@ -1,12 +1,19 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // Defines the WindowManager, which orchestrates the lifecycle and
-// configuration of the main application window and the overlay.
-// It manages the graphics context, UI, and state transitions.
+// configuration of the main application window and the overlay window.
 //
-// Defines the WindowManager, the primary interface to the OS's windowing
-// system. It orchestrates the creation of all windows, manages their state
-// (normal/overlay), owns the GraphicsContext, and routes raw window messages
-// to the appropriate subsystems.
+// The WindowManager serves as the primary interface to the OS windowing
+// system, managing window creation, state transitions (normal/overlay mode),
+// ownership of the GraphicsContext, and routing of raw Win32 messages to
+// appropriate subsystems. It maintains the current mouse state and provides
+// it to the ControllerCore for frame state collection.
+//
+// Key Responsibilities:
+// - Create and manage main and overlay windows
+// - Own and recreate GraphicsContext on device loss
+// - Route Win32 messages to appropriate handlers
+// - Maintain mouse input state
+// - Coordinate overlay mode transitions
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #ifndef SPECTRUM_CPP_WINDOW_MANAGER_H
@@ -20,16 +27,30 @@ namespace Spectrum {
     class ControllerCore;
     class EventBus;
     class GraphicsContext;
-    class IRenderer;
     class MainWindow;
     class UIManager;
 
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // WindowManager Class
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
     class WindowManager final {
     public:
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Public Structures
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         struct MouseState {
-            Point position{ 0, 0 };
+            Point position{ 0.0f, 0.0f };
             bool leftButtonDown = false;
+            bool rightButtonDown = false;
+            bool middleButtonDown = false;
+            float wheelDelta = 0.0f;
         };
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Lifecycle Management
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         explicit WindowManager(
             HINSTANCE hInstance,
@@ -38,10 +59,22 @@ namespace Spectrum {
         );
         ~WindowManager() noexcept;
 
+        WindowManager(const WindowManager&) = delete;
+        WindowManager& operator=(const WindowManager&) = delete;
+        WindowManager(WindowManager&&) = delete;
+        WindowManager& operator=(WindowManager&&) = delete;
+
         [[nodiscard]] bool Initialize();
-        bool RecreateGraphicsAndNotify(HWND hwnd);
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Main Execution Loop
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void ProcessMessages();
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Window Message Handling
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         LRESULT HandleWindowMessage(
             HWND hwnd,
@@ -50,18 +83,36 @@ namespace Spectrum {
             LPARAM lParam
         );
 
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // State Management
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         void ToggleOverlay();
+        bool RecreateGraphicsAndNotify(HWND hwnd);
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // State Queries
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         [[nodiscard]] bool IsRunning() const;
         [[nodiscard]] bool IsOverlayMode() const noexcept;
         [[nodiscard]] bool IsActive() const;
 
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Public Getters
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         [[nodiscard]] GraphicsContext* GetGraphics() const noexcept;
         [[nodiscard]] UIManager* GetUIManager() const noexcept;
-        [[nodiscard]] HWND GetCurrentHwnd() const;
         [[nodiscard]] MainWindow* GetMainWindow() const noexcept;
-        [[nodiscard]] const MouseState& GetMouseState() const noexcept { return m_mouseState; }
+        [[nodiscard]] HWND GetCurrentHwnd() const;
+        [[nodiscard]] const MouseState& GetMouseState() const noexcept;
 
     private:
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Private Implementation / Internal Helpers
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         void SubscribeToEvents(EventBus* bus);
 
         [[nodiscard]] bool InitializeMainWindow();
@@ -71,18 +122,23 @@ namespace Spectrum {
         void DeactivateOverlayMode();
 
         void HideMainWindow() const;
-        void PositionAndShowOverlay() const;
-        void HideOverlayWindow() const;
         void ShowMainWindow() const;
+        void HideOverlayWindow() const;
+        void PositionAndShowOverlay() const;
 
         [[nodiscard]] bool RecreateGraphicsContext(HWND hwnd);
         void PropagateResizeToSubsystems(HWND hwnd);
-
         void NotifyRendererOfModeChange() const;
+
         void OnExitRequest();
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Member Variables
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         HINSTANCE m_hInstance;
         ControllerCore* m_controller;
+
         bool m_isOverlay;
         MouseState m_mouseState;
 
@@ -92,6 +148,6 @@ namespace Spectrum {
         std::unique_ptr<UIManager> m_uiManager;
     };
 
-}
+} // namespace Spectrum
 
-#endif
+#endif // SPECTRUM_CPP_WINDOW_MANAGER_H

@@ -1,12 +1,8 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// This file implements the UIButton class. It handles state transitions
-// with smooth animations and uses the GraphicsContext to render its visual
-// representation, including gradients, glows, borders, and text.
+// Implements the UIButton with smooth cubic easing for hover animations.
 //
-// Implements the UIButton by defining its state machine, animation logic,
-// and data-driven drawing routines. It separates color and style calculation
-// from the actual drawing calls to maintain clean, single-responsibility
-// methods.
+// This implementation uses EaseInOutCubic for более natural transitions
+// compared to the previous quadratic easing.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "UIButton.h"
@@ -122,20 +118,16 @@ namespace Spectrum {
         const bool isOver = IsInHitbox(mousePos);
         const State previousState = m_state;
 
-        if (!isOver)
-        {
+        if (!isOver) {
             m_state = State::Normal;
             return;
         }
 
-        if (isMouseDown)
-        {
+        if (isMouseDown) {
             m_state = State::Pressed;
         }
-        else
-        {
+        else {
             m_state = State::Hovered;
-            // A click is registered on mouse release while the cursor is over the button.
             if (previousState == State::Pressed && m_onClick)
                 m_onClick();
         }
@@ -144,16 +136,18 @@ namespace Spectrum {
     void UIButton::UpdateAnimation(float deltaTime)
     {
         const float animationStep = kAnimationSpeed * deltaTime;
-        if (m_state == State::Hovered || m_state == State::Pressed)
+
+        if (m_state == State::Hovered || m_state == State::Pressed) {
             m_hoverAnimationProgress = std::min(1.0f, m_hoverAnimationProgress + animationStep);
-        else
+        }
+        else {
             m_hoverAnimationProgress = std::max(0.0f, m_hoverAnimationProgress - animationStep);
+        }
     }
 
     void UIButton::DrawBackground(GraphicsContext& context) const
     {
-        if (m_hoverAnimationProgress <= 0.0f)
-        {
+        if (m_hoverAnimationProgress <= 0.0f) {
             context.DrawVerticalGradientBar(m_rect, m_style.backgroundStops, m_style.cornerRadius);
             return;
         }
@@ -184,16 +178,21 @@ namespace Spectrum {
 
     void UIButton::DrawText(GraphicsContext& context) const
     {
-        const Point center = { m_rect.x + m_rect.width / 2.0f, m_rect.y + m_rect.height / 2.0f };
+        const Point center = {
+            m_rect.x + m_rect.width * 0.5f,
+            m_rect.y + m_rect.height * 0.5f
+        };
+
         context.DrawText(m_text, center, m_style.textColor, 14.0f, DWRITE_TEXT_ALIGNMENT_CENTER);
     }
 
     [[nodiscard]] std::vector<D2D1_GRADIENT_STOP> UIButton::GetInterpolatedGradientStops() const
     {
         if (m_style.backgroundStops.size() != m_style.backgroundHoverStops.size())
-            return m_style.backgroundStops; // Return base style as a safe fallback
+            return m_style.backgroundStops;
 
-        auto interpolatedStops = m_style.backgroundStops; // Copy to preserve positions
+        auto interpolatedStops = m_style.backgroundStops;
+        const float easedProgress = Utils::EaseInOutCubic(m_hoverAnimationProgress);
 
         for (size_t i = 0; i < interpolatedStops.size(); ++i)
         {
@@ -201,10 +200,10 @@ namespace Spectrum {
             const auto& hoverColor = m_style.backgroundHoverStops[i].color;
             auto& targetColor = interpolatedStops[i].color;
 
-            targetColor.r = Utils::Lerp(normalColor.r, hoverColor.r, m_hoverAnimationProgress);
-            targetColor.g = Utils::Lerp(normalColor.g, hoverColor.g, m_hoverAnimationProgress);
-            targetColor.b = Utils::Lerp(normalColor.b, hoverColor.b, m_hoverAnimationProgress);
-            targetColor.a = Utils::Lerp(normalColor.a, hoverColor.a, m_hoverAnimationProgress);
+            targetColor.r = Utils::Lerp(normalColor.r, hoverColor.r, easedProgress);
+            targetColor.g = Utils::Lerp(normalColor.g, hoverColor.g, easedProgress);
+            targetColor.b = Utils::Lerp(normalColor.b, hoverColor.b, easedProgress);
+            targetColor.a = Utils::Lerp(normalColor.a, hoverColor.a, easedProgress);
         }
 
         return interpolatedStops;
@@ -212,15 +211,17 @@ namespace Spectrum {
 
     [[nodiscard]] Color UIButton::GetCurrentBorderColor() const
     {
-        Color finalColor = Utils::AdjustBrightness(m_style.borderColor, 1.0f + m_hoverAnimationProgress * 1.5f);
-        finalColor.a = Utils::Lerp(0.1f, 0.4f, m_hoverAnimationProgress);
+        const float easedProgress = Utils::EaseOutCubic(m_hoverAnimationProgress);
+        Color finalColor = Utils::AdjustBrightness(m_style.borderColor, 1.0f + easedProgress * 1.5f);
+        finalColor.a = Utils::Lerp(0.1f, 0.4f, easedProgress);
         return finalColor;
     }
 
     [[nodiscard]] Color UIButton::GetCurrentGlowColor() const
     {
+        const float easedProgress = Utils::EaseOutCubic(m_hoverAnimationProgress);
         Color finalColor = m_style.glowColor;
-        finalColor.a = 0.5f * m_hoverAnimationProgress;
+        finalColor.a *= 0.5f * easedProgress;
         return finalColor;
     }
 

@@ -1,31 +1,37 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// This file implements the MainWindow class
-// It abstracts the complexities of Win32 window management, providing a
-// clean interface for creating, showing, and processing window messages
+// Implements the MainWindow class, providing a complete RAII wrapper
+// around Win32 window management.
 //
-// Implements the MainWindow class by defining the step-by-step process of
-// Win32 window registration and creation. It also contains the static WndProc
-// which acts as the entry point for all window messages, delegating them
-// to the associated WindowManager instance.
+// This implementation handles the step-by-step process of Win32 window
+// registration, creation, and message processing. The static WndProc acts
+// as the entry point for all window messages, delegating them to the
+// associated WindowManager instance stored via GWLP_USERDATA.
+//
+// Key Implementation Details:
+// - Two-phase initialization: constructor + Initialize()
+// - Proper cleanup tracking via m_classRegistered flag
+// - Window class name differentiation for main vs overlay windows
+// - Message pump that respects m_running flag for graceful shutdown
+// - WndProc uses WM_NCCREATE for early user data storage
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "MainWindow.h"
-#include "ControllerCore.h"
 #include "Resource.h"
-#include "WindowManager.h"
 #include "WindowHelper.h"
+#include "WindowManager.h"
 
 namespace Spectrum {
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Lifecycle Management
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     MainWindow::MainWindow(HINSTANCE hInstance) :
         m_hInstance(hInstance),
         m_hwnd(nullptr),
         m_running(false),
         m_isOverlay(false),
+        m_classRegistered(false),
         m_width(0),
         m_height(0)
     {
@@ -33,8 +39,7 @@ namespace Spectrum {
 
     MainWindow::~MainWindow() noexcept
     {
-        if (m_hwnd) DestroyWindow(m_hwnd);
-        if (!m_className.empty()) UnregisterClassW(m_className.c_str(), m_hInstance);
+        Cleanup();
     }
 
     [[nodiscard]] bool MainWindow::Initialize(
@@ -57,13 +62,14 @@ namespace Spectrum {
         return true;
     }
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Main Execution Loop
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     void MainWindow::ProcessMessages()
     {
-        MSG msg = {};
+        MSG msg{};
+
         while (m_running && PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
         {
             if (msg.message == WM_QUIT)
@@ -71,45 +77,56 @@ namespace Spectrum {
                 m_running = false;
                 break;
             }
+
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }
     }
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-    // State Queries & Management
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // State Management
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     void MainWindow::Show(int cmdShow) const
     {
+        if (!m_hwnd) return;
+
         ShowWindow(m_hwnd, cmdShow);
         UpdateWindow(m_hwnd);
     }
 
     void MainWindow::Hide() const
     {
+        if (!m_hwnd) return;
+
         ShowWindow(m_hwnd, SW_HIDE);
     }
 
     void MainWindow::Close()
     {
-        if (m_running)
-            PostMessage(m_hwnd, WM_CLOSE, 0, 0);
+        if (!m_running) return;
+        if (!m_hwnd) return;
+
+        PostMessage(m_hwnd, WM_CLOSE, 0, 0);
     }
+
+    void MainWindow::SetRunning(bool running) noexcept
+    {
+        m_running = running;
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // State Queries
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     [[nodiscard]] bool MainWindow::IsRunning() const noexcept
     {
         return m_running;
     }
 
-    void MainWindow::SetRunning(bool running)
-    {
-        m_running = running;
-    }
-
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Public Getters
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     [[nodiscard]] HWND MainWindow::GetHwnd() const noexcept
     {
@@ -126,14 +143,19 @@ namespace Spectrum {
         return m_height;
     }
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Private Implementation / Internal Helpers
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     [[nodiscard]] bool MainWindow::RegisterWindowClass()
     {
-        WNDCLASSEXW wcex = CreateWindowClass();
-        return RegisterClassExW(&wcex) != 0;
+        const WNDCLASSEXW wcex = CreateWindowClass();
+
+        const ATOM result = RegisterClassExW(&wcex);
+        if (result == 0) return false;
+
+        m_classRegistered = true;
+        return true;
     }
 
     [[nodiscard]] WNDCLASSEXW MainWindow::CreateWindowClass() const
@@ -142,14 +164,28 @@ namespace Spectrum {
         wcex.cbSize = sizeof(WNDCLASSEXW);
         wcex.style = CS_HREDRAW | CS_VREDRAW;
         wcex.lpfnWndProc = WndProc;
+        wcex.cbClsExtra = 0;
+        wcex.cbWndExtra = 0;
         wcex.hInstance = m_hInstance;
-        wcex.hIcon = LoadIconW(m_hInstance, MAKEINTRESOURCEW(IDI_APP_ICON));
-        wcex.hIconSm = LoadIconW(m_hInstance, MAKEINTRESOURCEW(IDI_APP_ICON));
         wcex.hCursor = LoadCursorW(nullptr, IDC_ARROW);
         wcex.lpszClassName = m_className.c_str();
-        wcex.hbrBackground = m_isOverlay
-            ? CreateSolidBrush(RGB(0, 0, 0))
-            : (HBRUSH)(COLOR_WINDOW + 1);
+        wcex.lpszMenuName = nullptr;
+
+        // Try to load application icon, fallback to default if not available
+        wcex.hIcon = LoadIconW(m_hInstance, MAKEINTRESOURCEW(IDI_APP_ICON));
+        if (!wcex.hIcon)
+            wcex.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+
+        wcex.hIconSm = LoadIconW(m_hInstance, MAKEINTRESOURCEW(IDI_APP_ICON));
+        if (!wcex.hIconSm)
+            wcex.hIconSm = LoadIconW(nullptr, IDI_APPLICATION);
+
+        // Background brush: black for overlay, default for main window
+        if (m_isOverlay)
+            wcex.hbrBackground = CreateSolidBrush(RGB(0, 0, 0));
+        else
+            wcex.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+
         return wcex;
     }
 
@@ -168,7 +204,10 @@ namespace Spectrum {
             m_className.c_str(),
             title.c_str(),
             styles,
-            params.x, params.y, params.w, params.h,
+            params.x,
+            params.y,
+            params.w,
+            params.h,
             userPtr
         );
 
@@ -184,16 +223,17 @@ namespace Spectrum {
         const WindowUtils::Styles& styles
     ) const
     {
-        RECT rc = { 0, 0, width, height };
-        WindowUtils::AdjustRectIfNeeded(rc, styles, m_isOverlay);
+        RECT rect{ 0, 0, width, height };
+        WindowUtils::AdjustRectIfNeeded(rect, styles, m_isOverlay);
 
-        if (m_isOverlay) return { 0, 0, width, height };
+        if (m_isOverlay)
+            return { 0, 0, width, height };
 
         return {
             CW_USEDEFAULT,
             CW_USEDEFAULT,
-            rc.right - rc.left,
-            rc.bottom - rc.top
+            rect.right - rect.left,
+            rect.bottom - rect.top
         };
     }
 
@@ -203,9 +243,24 @@ namespace Spectrum {
             WindowUtils::ApplyOverlay(m_hwnd);
     }
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    void MainWindow::Cleanup() noexcept
+    {
+        if (m_hwnd)
+        {
+            DestroyWindow(m_hwnd);
+            m_hwnd = nullptr;
+        }
+
+        if (m_classRegistered && !m_className.empty())
+        {
+            UnregisterClassW(m_className.c_str(), m_hInstance);
+            m_classRegistered = false;
+        }
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Win32 Message Handling
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     LRESULT CALLBACK MainWindow::WndProc(
         HWND hwnd,
@@ -217,23 +272,29 @@ namespace Spectrum {
         if (msg == WM_NCCREATE)
             StoreManagerPointer(hwnd, lParam);
 
-        WindowManager* wm = GetManagerFromHwnd(hwnd);
+        WindowManager* manager = GetManagerFromHwnd(hwnd);
 
-        if (wm)
-            return wm->HandleWindowMessage(hwnd, msg, wParam, lParam);
+        if (manager)
+            return manager->HandleWindowMessage(hwnd, msg, wParam, lParam);
 
         return DefWindowProc(hwnd, msg, wParam, lParam);
     }
 
     void MainWindow::StoreManagerPointer(HWND hwnd, LPARAM lParam)
     {
-        auto* pCreate = reinterpret_cast<CREATESTRUCT*>(lParam);
-        SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(pCreate->lpCreateParams));
+        auto* createStruct = reinterpret_cast<CREATESTRUCT*>(lParam);
+        SetWindowLongPtr(
+            hwnd,
+            GWLP_USERDATA,
+            reinterpret_cast<LONG_PTR>(createStruct->lpCreateParams)
+        );
     }
 
     WindowManager* MainWindow::GetManagerFromHwnd(HWND hwnd)
     {
-        return reinterpret_cast<WindowManager*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
+        return reinterpret_cast<WindowManager*>(
+            GetWindowLongPtr(hwnd, GWLP_USERDATA)
+            );
     }
 
 } // namespace Spectrum

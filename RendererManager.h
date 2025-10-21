@@ -1,49 +1,62 @@
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// Defines the RendererManager, which is responsible for managing
-// all available visualizers, handling switching between them, and
-// orchestrating the main scene rendering process.
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
 #ifndef SPECTRUM_CPP_RENDERER_MANAGER_H
 #define SPECTRUM_CPP_RENDERER_MANAGER_H
 
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// Defines the RendererManager, responsible for managing the lifecycle
+// of all available visualizers (IRenderer implementations).
+// 
+// This class handles the creation, switching, and configuration of
+// renderers, acting as a central authority for visualization style and
+// quality settings. It depends on EventBus for input and WindowManager
+// for viewport information.
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
 #include "Common.h"
-#include "GraphicsContext.h"
 #include <map>
 #include <memory>
 #include <string_view>
 
-namespace Spectrum {
-
+namespace Spectrum
+{
     class EventBus;
     class WindowManager;
+    class GraphicsContext;
     class IRenderer;
 
-    class RendererManager {
+    class RendererManager final
+    {
     public:
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // Public Interface
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        explicit RendererManager(
-            EventBus* bus,
-            WindowManager* windowManager
-        );
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Lifecycle Management
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        explicit RendererManager(EventBus* bus, WindowManager* windowManager);
         ~RendererManager();
 
-        bool Initialize();
+        RendererManager(const RendererManager&) = delete;
+        RendererManager& operator=(const RendererManager&) = delete;
+
+        [[nodiscard]] bool Initialize();
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Event Handling
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         void OnResize(int width, int height);
 
-        void SetCurrentRenderer(
-            RenderStyle style,
-            GraphicsContext* graphics
-        );
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Configuration & Setters
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        void SetCurrentRenderer(RenderStyle style, GraphicsContext* graphics);
         void SwitchToNextRenderer(GraphicsContext* graphics);
         void SwitchToPrevRenderer(GraphicsContext* graphics);
         void CycleQuality(int direction);
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // Getters
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Public Getters
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         [[nodiscard]] IRenderer* GetCurrentRenderer() const;
         [[nodiscard]] RenderStyle GetCurrentStyle() const;
         [[nodiscard]] RenderQuality GetQuality() const;
@@ -51,29 +64,26 @@ namespace Spectrum {
         [[nodiscard]] std::string_view GetQualityName() const;
 
     private:
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // Private Implementation
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Private Implementation / Internal Helpers
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         void SubscribeToEvents(EventBus* bus);
         void CreateRenderers();
         void ActivateInitialRenderer();
-
         void DeactivateCurrentRenderer();
-        void ActivateNewRenderer(
-            RenderStyle style,
-            GraphicsContext* graphics
-        );
-
+        void ActivateNewRenderer(RenderStyle style, GraphicsContext* graphics);
         void SetQuality(RenderQuality quality);
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Member Variables
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         std::map<RenderStyle, std::unique_ptr<IRenderer>> m_renderers;
-        IRenderer* m_currentRenderer;
+        IRenderer* m_currentRenderer; // Non-owning pointer to an element in m_renderers
         RenderStyle m_currentStyle;
         RenderQuality m_currentQuality;
-        WindowManager* m_windowManager;
+        WindowManager* m_windowManager; // Non-owning pointer to a global service
     };
 
 } // namespace Spectrum

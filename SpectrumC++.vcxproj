@@ -43,6 +43,7 @@
     <ClInclude Include="Common.h" />
     <ClInclude Include="ControlPanel.h" />
     <ClInclude Include="CubesRenderer.h" />
+    <ClInclude Include="D2DHelpers.h" />
     <ClInclude Include="EffectsRenderer.h" />
     <ClInclude Include="EventBus.h" />
     <ClInclude Include="FFTProcessor.h" />
@@ -58,6 +59,7 @@
     <ClInclude Include="IRenderer.h" />
     <ClInclude Include="KenwoodBarsRenderer.h" />
     <ClInclude Include="LedPanelRenderer.h" />
+    <ClInclude Include="Logger.h" />
     <ClInclude Include="MathUtils.h" />
     <ClInclude Include="PanelAnimator.h" />
     <ClInclude Include="PanelDrawHelper.h" />

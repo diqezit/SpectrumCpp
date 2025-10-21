@@ -16,6 +16,7 @@ namespace Spectrum {
         m_isVisible(true),
         m_isMouseOver(false),
         m_wasPressed(false),
+        m_hoverAnimationProgress(0.0f),
         m_hoverColor(Color::White())
     {
     }
@@ -29,40 +30,100 @@ namespace Spectrum {
         CreateD2DResource(context);
     }
 
-    void ColorPicker::Update(Point mousePos, bool isMouseDown) {
+    void ColorPicker::Update(
+        Point mousePos,
+        bool isMouseDown,
+        float deltaTime
+    ) {
         if (!m_isVisible) {
             m_isMouseOver = false;
+            m_hoverAnimationProgress = 0.0f;
             return;
         }
 
         m_isMouseOver = IsInHitbox(mousePos);
+
+        // Update hover animation with deltaTime
+        const float targetProgress = m_isMouseOver ? 1.0f : 0.0f;
+        constexpr float animationSpeed = 12.0f;
+        m_hoverAnimationProgress = Utils::ExponentialDecay(
+            m_hoverAnimationProgress,
+            targetProgress,
+            animationSpeed,
+            deltaTime
+        );
+
         if (m_isMouseOver) {
-            m_hoverColor = CalculateColorFromPosition(static_cast<int>(mousePos.x), static_cast<int>(mousePos.y));
+            m_hoverColor = CalculateColorFromPosition(
+                static_cast<int>(mousePos.x),
+                static_cast<int>(mousePos.y)
+            );
             if (isMouseDown && !m_wasPressed) {
-                if (m_onColorSelected) m_onColorSelected(m_hoverColor);
+                if (m_onColorSelected) {
+                    m_onColorSelected(m_hoverColor);
+                }
             }
         }
         m_wasPressed = isMouseDown;
     }
 
     void ColorPicker::Draw(GraphicsContext& context) const {
-        if (!m_isVisible) return;
+        DrawWithAlpha(context, 1.0f);
+    }
 
-        if (!m_colorWheelBitmap) {
-            if (!const_cast<ColorPicker*>(this)->CreateD2DResource(context)) return;
+    void ColorPicker::DrawWithAlpha(
+        GraphicsContext& context,
+        float alpha
+    ) const {
+        if (!m_isVisible || alpha <= 0.0f) {
+            return;
         }
 
-        ColorWheelRenderer::DrawWheel(context, m_colorWheelBitmap.Get(), m_bounds);
-        ColorWheelRenderer::DrawBorder(context, m_bounds, m_isMouseOver);
+        if (!m_colorWheelBitmap) {
+            if (!const_cast<ColorPicker*>(this)->CreateD2DResource(context)) {
+                return;
+            }
+        }
 
-        if (m_isMouseOver) {
-            ColorWheelRenderer::DrawHoverPreview(context, m_bounds, m_hoverColor);
+        ColorWheelRenderer::DrawWheel(
+            context,
+            m_colorWheelBitmap.Get(),
+            m_bounds,
+            alpha
+        );
+
+        const float animatedAlpha = m_hoverAnimationProgress * alpha;
+        ColorWheelRenderer::DrawBorder(context, m_bounds, m_isMouseOver, animatedAlpha);
+
+        if (m_isMouseOver && m_hoverAnimationProgress > 0.01f) {
+            ColorWheelRenderer::DrawHoverPreview(
+                context,
+                m_bounds,
+                m_hoverColor,
+                animatedAlpha
+            );
         }
     }
 
     void ColorPicker::SetVisible(bool visible) {
         m_isVisible = visible;
-        if (!m_isVisible) m_isMouseOver = false;
+        if (!m_isVisible) {
+            m_isMouseOver = false;
+            m_hoverAnimationProgress = 0.0f;
+        }
+    }
+
+    void ColorPicker::SetPosition(const Point& position) {
+        const float radius = m_bounds.width * 0.5f;
+        m_bounds.x = position.x;
+        m_bounds.y = position.y;
+    }
+
+    Point ColorPicker::GetCenter() const {
+        return {
+            m_bounds.x + m_bounds.width * 0.5f,
+            m_bounds.y + m_bounds.height * 0.5f
+        };
     }
 
     void ColorPicker::SetOnColorSelectedCallback(ColorSelectedCallback cb) {
@@ -70,7 +131,7 @@ namespace Spectrum {
     }
 
     bool ColorPicker::IsInHitbox(Point mousePos) const {
-        const Point center = { m_bounds.x + m_bounds.width * 0.5f, m_bounds.y + m_bounds.height * 0.5f };
+        const Point center = GetCenter();
         const float radius = m_bounds.width * 0.5f;
         const float dx = mousePos.x - center.x;
         const float dy = mousePos.y - center.y;
@@ -78,7 +139,7 @@ namespace Spectrum {
     }
 
     Color ColorPicker::CalculateColorFromPosition(int x, int y) const {
-        const Point center = { m_bounds.x + m_bounds.width * 0.5f, m_bounds.y + m_bounds.height * 0.5f };
+        const Point center = GetCenter();
         const float radius = m_bounds.width * 0.5f;
         const float dx = static_cast<float>(x) - center.x;
         const float dy = static_cast<float>(y) - center.y;
@@ -91,7 +152,9 @@ namespace Spectrum {
 
     bool ColorPicker::CreateD2DResource(GraphicsContext& context) {
         ID2D1HwndRenderTarget* rt = context.GetRenderTarget();
-        if (!rt) return false;
+        if (!rt) {
+            return false;
+        }
 
         const int size = static_cast<int>(m_bounds.width);
         const float radius = size * 0.5f;
@@ -104,10 +167,16 @@ namespace Spectrum {
         );
 
         HRESULT hr = rt->CreateBitmap(
-            bmpSize, bitmapData.data(), size * sizeof(uint32_t), &bmpProps, m_colorWheelBitmap.GetAddressOf()
+            bmpSize,
+            bitmapData.data(),
+            size * sizeof(uint32_t),
+            &bmpProps,
+            m_colorWheelBitmap.GetAddressOf()
         );
 
-        if (FAILED(hr)) m_colorWheelBitmap.Reset();
+        if (FAILED(hr)) {
+            m_colorWheelBitmap.Reset();
+        }
         return SUCCEEDED(hr);
     }
 }

@@ -1,52 +1,81 @@
-// FireRenderer.h: Renders the spectrum as a pixelated fire effect.
-
+// FireRenderer.h
 #ifndef SPECTRUM_CPP_FIRE_RENDERER_H
 #define SPECTRUM_CPP_FIRE_RENDERER_H
 
-#include "BaseRenderer.h"
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// Defines the FireRenderer for pixelated fire effect visualization.
+//
+// This renderer simulates a fire effect using a 2D grid where heat propagates
+// upward with decay. Spectrum data injects heat at the bottom, creating a
+// flame-like appearance with color gradients from dark red to white.
+//
+// Key features:
+// - Grid-based fire simulation with heat propagation
+// - Optional wind effect (horizontal wave motion)
+// - Optional smoothing (neighbor averaging)
+// - Quality-dependent pixel size and effects
+// - Fixed fire color palette (doesn't support primary color)
+//
+// Design notes:
+// - Grid resolution depends on quality (pixel size)
+// - Fire simulation runs in UpdateAnimation()
+// - Rendering simply draws grid pixels with palette colors
+// - Uses separate read/write buffers for propagation
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
+#include "BaseRenderer.h"
 #include <vector>
 
 namespace Spectrum {
 
-    class FireRenderer final : public BaseRenderer {
+    class FireRenderer final : public BaseRenderer
+    {
     public:
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Lifecycle Management
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         FireRenderer();
         ~FireRenderer() override = default;
 
-        RenderStyle GetStyle() const override {
-            return RenderStyle::Fire;
-        }
-        std::string_view GetName() const override {
-            return "Fire";
-        }
-        bool SupportsPrimaryColor() const override {
-            return false;
-        }
-        void SetPrimaryColor(const Color& color) override {
-            (void)color;
-        }
+        FireRenderer(const FireRenderer&) = delete;
+        FireRenderer& operator=(const FireRenderer&) = delete;
 
-        // re-initialize grid when renderer becomes active or window resizes
-        void OnActivate(
-            int width,
-            int height
-        ) override;
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // IRenderer Implementation
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] RenderStyle GetStyle() const override { return RenderStyle::Fire; }
+        [[nodiscard]] std::string_view GetName() const override { return "Fire"; }
+        [[nodiscard]] bool SupportsPrimaryColor() const override { return false; }
+
+        void SetPrimaryColor(const Color& /*color*/) override {}
+        void OnActivate(int width, int height) override;
 
     protected:
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // BaseRenderer Overrides
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         void UpdateSettings() override;
+
         void UpdateAnimation(
             const SpectrumData& spectrum,
             float deltaTime
         ) override;
+
         void DoRender(
             GraphicsContext& context,
             const SpectrumData& spectrum
         ) override;
 
     private:
-        // settings that change with quality level
-        struct Settings {
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Settings
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        struct Settings
+        {
             bool useSmoothing;
             bool useWind;
             float pixelSize;
@@ -62,16 +91,14 @@ namespace Spectrum {
         void CreateFirePalette();
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Fire Simulation Steps
+        // Fire Simulation
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void ApplyDecay();
         void InjectHeat(const SpectrumData& spectrum);
         void PropagateFire();
 
-        // These helpers are static because they are pure functions
-        // and do not depend on the state of a FireRenderer instance.
-        static float GetSourcePixelValue(
+        [[nodiscard]] static float GetSourcePixelValue(
             const std::vector<float>& readGrid,
             int x,
             int y,
@@ -80,7 +107,7 @@ namespace Spectrum {
             float time
         );
 
-        static float ApplySmoothing(
+        [[nodiscard]] static float ApplySmoothing(
             const std::vector<float>& readGrid,
             float currentValue,
             int x,
@@ -97,13 +124,17 @@ namespace Spectrum {
             GraphicsContext& context,
             int x,
             int y
-        );
+        ) const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Color Calculation
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        Color GetColorFromPalette(float intensity) const;
+        [[nodiscard]] Color GetColorFromPalette(float intensity) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Member Variables
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         Settings m_settings;
         int m_gridWidth;
@@ -114,4 +145,4 @@ namespace Spectrum {
 
 } // namespace Spectrum
 
-#endif // SPECTRUM_CPP_FIRE_RENDERER_H
+#endif

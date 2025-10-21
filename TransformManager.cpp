@@ -1,93 +1,126 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// This file implements the TransformManager class
-// It provides a stateful wrapper around Direct2D's transformation matrix
-// to simplify rotation, scaling, and translation operations
+// Implements the TransformManager for 2D transformation handling.
+//
+// Implementation details:
+// - Maintains a stack of transformation matrices for nested transforms
+// - Provides relative transforms (multiply with current) and absolute
+// - Includes stack depth limits to prevent overflow
+// - All transform methods are const (modify render target, not manager state)
+// - Uses D2DHelpers for validation and conversion
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "TransformManager.h"
-#include "MathUtils.h"
+#include "D2DHelpers.h"
+#include "Logger.h"
 
 namespace Spectrum {
 
-    namespace {
-        inline D2D1_POINT_2F ToD2DPoint(const Point& p) {
-            return D2D1::Point2F(p.x, p.y);
-        }
-    }
+    using namespace D2DHelpers;
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Lifecycle Management
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     TransformManager::TransformManager(ID2D1RenderTarget* renderTarget)
         : m_renderTarget(renderTarget)
     {
     }
 
-    // save current transform to apply nested transforms
-    void TransformManager::PushTransform() {
-        if (m_renderTarget) {
-            D2D1_MATRIX_3X2_F transform;
-            m_renderTarget->GetTransform(&transform);
-            m_transformStack.push(transform);
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Transform Stack Management
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    void TransformManager::PushTransform() const
+    {
+        if (!m_renderTarget) return;
+
+        if (m_transformStack.size() >= kMaxStackDepth) {
+            LOG_ERROR("Transform stack depth exceeded maximum of " << kMaxStackDepth);
+            return;
         }
+
+        D2D1_MATRIX_3X2_F currentTransform;
+        m_renderTarget->GetTransform(&currentTransform);
+        m_transformStack.push(currentTransform);
     }
 
-    // restore previous transform after nested operations
-    void TransformManager::PopTransform() {
-        if (m_renderTarget) {
-            if (!m_transformStack.empty()) {
-                m_renderTarget->SetTransform(m_transformStack.top());
-                m_transformStack.pop();
-            }
-            else {
-                // fall back to identity if stack is empty to prevent errors
-                m_renderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
-            }
+    void TransformManager::PopTransform() const
+    {
+        if (!m_renderTarget) return;
+
+        if (m_transformStack.empty()) {
+            LOG_WARNING("Attempted to pop from empty transform stack");
+            m_renderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+            return;
         }
+
+        m_renderTarget->SetTransform(m_transformStack.top());
+        m_transformStack.pop();
     }
 
-    // apply rotation relative to current transform
-    void TransformManager::RotateAt(const Point& center, float angleDegrees) {
-        if (m_renderTarget) {
-            D2D1_MATRIX_3X2_F current, rotation;
-            m_renderTarget->GetTransform(&current);
-            rotation = D2D1::Matrix3x2F::Rotation(angleDegrees, ToD2DPoint(center));
-            m_renderTarget->SetTransform(rotation * current);
-        }
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Transform Operations
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    void TransformManager::RotateAt(const Point& center, float angleDegrees) const
+    {
+        if (!m_renderTarget) return;
+
+        D2D1_MATRIX_3X2_F currentTransform;
+        m_renderTarget->GetTransform(&currentTransform);
+
+        const D2D1_MATRIX_3X2_F rotation =
+            D2D1::Matrix3x2F::Rotation(angleDegrees, ToD2DPoint(center));
+
+        m_renderTarget->SetTransform(rotation * currentTransform);
     }
 
-    // apply scaling relative to current transform
-    void TransformManager::ScaleAt(const Point& center, float scaleX, float scaleY) {
-        if (m_renderTarget) {
-            D2D1_MATRIX_3X2_F current, scale;
-            m_renderTarget->GetTransform(&current);
-            scale = D2D1::Matrix3x2F::Scale(scaleX, scaleY, ToD2DPoint(center));
-            m_renderTarget->SetTransform(scale * current);
-        }
+    void TransformManager::ScaleAt(const Point& center, float scaleX, float scaleY) const
+    {
+        if (!m_renderTarget) return;
+
+        D2D1_MATRIX_3X2_F currentTransform;
+        m_renderTarget->GetTransform(&currentTransform);
+
+        const D2D1_MATRIX_3X2_F scale =
+            D2D1::Matrix3x2F::Scale(scaleX, scaleY, ToD2DPoint(center));
+
+        m_renderTarget->SetTransform(scale * currentTransform);
     }
 
-    // apply translation relative to current transform
-    void TransformManager::TranslateBy(float dx, float dy) {
-        if (m_renderTarget) {
-            D2D1_MATRIX_3X2_F current, translation;
-            m_renderTarget->GetTransform(&current);
-            translation = D2D1::Matrix3x2F::Translation(dx, dy);
-            m_renderTarget->SetTransform(translation * current);
-        }
+    void TransformManager::TranslateBy(float dx, float dy) const
+    {
+        if (!m_renderTarget) return;
+
+        D2D1_MATRIX_3X2_F currentTransform;
+        m_renderTarget->GetTransform(&currentTransform);
+
+        const D2D1_MATRIX_3X2_F translation =
+            D2D1::Matrix3x2F::Translation(dx, dy);
+
+        m_renderTarget->SetTransform(translation * currentTransform);
     }
 
-    void TransformManager::SetTransform(const D2D1_MATRIX_3X2_F& transform) {
+    void TransformManager::SetTransform(const D2D1_MATRIX_3X2_F& transform) const
+    {
         if (m_renderTarget) {
             m_renderTarget->SetTransform(transform);
         }
     }
 
-    void TransformManager::ResetTransform() {
+    void TransformManager::ResetTransform() const
+    {
         if (m_renderTarget) {
             m_renderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
         }
     }
 
-    // when render target is recreated, transform stack must be cleared
-    // otherwise old transforms could be applied to new target
-    void TransformManager::UpdateRenderTarget(ID2D1RenderTarget* renderTarget) {
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // State Management
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    void TransformManager::UpdateRenderTarget(ID2D1RenderTarget* renderTarget)
+    {
         m_renderTarget = renderTarget;
 
         while (!m_transformStack.empty()) {

@@ -1,82 +1,120 @@
 #ifndef SPECTRUM_CPP_PANEL_DRAW_HELPER_H
 #define SPECTRUM_CPP_PANEL_DRAW_HELPER_H
 
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// Defines PanelDrawHelper namespace with utility functions for common UI
+// drawing operations.
+// 
+// This namespace provides functions for drawing standard UI elements like
+// modal backgrounds, titles, and toggle buttons with consistent styling.
+// All functions are stateless and operate purely on provided parameters.
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
 #include "Common.h"
 #include "GraphicsContext.h"
 #include "MathUtils.h"
+#include <string>
 
-namespace Spectrum {
+namespace Spectrum::PanelDrawHelper
+{
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Constants
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    class PanelDrawHelper {
-    public:
-        static void DrawModalBackground(
-            GraphicsContext& context,
-            const Rect& panelRect,
-            float animationProgress
-        ) {
-            const float alpha = animationProgress;
-            const float scale = Utils::EaseInOut(alpha);
+    namespace Detail
+    {
+        constexpr float kModalCornerRadius = 8.0f;
+        constexpr float kToggleCornerRadius = 3.0f;
+        constexpr float kArrowHalfWidth = 3.0f;
+        constexpr float kArrowHalfHeight = 6.0f;
+        constexpr float kToggleBorderThickness = 2.0f;
+    }
 
-            const Color bgColor = { 0.1f, 0.1f, 0.12f, 0.95f * alpha };
-            const Color outlineColor = { 1.0f, 1.0f, 1.0f, 0.1f * alpha };
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Drawing Utilities
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-            context.PushTransform();
-            const Point center = {
-                panelRect.x + panelRect.width / 2.0f,
-                panelRect.y + panelRect.height / 2.0f
-            };
-            context.ScaleAt(center, scale, scale);
+    inline void DrawModalBackground(
+        GraphicsContext& context,
+        const Rect& panelRect,
+        float animationProgress)
+    {
+        const float scale = Utils::EaseInOut(animationProgress);
 
-            context.DrawRoundedRectangle(panelRect, 8.0f, bgColor, true);
-            context.DrawRoundedRectangle(panelRect, 8.0f, outlineColor, false);
+        const Color bgColor = { 0.1f, 0.1f, 0.12f, 0.95f * animationProgress };
+        const Color outlineColor = { 1.0f, 1.0f, 1.0f, 0.1f * animationProgress };
 
-            context.PopTransform();
+        context.PushTransform();
+
+        const Point center = {
+            panelRect.x + panelRect.width * 0.5f,
+            panelRect.y + panelRect.height * 0.5f
+        };
+
+        context.ScaleAt(center, scale, scale);
+
+        context.DrawRoundedRectangle(panelRect, Detail::kModalCornerRadius, bgColor, true);
+        context.DrawRoundedRectangle(panelRect, Detail::kModalCornerRadius, outlineColor, false);
+
+        context.PopTransform();
+    }
+
+    inline void DrawTitle(
+        GraphicsContext& context,
+        const std::wstring& text,
+        const Point& position,
+        float animationProgress)
+    {
+        const Color textColor = { 1.0f, 1.0f, 1.0f, animationProgress };
+        context.DrawText(text, position, textColor, 18.0f, DWRITE_TEXT_ALIGNMENT_CENTER);
+    }
+
+    inline void DrawSlideToggleButton(
+        GraphicsContext& context,
+        const Rect& toggleRect,
+        bool isHovered,
+        bool isPanelHidden)
+    {
+        const Color bgColor = isHovered
+            ? Color(0.3f, 0.3f, 0.3f, 0.7f)
+            : Color(0.1f, 0.1f, 0.1f, 0.7f);
+
+        context.DrawRoundedRectangle(toggleRect, Detail::kToggleCornerRadius, bgColor, true);
+        context.DrawRoundedRectangle(toggleRect, Detail::kToggleCornerRadius, Color(1.0f, 1.0f, 1.0f, 0.1f), false);
+
+        const Point center = {
+            toggleRect.x + toggleRect.width * 0.5f,
+            toggleRect.y + toggleRect.height * 0.5f
+        };
+
+        constexpr Color arrowColor = { 1.0f, 1.0f, 1.0f, 0.8f };
+
+        if (isPanelHidden)
+        {
+            context.DrawPolyline(
+                {
+                    { center.x - Detail::kArrowHalfWidth, center.y - Detail::kArrowHalfHeight },
+                    { center.x + Detail::kArrowHalfWidth, center.y },
+                    { center.x - Detail::kArrowHalfWidth, center.y + Detail::kArrowHalfHeight }
+                },
+                arrowColor,
+                Detail::kToggleBorderThickness
+            );
         }
-
-        static void DrawTitle(
-            GraphicsContext& context,
-            const std::wstring& text,
-            const Point& position,
-            float animationProgress
-        ) {
-            const Color fgColor = { 1.0f, 1.0f, 1.0f, animationProgress };
-            context.DrawText(text, position, fgColor, 18.0f, DWRITE_TEXT_ALIGNMENT_CENTER);
+        else
+        {
+            context.DrawPolyline(
+                {
+                    { center.x + Detail::kArrowHalfWidth, center.y - Detail::kArrowHalfHeight },
+                    { center.x - Detail::kArrowHalfWidth, center.y },
+                    { center.x + Detail::kArrowHalfWidth, center.y + Detail::kArrowHalfHeight }
+                },
+                arrowColor,
+                Detail::kToggleBorderThickness
+            );
         }
+    }
 
-        static void DrawSlideToggleButton(
-            GraphicsContext& context,
-            const Rect& toggleRect,
-            bool isHovered,
-            bool isPanelHidden
-        ) {
-            const Color bgColor = isHovered
-                ? Color(0.3f, 0.3f, 0.3f, 0.7f)
-                : Color(0.1f, 0.1f, 0.1f, 0.7f);
+} // namespace Spectrum::PanelDrawHelper
 
-            context.DrawRoundedRectangle(toggleRect, 3.0f, bgColor, true);
-            context.DrawRoundedRectangle(toggleRect, 3.0f, Color(1.0f, 1.0f, 1.0f, 0.1f), false);
-
-            const Point center = {
-                toggleRect.x + toggleRect.width / 2.0f,
-                toggleRect.y + toggleRect.height / 2.0f
-            };
-
-            const Color arrowColor = { 1.0f, 1.0f, 1.0f, 0.8f };
-            if (isPanelHidden) {
-                context.DrawPolyline(
-                    { {center.x - 3, center.y - 6}, {center.x + 3, center.y}, {center.x - 3, center.y + 6} },
-                    arrowColor, 2.0f
-                );
-            }
-            else {
-                context.DrawPolyline(
-                    { {center.x + 3, center.y - 6}, {center.x - 3, center.y}, {center.x + 3, center.y + 6} },
-                    arrowColor, 2.0f
-                );
-            }
-        }
-    };
-
-}
-
-#endif
+#endif // SPECTRUM_CPP_PANEL_DRAW_HELPER_H

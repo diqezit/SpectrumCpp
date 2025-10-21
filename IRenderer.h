@@ -2,61 +2,67 @@
 #define SPECTRUM_CPP_IRENDERER_H
 
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// This file defines the IRenderer interface, which is the contract for
-// all visualizer implementations. It allows the RendererManager to treat
-// all visualizers polymorphically
+// Defines the IRenderer interface, the contract for all visualizer
+// implementations.
+// 
+// This interface allows the RendererManager to manage and interact with all
+// visualizers polymorphically, abstracting away their concrete
+// implementations. It follows the Interface Segregation Principle by
+// providing default implementations for non-essential lifecycle methods.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Common.h"
 #include "GraphicsContext.h"
+#include <string_view>
 
-namespace Spectrum {
-
-    class IRenderer {
+namespace Spectrum
+{
+    class IRenderer
+    {
     public:
         virtual ~IRenderer() = default;
 
-        // main entry point for drawing a frame
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Main Execution
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        // Main entry point for drawing a single frame.
         virtual void Render(GraphicsContext& context, const SpectrumData& spectrum) = 0;
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // Configuration
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Configuration & Setters
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        // user can change quality to balance performance and visuals
+        // Sets the quality to balance performance and visuals.
         virtual void SetQuality(RenderQuality quality) = 0;
 
-        // allows user to customize the main color of the visualizer
+        // Sets the main color of the visualizer.
         virtual void SetPrimaryColor(const Color& color) = 0;
 
-        // overlay mode is for drawing on top of other content
-        // renderers should use less intrusive visuals in this mode
+        // Sets overlay mode for drawing on top of other content.
         virtual void SetOverlayMode(bool isOverlay) = 0;
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // Information
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // State Queries & Getters
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        virtual RenderStyle GetStyle() const = 0;
-        virtual std::string_view GetName() const = 0;
+        [[nodiscard]] virtual RenderStyle GetStyle() const = 0;
+        [[nodiscard]] virtual std::string_view GetName() const = 0;
 
-        // indicates if the visualizer's color can be changed by the user
-        // some visualizers have a fixed color scheme
-        virtual bool SupportsPrimaryColor() const { return true; }
+        // Indicates if the visualizer's color can be changed by the user.
+        [[nodiscard]] virtual bool SupportsPrimaryColor() const { return true; }
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // Lifecycle
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Lifecycle Management
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        // called when the renderer becomes active
-        // allows renderer to set up its initial state for the given viewport
+        // Called when the renderer becomes active or viewport changes.
         virtual void OnActivate(int width, int height) {}
 
-        // called when the renderer is switched out
-        // allows for cleanup of any state
+        // Called when the renderer is switched out. Allows for state cleanup.
         virtual void OnDeactivate() {}
     };
 
 } // namespace Spectrum
 
-#endif
+#endif // SPECTRUM_CPP_IRENDERER_H

@@ -1,35 +1,90 @@
+// RenderUtils.h
 #ifndef SPECTRUM_CPP_RENDER_UTILS_H
 #define SPECTRUM_CPP_RENDER_UTILS_H
 
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// This file provides a collection of stateless utility functions for
-// common rendering calculations. These helpers are used by various
-// visualizers to analyze spectrum data and compute layout properties
+// Defines a collection of stateless utility functions for common rendering
+// calculations and spectrum data analysis.
+//
+// This namespace provides pure functions (no side effects) for:
+// - Spectrum frequency band analysis (bass, mid, high, average)
+// - Range averaging and segmentation
+// - Bar layout calculations for visualizers
+// - Waveform point generation
+// - Magnitude to screen coordinate conversion
+//
+// Design notes:
+// - All functions are stateless (no internal state)
+// - All functions are [[nodiscard]] (return values must be used)
+// - All functions validate input parameters
+// - Uses D2DHelpers for sanitization and validation
+//
+// Usage pattern:
+//   float bass = RenderUtils::GetBassMagnitude(spectrum);
+//   auto layout = RenderUtils::ComputeBarLayout(count, spacing, width);
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Common.h"
+#include <vector>
 
 namespace Spectrum::RenderUtils {
 
-    // Spectrum analysis helpers
-    float GetAverageMagnitude(const SpectrumData& spectrum);
-    float GetBassMagnitude(const SpectrumData& spectrum);
-    float GetMidMagnitude(const SpectrumData& spectrum);
-    float GetHighMagnitude(const SpectrumData& spectrum);
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Constants
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    // Averaging utilities
-    float AverageRange(const SpectrumData& spectrum, size_t begin, size_t end);
-    float SegmentAverage(const SpectrumData& spectrum, size_t segments, size_t index);
+    inline constexpr size_t kBassFrequencyRatio = 8;
+    inline constexpr size_t kMidFrequencyStartRatio = 8;
+    inline constexpr size_t kMidFrequencyRangeRatio = 2;
+    inline constexpr size_t kHighFrequencyRatio = 8;
+    inline constexpr float kDefaultHeightScale = 0.9f;
 
-    // Layout helpers
-    struct BarLayout {
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Spectrum Analysis
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    [[nodiscard]] float GetAverageMagnitude(const SpectrumData& spectrum);
+    [[nodiscard]] float GetBassMagnitude(const SpectrumData& spectrum);
+    [[nodiscard]] float GetMidMagnitude(const SpectrumData& spectrum);
+    [[nodiscard]] float GetHighMagnitude(const SpectrumData& spectrum);
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Range Utilities
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    [[nodiscard]] float AverageRange(
+        const SpectrumData& spectrum,
+        size_t begin,
+        size_t end
+    );
+
+    [[nodiscard]] float SegmentAverage(
+        const SpectrumData& spectrum,
+        size_t segments,
+        size_t index
+    );
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Layout Helpers
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    struct BarLayout
+    {
         float totalBarWidth = 0.0f;
         float barWidth = 0.0f;
         float spacing = 0.0f;
     };
-    BarLayout ComputeBarLayout(size_t count, float spacing, int viewWidth);
 
-    // Geometry helpers
+    [[nodiscard]] BarLayout ComputeBarLayout(
+        size_t count,
+        float spacing,
+        int viewWidth
+    );
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Geometry Helpers
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
     void BuildPolylineFromSpectrum(
         const SpectrumData& spectrum,
         float midlineY,
@@ -38,7 +93,11 @@ namespace Spectrum::RenderUtils {
         std::vector<Point>& out
     );
 
-    float MagnitudeToHeight(float magnitude, int viewHeight, float scale = 0.9f);
+    [[nodiscard]] float MagnitudeToHeight(
+        float magnitude,
+        int viewHeight,
+        float scale = kDefaultHeightScale
+    );
 
 } // namespace Spectrum::RenderUtils
 

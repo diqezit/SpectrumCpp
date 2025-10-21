@@ -23,11 +23,24 @@ namespace Spectrum {
         bool Initialize(GraphicsContext& context);
         void RecreateResources(GraphicsContext& context);
 
-        void Update(Point mousePos, bool isMouseDown);
+        void Update(
+            Point mousePos,
+            bool isMouseDown,
+            float deltaTime
+        );
+
         void Draw(GraphicsContext& context) const;
 
+        void DrawWithAlpha(
+            GraphicsContext& context,
+            float alpha
+        ) const;
+
         void SetVisible(bool visible);
+        void SetPosition(const Point& position);
+
         bool IsVisible() const { return m_isVisible; }
+        Point GetCenter() const;
 
         void SetOnColorSelectedCallback(ColorSelectedCallback cb);
 
@@ -40,12 +53,13 @@ namespace Spectrum {
         bool m_isVisible;
         bool m_isMouseOver;
         bool m_wasPressed;
+        float m_hoverAnimationProgress;
         Color m_hoverColor;
 
         wrl::ComPtr<ID2D1Bitmap> m_colorWheelBitmap;
         ColorSelectedCallback m_onColorSelected;
     };
 
-}
+} // namespace Spectrum
 
-#endif
+#endif // SPECTRUM_CPP_COLOR_PICKER_H

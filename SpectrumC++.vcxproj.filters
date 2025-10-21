@@ -404,6 +404,12 @@
     <ClInclude Include="PanelDrawHelper.h">
       <Filter>UI\Panels</Filter>
     </ClInclude>
+    <ClInclude Include="Logger.h">
+      <Filter>Common</Filter>
+    </ClInclude>
+    <ClInclude Include="D2DHelpers.h">
+      <Filter>Graphics\API</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Text Include="CMakeLists.txt">

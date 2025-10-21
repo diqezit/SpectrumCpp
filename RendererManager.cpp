@@ -1,32 +1,35 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// Implements the RendererManager, which is responsible for managing
-// all available visualizers, handling switching between them, and
-// applying global settings like render quality.
+// Implements the RendererManager, which handles the lifecycle and
+// configuration of all visualization renderers.
+// 
+// Key implementation details:
+// - Manages a collection of IRenderer implementations
+// - Handles switching between different visualization styles
+// - Applies global quality settings across all renderers
+// - Responds to window resize events
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "RendererManager.h"
 #include "BarsRenderer.h"
-#include "WaveRenderer.h"
 #include "CircularWaveRenderer.h"
 #include "CubesRenderer.h"
-#include "FireRenderer.h"
-#include "LedPanelRenderer.h"
-#include "GaugeRenderer.h"
-#include "KenwoodBarsRenderer.h"
-#include "TemplateUtils.h"
 #include "EventBus.h"
+#include "FireRenderer.h"
+#include "GaugeRenderer.h"
+#include "GraphicsContext.h"
+#include "KenwoodBarsRenderer.h"
+#include "LedPanelRenderer.h"
+#include "TemplateUtils.h"
+#include "WaveRenderer.h"
 #include "WindowManager.h"
 
-namespace Spectrum {
-
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+namespace Spectrum
+{
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Lifecycle Management
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    RendererManager::RendererManager(
-        EventBus* bus,
-        WindowManager* windowManager
-    ) :
+    RendererManager::RendererManager(EventBus* bus, WindowManager* windowManager) :
         m_currentRenderer(nullptr),
         m_currentStyle(RenderStyle::Bars),
         m_currentQuality(RenderQuality::Medium),
@@ -37,89 +40,105 @@ namespace Spectrum {
 
     RendererManager::~RendererManager() = default;
 
-    bool RendererManager::Initialize() {
+    bool RendererManager::Initialize()
+    {
         CreateRenderers();
         ActivateInitialRenderer();
         return true;
     }
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-    // Public Interface
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Event Handling
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    void RendererManager::OnResize(int width, int height) {
+    void RendererManager::OnResize(int width, int height)
+    {
         if (m_currentRenderer)
             m_currentRenderer->OnActivate(width, height);
     }
 
-    void RendererManager::SetCurrentRenderer(
-        RenderStyle style,
-        GraphicsContext* graphics
-    ) {
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Configuration & Setters
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    void RendererManager::SetCurrentRenderer(RenderStyle style, GraphicsContext* graphics)
+    {
         DeactivateCurrentRenderer();
         ActivateNewRenderer(style, graphics);
     }
 
-    void RendererManager::SwitchToNextRenderer(GraphicsContext* graphics) {
-        RenderStyle nextStyle = Utils::CycleEnum(m_currentStyle, 1);
+    void RendererManager::SwitchToNextRenderer(GraphicsContext* graphics)
+    {
+        const RenderStyle nextStyle = Utils::CycleEnum(m_currentStyle, 1);
         SetCurrentRenderer(nextStyle, graphics);
     }
 
-    void RendererManager::SwitchToPrevRenderer(GraphicsContext* graphics) {
-        RenderStyle nextStyle = Utils::CycleEnum(m_currentStyle, -1);
+    void RendererManager::SwitchToPrevRenderer(GraphicsContext* graphics)
+    {
+        const RenderStyle nextStyle = Utils::CycleEnum(m_currentStyle, -1);
         SetCurrentRenderer(nextStyle, graphics);
     }
 
-    void RendererManager::CycleQuality(int direction) {
-        RenderQuality nextQuality = Utils::CycleEnum(m_currentQuality, direction);
+    void RendererManager::CycleQuality(int direction)
+    {
+        const RenderQuality nextQuality = Utils::CycleEnum(m_currentQuality, direction);
         SetQuality(nextQuality);
     }
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-    // Getters
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Public Getters
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    [[nodiscard]] IRenderer* RendererManager::GetCurrentRenderer() const {
+    IRenderer* RendererManager::GetCurrentRenderer() const
+    {
         return m_currentRenderer;
     }
 
-    [[nodiscard]] RenderStyle RendererManager::GetCurrentStyle() const {
+    RenderStyle RendererManager::GetCurrentStyle() const
+    {
         return m_currentStyle;
     }
 
-    [[nodiscard]] RenderQuality RendererManager::GetQuality() const {
+    RenderQuality RendererManager::GetQuality() const
+    {
         return m_currentQuality;
     }
 
-    [[nodiscard]] std::string_view RendererManager::GetCurrentRendererName() const {
+    std::string_view RendererManager::GetCurrentRendererName() const
+    {
         if (m_currentRenderer)
             return m_currentRenderer->GetName();
         return "None";
     }
 
-    [[nodiscard]] std::string_view RendererManager::GetQualityName() const {
-        switch (m_currentQuality) {
+    std::string_view RendererManager::GetQualityName() const
+    {
+        switch (m_currentQuality)
+        {
         case RenderQuality::Low:    return "Low";
         case RenderQuality::Medium: return "Medium";
         case RenderQuality::High:   return "High";
-        default:                    return "Unknown";
         }
+        return "Unknown";
     }
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-    // Private Implementation
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Private Implementation / Internal Helpers
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    void RendererManager::SubscribeToEvents(EventBus* bus) {
+    void RendererManager::SubscribeToEvents(EventBus* bus)
+    {
         bus->Subscribe(InputAction::SwitchRenderer, [this]() {
             if (m_windowManager) this->SwitchToNextRenderer(m_windowManager->GetGraphics());
             });
+
         bus->Subscribe(InputAction::CycleQuality, [this]() {
             this->CycleQuality(1);
             });
     }
 
-    void RendererManager::CreateRenderers() {
+    void RendererManager::CreateRenderers()
+    {
         m_renderers[RenderStyle::Bars] = std::make_unique<BarsRenderer>();
         m_renderers[RenderStyle::Wave] = std::make_unique<WaveRenderer>();
         m_renderers[RenderStyle::CircularWave] = std::make_unique<CircularWaveRenderer>();
@@ -130,43 +149,54 @@ namespace Spectrum {
         m_renderers[RenderStyle::KenwoodBars] = std::make_unique<KenwoodBarsRenderer>();
     }
 
-    void RendererManager::ActivateInitialRenderer() {
+    void RendererManager::ActivateInitialRenderer()
+    {
+        // Start with a default style
         m_currentStyle = RenderStyle::Bars;
-        m_currentRenderer = m_renderers[m_currentStyle].get();
-        SetQuality(m_currentQuality);
+        auto it = m_renderers.find(m_currentStyle);
+        if (it != m_renderers.end())
+        {
+            m_currentRenderer = it->second.get();
+            SetQuality(m_currentQuality);
+        }
     }
 
-    void RendererManager::DeactivateCurrentRenderer() {
+    void RendererManager::DeactivateCurrentRenderer()
+    {
         if (m_currentRenderer)
             m_currentRenderer->OnDeactivate();
     }
 
-    void RendererManager::ActivateNewRenderer(
-        RenderStyle style,
-        GraphicsContext* graphics
-    ) {
-        if (m_renderers.count(style)) {
-            m_currentRenderer = m_renderers[style].get();
+    void RendererManager::ActivateNewRenderer(RenderStyle style, GraphicsContext* graphics)
+    {
+        auto it = m_renderers.find(style);
+        if (it != m_renderers.end())
+        {
+            m_currentRenderer = it->second.get();
             m_currentStyle = style;
         }
 
         if (!m_currentRenderer || !graphics) return;
 
-        int w = graphics->GetWidth();
-        int h = graphics->GetHeight();
-        m_currentRenderer->OnActivate(w, h);
+        const int width = graphics->GetWidth();
+        const int height = graphics->GetHeight();
+        m_currentRenderer->OnActivate(width, height);
         m_currentRenderer->SetQuality(m_currentQuality); // Apply current quality to new renderer
 
         LOG_INFO("Switched to " << m_currentRenderer->GetName().data() << " renderer");
     }
 
-    void RendererManager::SetQuality(RenderQuality quality) {
+    void RendererManager::SetQuality(RenderQuality quality)
+    {
         m_currentQuality = quality;
+
         // Apply to all renderers so the setting is consistent when switching
-        for (auto& [style, renderer] : m_renderers) {
+        for (auto& [style, renderer] : m_renderers)
+        {
             if (renderer)
                 renderer->SetQuality(quality);
         }
+
         LOG_INFO("Render quality set to " << GetQualityName().data());
     }
 

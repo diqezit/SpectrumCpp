@@ -1,26 +1,56 @@
+// GaugeRenderer.h
 #ifndef SPECTRUM_CPP_GAUGE_RENDERER_H
 #define SPECTRUM_CPP_GAUGE_RENDERER_H
+
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// Defines the GaugeRenderer, a vintage VU meter style visualizer.
+//
+// This renderer displays audio loudness as an analog needle gauge with
+// calibrated dB scale (-30dB to +5dB), peak indicator lamp, and realistic
+// ballistics matching physical VU meter behavior.
+//
+// Key features:
+// - RMS-based loudness calculation for perceived volume
+// - Asymmetric needle response (fast attack, slow decay)
+// - Peak lamp with hold time (matches hardware meters)
+// - Vintage aesthetic with gradients and shadows
+//
+// Design notes:
+// - All rendering methods are const (state in m_currentDbValue, etc.)
+// - Quality settings control smoothing and visual effects
+// - No external color support (fixed vintage color scheme)
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "BaseRenderer.h"
 
 namespace Spectrum {
 
-    class GaugeRenderer final : public BaseRenderer {
+    class GaugeRenderer final : public BaseRenderer
+    {
     public:
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Lifecycle Management
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         GaugeRenderer();
         ~GaugeRenderer() override = default;
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        GaugeRenderer(const GaugeRenderer&) = delete;
+        GaugeRenderer& operator=(const GaugeRenderer&) = delete;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // IRenderer Implementation
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        RenderStyle GetStyle() const override { return RenderStyle::Gauge; }
-        std::string_view GetName() const override { return "Gauge"; }
-        bool SupportsPrimaryColor() const override { return false; }
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] RenderStyle GetStyle() const override { return RenderStyle::Gauge; }
+        [[nodiscard]] std::string_view GetName() const override { return "Gauge"; }
+        [[nodiscard]] bool SupportsPrimaryColor() const override { return false; }
 
     protected:
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // BaseRenderer Overrides
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         void UpdateSettings() override;
 
         void UpdateAnimation(
@@ -34,23 +64,25 @@ namespace Spectrum {
         ) override;
 
     private:
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Main Drawing Components
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Main Drawing Components (SRP)
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         void DrawBackground(GraphicsContext& context, const Rect& rect) const;
         void DrawScale(GraphicsContext& context, const Rect& rect) const;
         void DrawNeedle(GraphicsContext& context, const Rect& rect) const;
         void DrawPeakIndicator(GraphicsContext& context, const Rect& rect) const;
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Scale Drawing Helpers
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Scale Components
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         void DrawMajorTick(
             GraphicsContext& context,
             const Point& center,
             float radiusX,
             float radiusY,
-            float value,
+            float dbValue,
             const wchar_t* label
         ) const;
 
@@ -59,12 +91,13 @@ namespace Spectrum {
             const Point& center,
             float radiusX,
             float radiusY,
-            float value
+            float dbValue
         ) const;
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Needle Components
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         void DrawNeedleBody(
             GraphicsContext& context,
             const Point& center,
@@ -77,18 +110,20 @@ namespace Spectrum {
             float radius
         ) const;
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Calculation Helpers
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        float CalculateLoudness(const SpectrumData& spectrum) const;
-        float DbToAngle(float db) const;
-        Point GetScaleCenter(const Rect& rect) const;
-        Point GetNeedleCenter(const Rect& rect) const;
-        float GetTickLength(float value, bool isMajor) const;
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        [[nodiscard]] float CalculateLoudness(const SpectrumData& spectrum) const;
+        [[nodiscard]] float DbToAngle(float db) const;
+        [[nodiscard]] Point GetScaleCenter(const Rect& rect) const;
+        [[nodiscard]] Point GetNeedleCenter(const Rect& rect) const;
+        [[nodiscard]] float GetTickLength(float dbValue, bool isMajor) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Member Variables
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         float m_currentDbValue;
         float m_currentNeedleAngle;
         int m_peakHoldCounter;
@@ -101,4 +136,4 @@ namespace Spectrum {
 
 } // namespace Spectrum
 
-#endif // SPECTRUM_CPP_GAUGE_RENDERER_H
+#endif

@@ -1,5 +1,27 @@
+// KenwoodBarsRenderer.h
 #ifndef SPECTRUM_CPP_KENWOOD_BARS_RENDERER_H
 #define SPECTRUM_CPP_KENWOOD_BARS_RENDERER_H
+
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// Defines the KenwoodBarsRenderer for Kenwood-style bar visualization.
+//
+// This renderer recreates the classic Kenwood stereo visualizer look with
+// gradient bars that transition from red through yellow to green, plus
+// sticky peak indicators that hold momentarily before falling.
+//
+// Key features:
+// - Fixed gradient palette (red->yellow->green)
+// - Sticky peak indicators with hold time
+// - Quality-dependent outlines and enhanced peaks
+// - Overlay mode support with adjusted transparency
+// - Does not support primary color (uses fixed palette)
+//
+// Design notes:
+// - Peak hold algorithm: peaks stick at max for PEAK_HOLD_TIME_S
+// - Rendering layers: main bars -> outlines -> peaks -> enhancements
+// - All rendering methods are const (peak state is mutable)
+// - Gradient intensity boosted for vibrant Kenwood look
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "BaseRenderer.h"
 #include "RenderUtils.h"
@@ -7,22 +29,26 @@
 
 namespace Spectrum {
 
-    class KenwoodBarsRenderer final : public BaseRenderer {
+    class KenwoodBarsRenderer final : public BaseRenderer
+    {
     public:
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Lifecycle Management
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         KenwoodBarsRenderer();
         ~KenwoodBarsRenderer() override = default;
 
-        RenderStyle GetStyle() const override {
-            return RenderStyle::KenwoodBars;
-        }
+        KenwoodBarsRenderer(const KenwoodBarsRenderer&) = delete;
+        KenwoodBarsRenderer& operator=(const KenwoodBarsRenderer&) = delete;
 
-        std::string_view GetName() const override {
-            return "Kenwood Bars";
-        }
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // IRenderer Implementation
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        bool SupportsPrimaryColor() const override {
-            return false;
-        }
+        [[nodiscard]] RenderStyle GetStyle() const override { return RenderStyle::KenwoodBars; }
+        [[nodiscard]] std::string_view GetName() const override { return "Kenwood Bars"; }
+        [[nodiscard]] bool SupportsPrimaryColor() const override { return false; }
 
     protected:
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -43,10 +69,11 @@ namespace Spectrum {
 
     private:
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Settings & Helper Structs
+        // Settings
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        struct QualitySettings {
+        struct QualitySettings
+        {
             bool useGradient;
             bool useRoundCorners;
             bool useOutline;
@@ -54,7 +81,7 @@ namespace Spectrum {
         };
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Helper Methods
+        // Peak Management
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void EnsurePeakArraySize(size_t size);
@@ -65,13 +92,15 @@ namespace Spectrum {
             float deltaTime
         );
 
-        float GetPeakValue(size_t index) const;
+        [[nodiscard]] float GetPeakValue(size_t index) const;
 
-        float CalculateCornerRadius(float barWidth) const;
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Style Helpers
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        BarStyle CreateBarStyle(float cornerRadius) const;
-
-        std::vector<D2D1_GRADIENT_STOP> GetAdjustedGradientStops() const;
+        [[nodiscard]] float CalculateCornerRadius(float barWidth) const;
+        [[nodiscard]] BarStyle CreateBarStyle(float cornerRadius) const;
+        [[nodiscard]] std::vector<D2D1_GRADIENT_STOP> GetAdjustedGradientStops() const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Rendering Layers
@@ -103,14 +132,14 @@ namespace Spectrum {
         ) const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Member State
+        // Member Variables
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         QualitySettings m_currentSettings;
-        std::vector<float> m_peaks;
-        std::vector<float> m_peakTimers;
+        mutable std::vector<float> m_peaks;
+        mutable std::vector<float> m_peakTimers;
     };
 
 } // namespace Spectrum
 
-#endif // SPECTRUM_CPP_KENWOOD_BARS_RENDERER_H
+#endif

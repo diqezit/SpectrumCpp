@@ -1,12 +1,26 @@
+// SpectrumRenderer.cpp
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// This file implements the SpectrumRenderer class
-// It contains high-level logic for drawing spectrum data, delegating the
-// actual drawing of primitives and gradients to other components
+// Implements the SpectrumRenderer class. This file contains high-level
+// logic for drawing spectrum data, delegating primitive and gradient
+// operations to specialized renderer components.
+//
+// Implementation details:
+// - Bar rendering validates dimensions and skips invisible bars
+// - Waveform generation delegated to GeometryBuilder
+// - Mirror effect achieved via vertical reflection with transparency
+// - Uses D2DHelpers for validation and sanitization
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "SpectrumRenderer.h"
+#include "D2DHelpers.h"
 
 namespace Spectrum {
+
+    using namespace D2DHelpers;
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Lifecycle Management
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     SpectrumRenderer::SpectrumRenderer(
         PrimitiveRenderer* primitiveRenderer,
@@ -19,41 +33,40 @@ namespace Spectrum {
     {
     }
 
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Spectrum Visualization
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
     void SpectrumRenderer::DrawSpectrumBars(
         const SpectrumData& spectrum,
         const Rect& bounds,
         const BarStyle& style,
         const Color& color
-    ) {
-        if (spectrum.empty()) {
-            return;
-        }
+    ) const
+    {
+        if (spectrum.empty()) return;
 
-        size_t n = spectrum.size();
-        if (n == 0) {
-            return;
-        }
+        const size_t barCount = spectrum.size();
+        if (barCount == 0) return;
 
-        float totalBarWidth = bounds.width / static_cast<float>(n);
-        float barWidth = totalBarWidth - style.spacing;
+        const float totalBarWidth = bounds.width / static_cast<float>(barCount);
+        const float barWidth = totalBarWidth - style.spacing;
 
-        // do not render if bars are too thin to be visible
-        if (barWidth <= 0) {
-            return;
-        }
+        if (barWidth <= 0.0f) return;
 
-        for (size_t i = 0; i < n; ++i) {
-            float h = spectrum[i] * bounds.height;
-            // skip drawing bars that are too short to be seen
-            if (h < 1.0f) {
-                continue;
-            }
+        constexpr float kMinVisibleHeight = 1.0f;
 
-            Rect barRect = {
-                bounds.x + i * totalBarWidth + style.spacing / 2.0f,
-                bounds.y + bounds.height - h,
+        for (size_t i = 0; i < barCount; ++i) {
+            const float normalizedHeight = Sanitize::NormalizedFloat(spectrum[i]);
+            const float height = normalizedHeight * bounds.height;
+
+            if (height < kMinVisibleHeight) continue;
+
+            const Rect barRect = {
+                bounds.x + i * totalBarWidth + style.spacing * 0.5f,
+                bounds.y + bounds.height - height,
                 barWidth,
-                h
+                height
             };
 
             DrawSingleBar(barRect, style, color);
@@ -66,50 +79,57 @@ namespace Spectrum {
         const Color& color,
         float strokeWidth,
         bool mirror
-    ) {
-        if (spectrum.size() < 2 || !m_geometryBuilder || !m_primitiveRenderer) {
-            return;
-        }
+    ) const
+    {
+        if (!m_geometryBuilder || !m_primitiveRenderer) return;
+        if (!Validate::PointArray(std::vector<Point>(spectrum.size()), 2)) return;
 
         auto points = m_geometryBuilder->GenerateWaveformPoints(spectrum, bounds);
+        if (points.empty()) return;
+
         m_primitiveRenderer->DrawPolyline(points, color, strokeWidth);
 
-        // mirrored waveform gives a classic audio visualizer look
-        if (mirror) {
-            float midline = bounds.y + bounds.height * 0.5f;
+        if (!mirror) return;
 
-            for (auto& p : points) {
-                p.y = 2 * midline - p.y;
-            }
+        const float midline = bounds.y + bounds.height * 0.5f;
 
-            // make mirror slightly transparent for depth
-            Color mirrorColor = color;
-            mirrorColor.a *= 0.6f;
-            m_primitiveRenderer->DrawPolyline(points, mirrorColor, strokeWidth);
+        for (auto& point : points) {
+            point.y = 2.0f * midline - point.y;
         }
+
+        Color mirrorColor = color;
+        mirrorColor.a *= 0.6f;
+
+        m_primitiveRenderer->DrawPolyline(points, mirrorColor, strokeWidth);
     }
 
-    // chooses between gradient or solid color based on style settings
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Private Implementation
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
     void SpectrumRenderer::DrawSingleBar(
         const Rect& barRect,
         const BarStyle& style,
         const Color& color
-    ) {
-        if (style.useGradient && !style.gradientStops.empty() && m_gradientRenderer) {
+    ) const
+    {
+        if (style.useGradient && Validate::GradientStops(style.gradientStops) && m_gradientRenderer) {
             m_gradientRenderer->DrawVerticalGradientBar(
                 barRect,
                 style.gradientStops,
                 style.cornerRadius
             );
+            return;
         }
-        else if (m_primitiveRenderer) {
-            m_primitiveRenderer->DrawRoundedRectangle(
-                barRect,
-                style.cornerRadius,
-                color,
-                true
-            );
-        }
+
+        if (!m_primitiveRenderer) return;
+
+        m_primitiveRenderer->DrawRoundedRectangle(
+            barRect,
+            style.cornerRadius,
+            color,
+            true
+        );
     }
 
 } // namespace Spectrum

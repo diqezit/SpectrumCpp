@@ -1,40 +1,46 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// This file implements the ControlPanel class. It lays out the primary
-// UI controls and connects their actions to the core logic, managing the
-// slide-in/slide-out animation for the main control surface.
-//
-// Implements the ControlPanel by defining its data-driven widget creation,
-// state-based animation logic, and input handling. It translates user
-// interactions on the UI into commands for the core application systems.
+// Implements the ControlPanel with data-driven widget creation.
+// 
+// Key implementation details:
+// - Dynamic button creation based on controller state
+// - Smooth slide-in/out animation for panel visibility
+// - Hierarchical input handling with toggle button priority
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "ControlPanel.h"
 #include "AudioManager.h"
 #include "ControllerCore.h"
 #include "GraphicsContext.h"
+#include "PanelDrawHelper.h"
 #include "RendererManager.h"
 #include "StringUtils.h"
 #include "UIButton.h"
 #include "UILayout.h"
 #include "WindowManager.h"
-#include "PanelDrawHelper.h"
 
-namespace Spectrum {
-
-    namespace {
-        struct NavControlDefinition {
+namespace Spectrum
+{
+    namespace
+    {
+        struct NavControlDefinition
+        {
             float yPos;
             std::function<void()> prevAction;
             std::function<void()> nextAction;
             std::function<std::wstring()> labelSource;
         };
 
-        struct ButtonDefinition {
+        struct ButtonDefinition
+        {
             float yPos;
             std::wstring label;
             std::function<void()> action;
         };
     }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Lifecycle Management
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     ControlPanel::ControlPanel(ControllerCore* controller) :
         m_controller(controller),
@@ -47,29 +53,42 @@ namespace Spectrum {
 
     ControlPanel::~ControlPanel() noexcept = default;
 
-    void ControlPanel::Initialize() {
+    void ControlPanel::Initialize()
+    {
         CreateWidgets();
     }
 
-    void ControlPanel::Update(const Point& mousePos, bool isMouseDown, float deltaTime) {
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Main Execution
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    void ControlPanel::Update(const Point& mousePos, bool isMouseDown, float deltaTime)
+    {
         m_animator.Update(deltaTime);
 
         m_isToggleButtonHovered = IsToggleButtonHovered(mousePos);
-        if (isMouseDown && m_isToggleButtonHovered && !m_wasTogglePressed) {
+
+        if (isMouseDown && m_isToggleButtonHovered && !m_wasTogglePressed)
+        {
             ToggleVisibility();
         }
+
         m_wasTogglePressed = (isMouseDown && m_isToggleButtonHovered);
 
-        if (m_animator.IsVisible()) {
+        if (m_animator.IsVisible())
+        {
             const Point transformedMousePos = GetTransformedMousePosition(mousePos);
-            for (auto& button : m_buttons) {
+            for (auto& button : m_buttons)
+            {
                 button->Update(transformedMousePos, isMouseDown, deltaTime);
             }
         }
     }
 
-    void ControlPanel::Draw(GraphicsContext& context) const {
-        if (m_animator.IsVisible()) {
+    void ControlPanel::Draw(GraphicsContext& context) const
+    {
+        if (m_animator.IsVisible())
+        {
             DrawContent(context);
         }
 
@@ -81,125 +100,169 @@ namespace Spectrum {
         );
     }
 
-    void ControlPanel::SetOnShowAudioSettings(std::function<void()>&& callback) {
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Configuration
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    void ControlPanel::SetOnShowAudioSettings(std::function<void()>&& callback)
+    {
         m_onShowAudioSettings = std::move(callback);
     }
 
-    void ControlPanel::CreateWidgets() {
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Private Implementation / Internal Helpers
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    void ControlPanel::CreateWidgets()
+    {
         if (!m_controller) return;
-        auto* rm = m_controller->GetRendererManager();
-        auto* wm = m_controller->GetWindowManager();
-        auto* am = m_controller->GetAudioManager();
-        if (!rm || !wm || !am) return;
+
+        auto* rendererManager = m_controller->GetRendererManager();
+        auto* windowManager = m_controller->GetWindowManager();
+        auto* audioManager = m_controller->GetAudioManager();
+
+        if (!rendererManager || !windowManager || !audioManager) return;
 
         m_buttons.clear();
         m_navLabels.clear();
 
-        CreateNavigationControls(rm, wm);
-        CreateActionButtons(wm, am);
+        CreateNavigationControls(rendererManager, windowManager, audioManager);
+        CreateActionButtons(windowManager, audioManager);
     }
 
-    void ControlPanel::CreateNavigationControls(RendererManager* rm, WindowManager* wm) {
+    void ControlPanel::CreateNavigationControls(RendererManager* rm, WindowManager* wm, AudioManager* am)
+    {
         const std::vector<NavControlDefinition> navDefs = {
             {
-                UILayout::kPadding,
-                [rm, wm]() { rm->SwitchToPrevRenderer(wm->GetGraphics()); },
-                [rm, wm]() { rm->SwitchToNextRenderer(wm->GetGraphics()); },
-                [rm]() { return Utils::StringToWString(std::string(rm->GetCurrentRendererName())); }
+                UILayout::GetNavControlY(0),
+                [rm, wm] { rm->SwitchToPrevRenderer(wm->GetGraphics()); },
+                [rm, wm] { rm->SwitchToNextRenderer(wm->GetGraphics()); },
+                [rm] { return Utils::StringToWString(std::string(rm->GetCurrentRendererName())); }
             },
             {
-                UILayout::kPadding + UILayout::kNavWidgetHeight + UILayout::kWidgetSpacing,
-                [rm]() { rm->CycleQuality(-1); },
-                [rm]() { rm->CycleQuality(1); },
-                [rm]() { return Utils::StringToWString(std::string(rm->GetQualityName())); }
+                UILayout::GetNavControlY(1),
+                [rm] { rm->CycleQuality(-1); },
+                [rm] { rm->CycleQuality(1); },
+                [rm] { return Utils::StringToWString(std::string(rm->GetQualityName())); }
+            },
+            {
+                UILayout::GetNavControlY(2),
+                [am] { am->ChangeSpectrumScale(-1); },
+                [am] { am->ChangeSpectrumScale(1); },
+                [am] { return Utils::StringToWString(std::string(am->GetSpectrumScaleName())); }
             }
         };
 
         for (const auto& def : navDefs)
         {
             m_buttons.emplace_back(std::make_unique<UIButton>(
-                Rect{ UILayout::kPadding, def.yPos, UILayout::kNavButtonWidth, UILayout::kNavWidgetHeight },
+                Rect{
+                    UILayout::kPadding,
+                    def.yPos,
+                    UILayout::kNavButtonWidth,
+                    UILayout::kNavWidgetHeight
+                },
                 L"<",
                 def.prevAction
             ));
+
             m_buttons.emplace_back(std::make_unique<UIButton>(
-                Rect{ kPanelWidth - UILayout::kNavButtonWidth, def.yPos, UILayout::kNavButtonWidth, UILayout::kNavWidgetHeight },
+                Rect{
+                    UILayout::kControlPanelWidth - UILayout::kNavButtonWidth,
+                    def.yPos,
+                    UILayout::kNavButtonWidth,
+                    UILayout::kNavWidgetHeight
+                },
                 L">",
                 def.nextAction
             ));
+
             m_navLabels.push_back({
-                { kPanelWidth / 2.0f + 5.0f, def.yPos + UILayout::kNavWidgetHeight / 2.0f },
+                { UILayout::kControlPanelWidth * 0.5f + 5.0f, def.yPos + UILayout::kNavWidgetHeight * 0.5f },
                 def.labelSource
                 });
         }
     }
 
-    void ControlPanel::CreateActionButtons(WindowManager* wm, AudioManager* am) {
-        float currentY = UILayout::kPadding + 2 * (UILayout::kNavWidgetHeight + UILayout::kWidgetSpacing) + UILayout::kGroupSpacing;
+    void ControlPanel::CreateActionButtons(WindowManager* wm, AudioManager* am)
+    {
         const std::vector<ButtonDefinition> buttonDefs = {
             {
-                currentY,
+                UILayout::GetActionButtonY(0),
                 L"Audio Settings",
-                [this]() { if (m_onShowAudioSettings) m_onShowAudioSettings(); }
+                [this] { if (m_onShowAudioSettings) m_onShowAudioSettings(); }
             },
             {
-                currentY += UILayout::kStandaloneButtonHeight + UILayout::kWidgetSpacing,
+                UILayout::GetActionButtonY(1),
                 L"Toggle Overlay",
-                [wm]() { wm->ToggleOverlay(); }
+                [wm] { wm->ToggleOverlay(); }
             },
             {
-                currentY += UILayout::kStandaloneButtonHeight + UILayout::kWidgetSpacing,
+                UILayout::GetActionButtonY(2),
                 L"Toggle Capture",
-                [am]() { am->ToggleCapture(); }
+                [am] { am->ToggleCapture(); }
             }
         };
 
         for (const auto& def : buttonDefs)
         {
             m_buttons.emplace_back(std::make_unique<UIButton>(
-                Rect{ UILayout::kPadding, def.yPos, kPanelWidth - 2 * UILayout::kPadding, UILayout::kStandaloneButtonHeight },
+                Rect{
+                    UILayout::kPadding,
+                    def.yPos,
+                    UILayout::kControlPanelWidth - 2.0f * UILayout::kPadding,
+                    UILayout::kStandaloneButtonHeight
+                },
                 def.label,
                 def.action
             ));
         }
     }
 
-    void ControlPanel::ToggleVisibility() {
-        if (m_animator.GetState() == AnimationState::Open || m_animator.GetState() == AnimationState::Opening) {
+    void ControlPanel::ToggleVisibility()
+    {
+        if (m_animator.GetState() == AnimationState::Open ||
+            m_animator.GetState() == AnimationState::Opening)
+        {
             m_animator.Close();
         }
-        else {
+        else
+        {
             m_animator.Open();
         }
     }
 
-    void ControlPanel::DrawContent(GraphicsContext& context) const {
+    void ControlPanel::DrawContent(GraphicsContext& context) const
+    {
         context.PushTransform();
         context.TranslateBy(GetContentXOffset(), 0.0f);
 
-        const Rect panelRect = { 5.0f, 5.0f, kPanelWidth, kPanelHeight };
+        constexpr Rect panelRect = { 5.0f, 5.0f, UILayout::kControlPanelWidth, UILayout::kControlPanelHeight };
+
         context.DrawRoundedRectangle(panelRect, 5.0f, Color(0.1f, 0.1f, 0.1f, 0.8f), true);
         context.DrawRoundedRectangle(panelRect, 5.0f, Color(1.0f, 1.0f, 1.0f, 0.1f), false);
 
         for (const auto& button : m_buttons)
+        {
             button->Draw(context);
+        }
 
         DrawNavLabels(context);
 
-        const float separatorY = UILayout::kPadding +
-            2 * (UILayout::kNavWidgetHeight + UILayout::kWidgetSpacing) +
-            UILayout::kGroupSpacing / 2.0f;
+        constexpr float separatorY = UILayout::GetSeparatorY();
 
         context.DrawLine(
             { UILayout::kPadding, separatorY },
-            { kPanelWidth - UILayout::kPadding + 5.0f, separatorY },
-            UILayout::kSeparatorColor, 1.0f
+            { UILayout::kControlPanelWidth - UILayout::kPadding + 5.0f, separatorY },
+            UILayout::kSeparatorColor,
+            1.0f
         );
 
         context.PopTransform();
     }
 
-    void ControlPanel::DrawNavLabels(GraphicsContext& context) const {
+    void ControlPanel::DrawNavLabels(GraphicsContext& context) const
+    {
         for (const auto& label : m_navLabels)
         {
             context.DrawText(
@@ -212,27 +275,36 @@ namespace Spectrum {
         }
     }
 
-    [[nodiscard]] bool ControlPanel::IsToggleButtonHovered(const Point& mousePos) const {
+    bool ControlPanel::IsToggleButtonHovered(const Point& mousePos) const noexcept
+    {
         const Rect toggleRect = GetToggleButtonRect();
+
         return mousePos.x >= toggleRect.x &&
             mousePos.x <= toggleRect.GetRight() &&
             mousePos.y >= toggleRect.y &&
             mousePos.y <= toggleRect.GetBottom();
     }
 
-    [[nodiscard]] Rect ControlPanel::GetToggleButtonRect() const {
-        const float xPos = Utils::Lerp(0.0f, kPanelWidth + 5.0f, m_animator.GetProgress());
+    Rect ControlPanel::GetToggleButtonRect() const noexcept
+    {
+        const float xPos = Utils::Lerp(0.0f, UILayout::kControlPanelWidth + 5.0f, m_animator.GetProgress());
+
         return {
-            xPos, kPanelHeight / 2.0f - 20.0f,
-            kToggleButtonWidth, 40.0f
+            xPos,
+            UILayout::kControlPanelHeight * 0.5f - UILayout::kToggleButtonHeight * 0.5f,
+            UILayout::kToggleButtonWidth,
+            UILayout::kToggleButtonHeight
         };
     }
 
-    [[nodiscard]] float ControlPanel::GetContentXOffset() const {
-        return Utils::Lerp(-(kPanelWidth + 5.0f), 0.0f, m_animator.GetProgress());
+    float ControlPanel::GetContentXOffset() const noexcept
+    {
+        return Utils::Lerp(-(UILayout::kControlPanelWidth + 5.0f), 0.0f, m_animator.GetProgress());
     }
 
-    [[nodiscard]] Point ControlPanel::GetTransformedMousePosition(const Point& mousePos) const {
+    Point ControlPanel::GetTransformedMousePosition(const Point& mousePos) const noexcept
+    {
         return { mousePos.x - GetContentXOffset(), mousePos.y };
     }
-}
+
+} // namespace Spectrum

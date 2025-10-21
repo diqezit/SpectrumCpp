@@ -1,28 +1,25 @@
+// PrimitiveRenderer.cpp
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// This file implements the PrimitiveRenderer class
-// It wraps Direct2D's drawing functions to provide a simplified,
-// consistent API for drawing shapes with solid colors
+// Implements the PrimitiveRenderer class. This file wraps Direct2D drawing
+// functions to provide a simplified, consistent API for drawing shapes.
+//
+// Implementation details:
+// - All methods validate input parameters before rendering
+// - Geometry creation delegated to GeometryBuilder
+// - Batch methods optimize draw calls for collections
+// - Uses D2DHelpers for validation, sanitization, and conversion
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "PrimitiveRenderer.h"
-#include "MathUtils.h"
-#include "ColorUtils.h"
+#include "D2DHelpers.h"
 
 namespace Spectrum {
 
-    namespace {
-        inline D2D1_COLOR_F ToD2DColor(const Color& c) {
-            return D2D1::ColorF(c.r, c.g, c.b, c.a);
-        }
+    using namespace D2DHelpers;
 
-        inline D2D1_POINT_2F ToD2DPoint(const Point& p) {
-            return D2D1::Point2F(p.x, p.y);
-        }
-
-        inline D2D1_RECT_F ToD2DRect(const Rect& r) {
-            return D2D1::RectF(r.x, r.y, r.GetRight(), r.GetBottom());
-        }
-    }
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Lifecycle Management
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     PrimitiveRenderer::PrimitiveRenderer(
         ID2D1RenderTarget* renderTarget,
@@ -35,32 +32,24 @@ namespace Spectrum {
     {
     }
 
-    // set solid brush color before a drawing operation
-    void PrimitiveRenderer::SetBrushColor(const Color& color) {
-        if (m_brush) {
-            m_brush->SetColor(ToD2DColor(color));
-        }
-    }
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Basic Shape Rendering
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     void PrimitiveRenderer::DrawRectangle(
         const Rect& rect,
         const Color& color,
         bool filled,
         float strokeWidth
-    ) {
-        if (!m_renderTarget || !m_brush) {
-            return;
-        }
+    ) const
+    {
+        if (!Validate::RenderTargetAndBrush(m_renderTarget, m_brush)) return;
 
         SetBrushColor(color);
-        D2D1_RECT_F d2dRect = ToD2DRect(rect);
+        const D2D1_RECT_F d2dRect = ToD2DRect(rect);
 
-        if (filled) {
-            m_renderTarget->FillRectangle(&d2dRect, m_brush);
-        }
-        else {
-            m_renderTarget->DrawRectangle(&d2dRect, m_brush, strokeWidth);
-        }
+        if (filled) m_renderTarget->FillRectangle(&d2dRect, m_brush);
+        else m_renderTarget->DrawRectangle(&d2dRect, m_brush, strokeWidth);
     }
 
     void PrimitiveRenderer::DrawRoundedRectangle(
@@ -69,30 +58,26 @@ namespace Spectrum {
         const Color& color,
         bool filled,
         float strokeWidth
-    ) {
-        if (!m_renderTarget || !m_brush) {
-            return;
-        }
+    ) const
+    {
+        if (!Validate::RenderTargetAndBrush(m_renderTarget, m_brush)) return;
 
         SetBrushColor(color);
-        D2D1_ROUNDED_RECT rr = { ToD2DRect(rect), radius, radius };
+        const float sanitizedRadius = Sanitize::NonNegativeFloat(radius);
+        const D2D1_ROUNDED_RECT rr = { ToD2DRect(rect), sanitizedRadius, sanitizedRadius };
 
-        if (filled) {
-            m_renderTarget->FillRoundedRectangle(&rr, m_brush);
-        }
-        else {
-            m_renderTarget->DrawRoundedRectangle(&rr, m_brush, strokeWidth);
-        }
+        if (filled) m_renderTarget->FillRoundedRectangle(&rr, m_brush);
+        else m_renderTarget->DrawRoundedRectangle(&rr, m_brush, strokeWidth);
     }
 
-    // circle is a special case of an ellipse
     void PrimitiveRenderer::DrawCircle(
         const Point& center,
         float radius,
         const Color& color,
         bool filled,
         float strokeWidth
-    ) {
+    ) const
+    {
         DrawEllipse(center, radius, radius, color, filled, strokeWidth);
     }
 
@@ -103,23 +88,20 @@ namespace Spectrum {
         const Color& color,
         bool filled,
         float strokeWidth
-    ) {
-        if (!m_renderTarget || !m_brush) {
-            return;
-        }
+    ) const
+    {
+        if (!Validate::RenderTargetAndBrush(m_renderTarget, m_brush)) return;
+        if (!Validate::PositiveRadius(radiusX) || !Validate::PositiveRadius(radiusY)) return;
 
         SetBrushColor(color);
-        D2D1_ELLIPSE ellipse = {};
-        ellipse.point = ToD2DPoint(center);
-        ellipse.radiusX = radiusX;
-        ellipse.radiusY = radiusY;
+        const D2D1_ELLIPSE ellipse = {
+            ToD2DPoint(center),
+            radiusX,
+            radiusY
+        };
 
-        if (filled) {
-            m_renderTarget->FillEllipse(&ellipse, m_brush);
-        }
-        else {
-            m_renderTarget->DrawEllipse(&ellipse, m_brush, strokeWidth);
-        }
+        if (filled) m_renderTarget->FillEllipse(&ellipse, m_brush);
+        else m_renderTarget->DrawEllipse(&ellipse, m_brush, strokeWidth);
     }
 
     void PrimitiveRenderer::DrawLine(
@@ -127,10 +109,9 @@ namespace Spectrum {
         const Point& end,
         const Color& color,
         float strokeWidth
-    ) {
-        if (!m_renderTarget || !m_brush) {
-            return;
-        }
+    ) const
+    {
+        if (!Validate::RenderTargetAndBrush(m_renderTarget, m_brush)) return;
 
         SetBrushColor(color);
         m_renderTarget->DrawLine(
@@ -141,21 +122,25 @@ namespace Spectrum {
         );
     }
 
-    // delegate path creation to geometry builder
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Path and Polygon Rendering
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
     void PrimitiveRenderer::DrawPolyline(
         const std::vector<Point>& points,
         const Color& color,
         float strokeWidth
-    ) {
-        if (!m_renderTarget || !m_geometryBuilder) {
-            return;
-        }
+    ) const
+    {
+        if (!Validate::RenderTargetAndBrush(m_renderTarget, m_brush)) return;
+        if (!m_geometryBuilder) return;
+        if (!Validate::PointArray(points, 2)) return;
 
         auto geo = m_geometryBuilder->CreatePathFromPoints(points, false, false);
-        if (geo) {
-            SetBrushColor(color);
-            m_renderTarget->DrawGeometry(geo.Get(), m_brush, strokeWidth);
-        }
+        if (!geo) return;
+
+        SetBrushColor(color);
+        m_renderTarget->DrawGeometry(geo.Get(), m_brush, strokeWidth);
     }
 
     void PrimitiveRenderer::DrawPolygon(
@@ -163,22 +148,24 @@ namespace Spectrum {
         const Color& color,
         bool filled,
         float strokeWidth
-    ) {
-        if (!m_renderTarget || !m_geometryBuilder) {
-            return;
-        }
+    ) const
+    {
+        if (!Validate::RenderTargetAndBrush(m_renderTarget, m_brush)) return;
+        if (!m_geometryBuilder) return;
+        if (!Validate::PointArray(points, 3)) return;
 
         auto geo = m_geometryBuilder->CreatePathFromPoints(points, true, filled);
-        if (geo) {
-            SetBrushColor(color);
-            if (filled) {
-                m_renderTarget->FillGeometry(geo.Get(), m_brush);
-            }
-            else {
-                m_renderTarget->DrawGeometry(geo.Get(), m_brush, strokeWidth);
-            }
-        }
+        if (!geo) return;
+
+        SetBrushColor(color);
+
+        if (filled) m_renderTarget->FillGeometry(geo.Get(), m_brush);
+        else m_renderTarget->DrawGeometry(geo.Get(), m_brush, strokeWidth);
     }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Arc and Sector Rendering
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     void PrimitiveRenderer::DrawArc(
         const Point& center,
@@ -187,33 +174,34 @@ namespace Spectrum {
         float sweepAngle,
         const Color& color,
         float strokeWidth
-    ) {
-        if (!m_renderTarget || !m_geometryBuilder || sweepAngle == 0.0f) {
-            return;
-        }
+    ) const
+    {
+        if (!Validate::RenderTargetAndBrush(m_renderTarget, m_brush)) return;
+        if (!m_geometryBuilder) return;
+        if (!Validate::PositiveRadius(radius)) return;
+        if (!Validate::NonZeroAngle(sweepAngle)) return;
 
         auto geo = m_geometryBuilder->CreateArc(center, radius, startAngle, sweepAngle);
-        if (geo) {
-            SetBrushColor(color);
-            m_renderTarget->DrawGeometry(geo.Get(), m_brush, strokeWidth);
-        }
+        if (!geo) return;
+
+        SetBrushColor(color);
+        m_renderTarget->DrawGeometry(geo.Get(), m_brush, strokeWidth);
     }
 
-    // simulate a ring by drawing a thick-stroked circle
-    // this avoids creating a complex donut-shaped geometry
     void PrimitiveRenderer::DrawRing(
         const Point& center,
         float innerRadius,
         float outerRadius,
         const Color& color
-    ) {
-        if (!m_renderTarget || innerRadius >= outerRadius) {
-            return;
-        }
+    ) const
+    {
+        if (!m_renderTarget) return;
+        if (!Validate::RadiusRange(innerRadius, outerRadius)) return;
 
-        float stroke = outerRadius - innerRadius;
-        float radius = innerRadius + stroke / 2.0f;
-        DrawCircle(center, radius, color, false, stroke);
+        const float strokeWidth = outerRadius - innerRadius;
+        const float radius = innerRadius + strokeWidth * 0.5f;
+
+        DrawCircle(center, radius, color, false, strokeWidth);
     }
 
     void PrimitiveRenderer::DrawSector(
@@ -223,25 +211,27 @@ namespace Spectrum {
         float sweepAngle,
         const Color& color,
         bool filled
-    ) {
-        if (!m_renderTarget || !m_geometryBuilder || sweepAngle == 0.0f) {
-            return;
-        }
+    ) const
+    {
+        if (!Validate::RenderTargetAndBrush(m_renderTarget, m_brush)) return;
+        if (!m_geometryBuilder) return;
+        if (!Validate::PositiveRadius(radius)) return;
+        if (!Validate::NonZeroAngle(sweepAngle)) return;
 
         auto geo = m_geometryBuilder->CreateAngularSlice(
             center, radius, startAngle, startAngle + sweepAngle
         );
+        if (!geo) return;
 
-        if (geo) {
-            SetBrushColor(color);
-            if (filled) {
-                m_renderTarget->FillGeometry(geo.Get(), m_brush);
-            }
-            else {
-                m_renderTarget->DrawGeometry(geo.Get(), m_brush, 1.0f);
-            }
-        }
+        SetBrushColor(color);
+
+        if (filled) m_renderTarget->FillGeometry(geo.Get(), m_brush);
+        else m_renderTarget->DrawGeometry(geo.Get(), m_brush, 1.0f);
     }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Complex Shape Rendering
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     void PrimitiveRenderer::DrawRegularPolygon(
         const Point& center,
@@ -251,24 +241,23 @@ namespace Spectrum {
         const Color& color,
         bool filled,
         float strokeWidth
-    ) {
-        if (!m_renderTarget || !m_geometryBuilder || sides < 3) {
-            return;
-        }
+    ) const
+    {
+        if (!Validate::RenderTargetAndBrush(m_renderTarget, m_brush)) return;
+        if (!m_geometryBuilder) return;
+        if (!Validate::PositiveRadius(radius)) return;
 
-        auto geo = m_geometryBuilder->CreateRegularPolygon(center, radius, sides, rotation);
-        if (geo) {
-            SetBrushColor(color);
-            if (filled) {
-                m_renderTarget->FillGeometry(geo.Get(), m_brush);
-            }
-            else {
-                m_renderTarget->DrawGeometry(geo.Get(), m_brush, strokeWidth);
-            }
-        }
+        const int sanitizedSides = Sanitize::PolygonSides(sides);
+
+        auto geo = m_geometryBuilder->CreateRegularPolygon(center, radius, sanitizedSides, rotation);
+        if (!geo) return;
+
+        SetBrushColor(color);
+
+        if (filled) m_renderTarget->FillGeometry(geo.Get(), m_brush);
+        else m_renderTarget->DrawGeometry(geo.Get(), m_brush, strokeWidth);
     }
 
-    // generate vertices then draw as a polygon
     void PrimitiveRenderer::DrawStar(
         const Point& center,
         float outerRadius,
@@ -276,77 +265,80 @@ namespace Spectrum {
         int points,
         const Color& color,
         bool filled
-    ) {
-        if (points < 2 || !m_geometryBuilder) {
-            return;
-        }
+    ) const
+    {
+        if (!m_geometryBuilder) return;
+        if (!Validate::RadiusRange(innerRadius, outerRadius)) return;
+
+        const int sanitizedPoints = Sanitize::StarPoints(points);
 
         auto vertices = m_geometryBuilder->GenerateStarVertices(
-            center, outerRadius, innerRadius, points
+            center, outerRadius, innerRadius, sanitizedPoints
         );
+
         DrawPolygon(vertices, color, filled);
     }
 
-    // draw grid by drawing individual lines
     void PrimitiveRenderer::DrawGrid(
         const Rect& bounds,
         int rows,
         int cols,
         const Color& color,
         float strokeWidth
-    ) {
-        if (rows <= 0 || cols <= 0) {
-            return;
-        }
+    ) const
+    {
+        const int sanitizedRows = Sanitize::MinValue(rows, 1);
+        const int sanitizedCols = Sanitize::MinValue(cols, 1);
 
-        float dx = bounds.width / static_cast<float>(cols);
-        float dy = bounds.height / static_cast<float>(rows);
+        const float dx = bounds.width / static_cast<float>(sanitizedCols);
+        const float dy = bounds.height / static_cast<float>(sanitizedRows);
 
-        for (int i = 1; i < cols; ++i) {
+        for (int i = 1; i < sanitizedCols; ++i) {
+            const float x = bounds.x + i * dx;
             DrawLine(
-                { bounds.x + i * dx, bounds.y },
-                { bounds.x + i * dx, bounds.GetBottom() },
+                { x, bounds.y },
+                { x, bounds.GetBottom() },
                 color,
                 strokeWidth
             );
         }
 
-        for (int i = 1; i < rows; ++i) {
+        for (int i = 1; i < sanitizedRows; ++i) {
+            const float y = bounds.y + i * dy;
             DrawLine(
-                { bounds.x, bounds.y + i * dy },
-                { bounds.GetRight(), bounds.y + i * dy },
+                { bounds.x, y },
+                { bounds.GetRight(), y },
                 color,
                 strokeWidth
             );
         }
     }
 
-    // loop and draw multiple circles
-    // this is faster than creating a geometry for many small items
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Batch Rendering
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
     void PrimitiveRenderer::DrawCircleBatch(
         const std::vector<Point>& centers,
         float radius,
         const Color& color,
         bool filled
-    ) {
-        if (!m_brush || !m_renderTarget) {
-            return;
-        }
+    ) const
+    {
+        if (!Validate::RenderTargetAndBrush(m_renderTarget, m_brush)) return;
+        if (!Validate::PositiveRadius(radius)) return;
 
         SetBrushColor(color);
 
         for (const auto& center : centers) {
-            D2D1_ELLIPSE ellipse = {};
-            ellipse.point = ToD2DPoint(center);
-            ellipse.radiusX = radius;
-            ellipse.radiusY = radius;
+            const D2D1_ELLIPSE ellipse = {
+                ToD2DPoint(center),
+                radius,
+                radius
+            };
 
-            if (filled) {
-                m_renderTarget->FillEllipse(&ellipse, m_brush);
-            }
-            else {
-                m_renderTarget->DrawEllipse(&ellipse, m_brush);
-            }
+            if (filled) m_renderTarget->FillEllipse(&ellipse, m_brush);
+            else m_renderTarget->DrawEllipse(&ellipse, m_brush);
         }
     }
 
@@ -354,26 +346,38 @@ namespace Spectrum {
         const std::vector<Rect>& rects,
         const Color& color,
         bool filled
-    ) {
-        if (!m_brush || !m_renderTarget) {
-            return;
-        }
+    ) const
+    {
+        if (!Validate::RenderTargetAndBrush(m_renderTarget, m_brush)) return;
 
         SetBrushColor(color);
 
         for (const auto& rect : rects) {
-            D2D1_RECT_F d2dRect = ToD2DRect(rect);
-            if (filled) {
-                m_renderTarget->FillRectangle(&d2dRect, m_brush);
-            }
-            else {
-                m_renderTarget->DrawRectangle(&d2dRect, m_brush);
-            }
+            const D2D1_RECT_F d2dRect = ToD2DRect(rect);
+
+            if (filled) m_renderTarget->FillRectangle(&d2dRect, m_brush);
+            else m_renderTarget->DrawRectangle(&d2dRect, m_brush);
         }
     }
 
-    void PrimitiveRenderer::UpdateRenderTarget(ID2D1RenderTarget* renderTarget) {
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // State Management
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    void PrimitiveRenderer::UpdateRenderTarget(ID2D1RenderTarget* renderTarget)
+    {
         m_renderTarget = renderTarget;
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Private Implementation
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    void PrimitiveRenderer::SetBrushColor(const Color& color) const
+    {
+        if (!m_brush) return;
+
+        const_cast<ID2D1SolidColorBrush*>(m_brush)->SetColor(ToD2DColor(color));
     }
 
 } // namespace Spectrum

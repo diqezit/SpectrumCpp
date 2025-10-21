@@ -1,32 +1,50 @@
 // LedPanelRenderer.h
-
 #ifndef SPECTRUM_CPP_LED_PANEL_RENDERER_H
 #define SPECTRUM_CPP_LED_PANEL_RENDERER_H
+
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// Defines the LedPanelRenderer, a grid-based LED matrix visualizer.
+//
+// This renderer displays spectrum data as a grid of LEDs with vertical
+// bars representing frequency bands. LEDs light up progressively based
+// on magnitude, with color gradient from green (low) to red (high).
+//
+// Key features:
+// - Dynamic grid sizing based on viewport and spectrum resolution
+// - Smooth value transitions with attack/decay rates
+// - Peak hold indicators (quality-dependent)
+// - Gradient color mapping with optional external color blending
+//
+// Design notes:
+// - All rendering methods are const (state in m_smoothedValues, m_peakValues)
+// - Grid recreation on resize/quality change
+// - Batch rendering for performance (inactive LEDs in single call)
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "BaseRenderer.h"
 
 namespace Spectrum {
 
-    class LedPanelRenderer final : public BaseRenderer {
+    class LedPanelRenderer final : public BaseRenderer
+    {
     public:
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Lifecycle Management
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         LedPanelRenderer();
         ~LedPanelRenderer() override = default;
+
+        LedPanelRenderer(const LedPanelRenderer&) = delete;
+        LedPanelRenderer& operator=(const LedPanelRenderer&) = delete;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // IRenderer Implementation
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        RenderStyle GetStyle() const override {
-            return RenderStyle::LedPanel;
-        }
-
-        std::string_view GetName() const override {
-            return "LED Panel";
-        }
-
-        bool SupportsPrimaryColor() const override {
-            return true;
-        }
+        [[nodiscard]] RenderStyle GetStyle() const override { return RenderStyle::LedPanel; }
+        [[nodiscard]] std::string_view GetName() const override { return "LED Panel"; }
+        [[nodiscard]] bool SupportsPrimaryColor() const override { return true; }
 
         void OnActivate(int width, int height) override;
 
@@ -49,16 +67,18 @@ namespace Spectrum {
 
     private:
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Settings & Data Structs
+        // Settings & Data Structures
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        struct QualitySettings {
+        struct QualitySettings
+        {
             bool usePeakHold;
             int maxRows;
             float smoothingMultiplier;
         };
 
-        struct GridData {
+        struct GridData
+        {
             int rows = 0;
             int columns = 0;
             float cellSize = 0.0f;
@@ -67,7 +87,7 @@ namespace Spectrum {
         };
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Initialization
+        // Grid Initialization
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void UpdateGrid(size_t requiredColumns);
@@ -76,42 +96,32 @@ namespace Spectrum {
         void InitializeRowColors();
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Animation & Value Updates
+        // Animation Updates
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void UpdateValues(const SpectrumData& spectrum);
         void UpdatePeakValues(float deltaTime);
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Rendering Layers
+        // Rendering Layers (SRP)
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        void RenderInactiveLeds(GraphicsContext& context);
-        void RenderActiveLeds(GraphicsContext& context);
-        void RenderPeakLeds(GraphicsContext& context);
+        void RenderInactiveLeds(GraphicsContext& context) const;
+        void RenderActiveLeds(GraphicsContext& context) const;
+        void RenderPeakLeds(GraphicsContext& context) const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Color Calculation
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        Color GetLedColor(int row, float brightness) const;
-        bool HasExternalColor() const;
+        [[nodiscard]] Color GetLedColor(int row, float brightness) const;
+        [[nodiscard]] bool HasExternalColor() const;
+        [[nodiscard]] Color BlendWithExternalColor(Color baseColor, float t) const;
 
-        Color BlendWithExternalColor(
-            Color baseColor,
-            float t
-        ) const;
-
-        static Color InterpolateGradient(float t);
-
-        static bool ColorsAreSimilar(
-            const Color& c1,
-            const Color& c2,
-            float threshold = 0.01f
-        );
+        [[nodiscard]] static Color InterpolateGradient(float t);
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Member State
+        // Member Variables
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         QualitySettings m_settings;
@@ -127,4 +137,4 @@ namespace Spectrum {
 
 } // namespace Spectrum
 
-#endif // SPECTRUM_CPP_LED_PANEL_RENDERER_H
+#endif

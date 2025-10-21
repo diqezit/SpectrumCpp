@@ -51,6 +51,7 @@ namespace Spectrum {
         [[nodiscard]] float GetAmplification() const;
         [[nodiscard]] float GetSmoothing() const;
         [[nodiscard]] size_t GetBarCount() const;
+        [[nodiscard]] std::string_view GetSpectrumScaleName() const;
 
     private:
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-

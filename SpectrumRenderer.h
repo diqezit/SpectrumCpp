@@ -1,10 +1,24 @@
+// SpectrumRenderer.h
 #ifndef SPECTRUM_CPP_SPECTRUM_RENDERER_H
 #define SPECTRUM_CPP_SPECTRUM_RENDERER_H
 
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// This file defines the SpectrumRenderer, a specialized component that
-// combines other renderers to draw common spectrum visualizations like
-// bars and waveforms. It acts as a composite renderer
+// Defines the SpectrumRenderer, a specialized component that combines
+// primitive and gradient renderers to draw common spectrum visualizations
+// like bars and waveforms. It acts as a composite renderer.
+//
+// Key responsibilities:
+// - Spectrum bar rendering with configurable styles
+// - Waveform visualization with optional mirroring
+// - Integration of gradient and solid color rendering
+// - Bar style management (gradient, corner radius, spacing)
+//
+// Design notes:
+// - All render methods are const (stateless rendering)
+// - Delegates primitive drawing to PrimitiveRenderer
+// - Delegates gradient drawing to GradientRenderer
+// - Uses GeometryBuilder for waveform point generation
+// - Non-owning pointers to dependencies (lifetime managed externally)
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Common.h"
@@ -15,20 +29,32 @@
 
 namespace Spectrum {
 
-    class SpectrumRenderer {
+    class SpectrumRenderer final
+    {
     public:
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Lifecycle Management
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         SpectrumRenderer(
             PrimitiveRenderer* primitiveRenderer,
             GradientRenderer* gradientRenderer,
             GeometryBuilder* geometryBuilder
         );
 
+        SpectrumRenderer(const SpectrumRenderer&) = delete;
+        SpectrumRenderer& operator=(const SpectrumRenderer&) = delete;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Spectrum Visualization
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         void DrawSpectrumBars(
             const SpectrumData& spectrum,
             const Rect& bounds,
             const BarStyle& style,
             const Color& color
-        );
+        ) const;
 
         void DrawWaveform(
             const SpectrumData& spectrum,
@@ -36,14 +62,22 @@ namespace Spectrum {
             const Color& color,
             float strokeWidth = 2.0f,
             bool mirror = false
-        );
+        ) const;
 
     private:
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Private Implementation
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         void DrawSingleBar(
             const Rect& barRect,
             const BarStyle& style,
             const Color& color
-        );
+        ) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Member Variables
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         PrimitiveRenderer* m_primitiveRenderer;
         GradientRenderer* m_gradientRenderer;
