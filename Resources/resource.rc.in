@@ -1,0 +1,5 @@
+// Resources/resource.rc
+
+#include "Resource.h"
+
+IDI_APP_ICON    ICON    "@CMAKE_SOURCE_DIR@/Resources/app.ico"
