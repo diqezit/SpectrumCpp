@@ -1,12 +1,11 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // Implements the RendererManager, which handles the lifecycle and
 // configuration of all visualization renderers.
-// 
+//
 // Key implementation details:
 // - Manages a collection of IRenderer implementations
 // - Handles switching between different visualization styles
 // - Applies global quality settings across all renderers
-// - Responds to window resize events
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "RendererManager.h"
@@ -29,7 +28,7 @@ namespace Spectrum
     // Lifecycle Management
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    RendererManager::RendererManager(EventBus* bus, WindowManager* windowManager) :
+    RendererManager::RendererManager(EventBus* bus, Platform::WindowManager* windowManager) :
         m_currentRenderer(nullptr),
         m_currentStyle(RenderStyle::Bars),
         m_currentQuality(RenderQuality::Medium),
@@ -40,7 +39,7 @@ namespace Spectrum
 
     RendererManager::~RendererManager() = default;
 
-    bool RendererManager::Initialize()
+    [[nodiscard]] bool RendererManager::Initialize()
     {
         CreateRenderers();
         ActivateInitialRenderer();
@@ -53,8 +52,7 @@ namespace Spectrum
 
     void RendererManager::OnResize(int width, int height)
     {
-        if (m_currentRenderer)
-            m_currentRenderer->OnActivate(width, height);
+        if (m_currentRenderer) m_currentRenderer->OnActivate(width, height);
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -89,29 +87,28 @@ namespace Spectrum
     // Public Getters
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    IRenderer* RendererManager::GetCurrentRenderer() const
+    [[nodiscard]] IRenderer* RendererManager::GetCurrentRenderer() const noexcept
     {
         return m_currentRenderer;
     }
 
-    RenderStyle RendererManager::GetCurrentStyle() const
+    [[nodiscard]] RenderStyle RendererManager::GetCurrentStyle() const noexcept
     {
         return m_currentStyle;
     }
 
-    RenderQuality RendererManager::GetQuality() const
+    [[nodiscard]] RenderQuality RendererManager::GetQuality() const noexcept
     {
         return m_currentQuality;
     }
 
-    std::string_view RendererManager::GetCurrentRendererName() const
+    [[nodiscard]] std::string_view RendererManager::GetCurrentRendererName() const noexcept
     {
-        if (m_currentRenderer)
-            return m_currentRenderer->GetName();
+        if (m_currentRenderer) return m_currentRenderer->GetName();
         return "None";
     }
 
-    std::string_view RendererManager::GetQualityName() const
+    [[nodiscard]] std::string_view RendererManager::GetQualityName() const noexcept
     {
         switch (m_currentQuality)
         {
@@ -128,12 +125,14 @@ namespace Spectrum
 
     void RendererManager::SubscribeToEvents(EventBus* bus)
     {
+        if (!bus) return;
+
         bus->Subscribe(InputAction::SwitchRenderer, [this]() {
-            this->SwitchToNextRenderer();
+            SwitchToNextRenderer();
             });
 
         bus->Subscribe(InputAction::CycleQuality, [this]() {
-            this->CycleQuality(1);
+            CycleQuality(1);
             });
     }
 
@@ -151,10 +150,8 @@ namespace Spectrum
 
     void RendererManager::ActivateInitialRenderer()
     {
-        // Start with a default style
         m_currentStyle = RenderStyle::Bars;
-        auto it = m_renderers.find(m_currentStyle);
-        if (it != m_renderers.end())
+        if (auto it = m_renderers.find(m_currentStyle); it != m_renderers.end())
         {
             m_currentRenderer = it->second.get();
             SetQuality(m_currentQuality);
@@ -163,14 +160,12 @@ namespace Spectrum
 
     void RendererManager::DeactivateCurrentRenderer()
     {
-        if (m_currentRenderer)
-            m_currentRenderer->OnDeactivate();
+        if (m_currentRenderer) m_currentRenderer->OnDeactivate();
     }
 
     void RendererManager::ActivateNewRenderer(RenderStyle style)
     {
-        auto it = m_renderers.find(style);
-        if (it != m_renderers.end())
+        if (auto it = m_renderers.find(style); it != m_renderers.end())
         {
             m_currentRenderer = it->second.get();
             m_currentStyle = style;
@@ -178,26 +173,22 @@ namespace Spectrum
 
         if (!m_currentRenderer || !m_windowManager) return;
 
-        auto* engine = m_windowManager->GetRenderEngine();
-        if (!engine) return;
+        if (auto* engine = m_windowManager->GetRenderEngine())
+        {
+            m_currentRenderer->OnActivate(engine->GetWidth(), engine->GetHeight());
+            m_currentRenderer->SetQuality(m_currentQuality);
 
-        const int width = engine->GetWidth();
-        const int height = engine->GetHeight();
-        m_currentRenderer->OnActivate(width, height);
-        m_currentRenderer->SetQuality(m_currentQuality);
-
-        LOG_INFO("Switched to " << m_currentRenderer->GetName().data() << " renderer");
+            LOG_INFO("Switched to " << m_currentRenderer->GetName().data() << " renderer");
+        }
     }
 
     void RendererManager::SetQuality(RenderQuality quality)
     {
         m_currentQuality = quality;
 
-        // Apply to all renderers so the setting is consistent when switching
         for (auto& [style, renderer] : m_renderers)
         {
-            if (renderer)
-                renderer->SetQuality(quality);
+            if (renderer) renderer->SetQuality(quality);
         }
 
         LOG_INFO("Render quality set to " << GetQualityName().data());

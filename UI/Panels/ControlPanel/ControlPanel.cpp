@@ -1,6 +1,6 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // Implements the ControlPanel with data-driven widget creation.
-// 
+//
 // Key implementation details:
 // - Dynamic button creation based on controller state
 // - Smooth slide-in/out animation for panel visibility
@@ -131,7 +131,7 @@ namespace Spectrum
         CreateActionButtons(windowManager, audioManager);
     }
 
-    void ControlPanel::CreateNavigationControls(RendererManager* rm, WindowManager* /*wm*/, AudioManager* am)
+    void ControlPanel::CreateNavigationControls(RendererManager* rm, Platform::WindowManager* /*wm*/, AudioManager* am)
     {
         const std::vector<NavControlDefinition> navDefs = {
             {
@@ -185,7 +185,7 @@ namespace Spectrum
         }
     }
 
-    void ControlPanel::CreateActionButtons(WindowManager* wm, AudioManager* am)
+    void ControlPanel::CreateActionButtons(Platform::WindowManager* wm, AudioManager* am)
     {
         const std::vector<ButtonDefinition> buttonDefs = {
             {
@@ -279,7 +279,7 @@ namespace Spectrum
         }
     }
 
-    bool ControlPanel::IsToggleButtonHovered(const Point& mousePos) const noexcept
+    [[nodiscard]] bool ControlPanel::IsToggleButtonHovered(const Point& mousePos) const noexcept
     {
         const Rect toggleRect = GetToggleButtonRect();
 
@@ -289,7 +289,7 @@ namespace Spectrum
             mousePos.y <= toggleRect.GetBottom();
     }
 
-    Rect ControlPanel::GetToggleButtonRect() const noexcept
+    [[nodiscard]] Rect ControlPanel::GetToggleButtonRect() const noexcept
     {
         const float xPos = Utils::Lerp(0.0f, UILayout::kControlPanelWidth + 5.0f, m_animator.GetProgress());
 
@@ -301,12 +301,12 @@ namespace Spectrum
         };
     }
 
-    float ControlPanel::GetContentXOffset() const noexcept
+    [[nodiscard]] float ControlPanel::GetContentXOffset() const noexcept
     {
         return Utils::Lerp(-(UILayout::kControlPanelWidth + 5.0f), 0.0f, m_animator.GetProgress());
     }
 
-    Point ControlPanel::GetTransformedMousePosition(const Point& mousePos) const noexcept
+    [[nodiscard]] Point ControlPanel::GetTransformedMousePosition(const Point& mousePos) const noexcept
     {
         return { mousePos.x - GetContentXOffset(), mousePos.y };
     }

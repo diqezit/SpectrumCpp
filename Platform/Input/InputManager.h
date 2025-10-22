@@ -3,37 +3,21 @@
 // translating it into actionable commands for the application.
 //
 // The InputManager implements a data-driven input system that polls keyboard
-// state each frame, detects key press events (transitions from up to down),
-// and maps them to application-specific InputAction commands. It maintains
-// a queue of actions that occurred during the current frame, which can be
-// consumed by the main application loop.
-//
-// Key Responsibilities:
-// - Poll keyboard state using platform-specific APIs
-// - Detect key press events (edge detection: not pressed -> pressed)
-// - Map virtual key codes to InputAction commands
-// - Maintain an action queue for the current frame
-// - Support data-driven key binding configuration
-//
-// Design Philosophy:
-// - Stateful: tracks previous frame's key states for edge detection
-// - Data-driven: key mappings configured in constructor, easily extensible
-// - Non-blocking: polling-based approach, no message queue dependencies
-// - Frame-based: actions are queued and consumed per frame
+// state each frame via an IKeyboard interface. It detects key press events
+// (transitions from up to down) and maps them to application-specific
+// InputAction commands, queueing them for the main loop.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #ifndef SPECTRUM_CPP_INPUT_MANAGER_H
 #define SPECTRUM_CPP_INPUT_MANAGER_H
 
 #include "Common.h"
+#include "IKeyboard.h"
+#include <memory>
 #include <unordered_map>
 #include <vector>
 
-namespace Spectrum {
-
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // InputManager Class
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+namespace Spectrum::Platform::Input {
 
     class InputManager final {
     public:
@@ -41,7 +25,7 @@ namespace Spectrum {
         // Lifecycle Management
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        InputManager();
+        explicit InputManager(std::unique_ptr<IKeyboard> keyboard);
         ~InputManager() noexcept = default;
 
         InputManager(const InputManager&) = delete;
@@ -75,11 +59,12 @@ namespace Spectrum {
         // Member Variables
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
+        std::unique_ptr<IKeyboard> m_keyboard;
         std::unordered_map<int, bool> m_keyStates;
         std::unordered_map<int, InputAction> m_keyMappings;
         std::vector<InputAction> m_actionQueue;
     };
 
-} // namespace Spectrum
+} // namespace Spectrum::Platform::Input
 
 #endif // SPECTRUM_CPP_INPUT_MANAGER_H

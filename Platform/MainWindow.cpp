@@ -5,22 +5,15 @@
 // This implementation handles the step-by-step process of Win32 window
 // registration, creation, and message processing. The static WndProc acts
 // as the entry point for all window messages, delegating them to the
-// associated WindowManager instance stored via GWLP_USERDATA.
-//
-// Key Implementation Details:
-// - Two-phase initialization: constructor + Initialize()
-// - Proper cleanup tracking via m_classRegistered flag
-// - Window class name differentiation for main vs overlay windows
-// - Message pump that respects m_running flag for graceful shutdown
-// - WndProc uses WM_NCCREATE for early user data storage
+// associated MessageHandler instance.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "MainWindow.h"
 #include "Resource.h"
-#include "WindowHelper.h"
-#include "WindowManager.h"
+#include "MessageHandler.h"
+#include "Win32Utils.h"
 
-namespace Spectrum {
+namespace Spectrum::Platform {
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Lifecycle Management
@@ -29,6 +22,7 @@ namespace Spectrum {
     MainWindow::MainWindow(HINSTANCE hInstance) :
         m_hInstance(hInstance),
         m_hwnd(nullptr),
+        m_className(),
         m_running(false),
         m_isOverlay(false),
         m_classRegistered(false),
@@ -47,7 +41,7 @@ namespace Spectrum {
         int width,
         int height,
         bool isOverlay,
-        void* userPtr
+        MessageHandler* messageHandler
     )
     {
         m_width = width;
@@ -56,7 +50,7 @@ namespace Spectrum {
         m_className = isOverlay ? L"SpectrumOverlayClass" : L"SpectrumMainClass";
 
         if (!RegisterWindowClass()) return false;
-        if (!CreateAndConfigureWindow(title, width, height, userPtr)) return false;
+        if (!CreateAndConfigureWindow(title, width, height, messageHandler)) return false;
 
         m_running = true;
         return true;
@@ -69,7 +63,6 @@ namespace Spectrum {
     void MainWindow::ProcessMessages()
     {
         MSG msg{};
-
         while (m_running && PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
         {
             if (msg.message == WM_QUIT)
@@ -77,7 +70,6 @@ namespace Spectrum {
                 m_running = false;
                 break;
             }
-
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }
@@ -90,24 +82,18 @@ namespace Spectrum {
     void MainWindow::Show(int cmdShow) const
     {
         if (!m_hwnd) return;
-
         ShowWindow(m_hwnd, cmdShow);
         UpdateWindow(m_hwnd);
     }
 
     void MainWindow::Hide() const
     {
-        if (!m_hwnd) return;
-
-        ShowWindow(m_hwnd, SW_HIDE);
+        if (m_hwnd) ShowWindow(m_hwnd, SW_HIDE);
     }
 
     void MainWindow::Close()
     {
-        if (!m_running) return;
-        if (!m_hwnd) return;
-
-        PostMessage(m_hwnd, WM_CLOSE, 0, 0);
+        if (m_running && m_hwnd) PostMessage(m_hwnd, WM_CLOSE, 0, 0);
     }
 
     void MainWindow::SetRunning(bool running) noexcept
@@ -149,10 +135,8 @@ namespace Spectrum {
 
     [[nodiscard]] bool MainWindow::RegisterWindowClass()
     {
-        const WNDCLASSEXW wcex = CreateWindowClass();
-
-        const ATOM result = RegisterClassExW(&wcex);
-        if (result == 0) return false;
+        WNDCLASSEXW wcex = CreateWindowClass();
+        if (RegisterClassExW(&wcex) == 0) return false;
 
         m_classRegistered = true;
         return true;
@@ -164,22 +148,15 @@ namespace Spectrum {
         wcex.cbSize = sizeof(WNDCLASSEXW);
         wcex.style = CS_HREDRAW | CS_VREDRAW;
         wcex.lpfnWndProc = WndProc;
-        wcex.cbClsExtra = 0;
-        wcex.cbWndExtra = 0;
         wcex.hInstance = m_hInstance;
         wcex.hCursor = LoadCursorW(nullptr, IDC_ARROW);
         wcex.lpszClassName = m_className.c_str();
-        wcex.lpszMenuName = nullptr;
-
         wcex.hIcon = LoadIconW(m_hInstance, MAKEINTRESOURCEW(IDI_APP_ICON));
-        if (!wcex.hIcon)
-            wcex.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
-
         wcex.hIconSm = LoadIconW(m_hInstance, MAKEINTRESOURCEW(IDI_APP_ICON));
-        if (!wcex.hIconSm)
-            wcex.hIconSm = LoadIconW(nullptr, IDI_APPLICATION);
-
         wcex.hbrBackground = m_isOverlay ? nullptr : reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+
+        if (!wcex.hIcon) wcex.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+        if (!wcex.hIconSm) wcex.hIconSm = LoadIconW(nullptr, IDI_APPLICATION);
 
         return wcex;
     }
@@ -188,22 +165,21 @@ namespace Spectrum {
         const std::wstring& title,
         int width,
         int height,
-        void* userPtr
+        MessageHandler* messageHandler
     )
     {
-        const auto styles = WindowUtils::MakeStyles(m_isOverlay);
-        const auto params = CalculateWindowRect(width, height, styles);
+        const auto styles = Win32Utils::MakeStyles(m_isOverlay);
+        const auto params = CalculateWindowRect(width, height, styles.style, styles.exStyle);
 
-        m_hwnd = WindowUtils::CreateWindowWithStyles(
-            m_hInstance,
+        m_hwnd = CreateWindowExW(
+            styles.exStyle,
             m_className.c_str(),
             title.c_str(),
-            styles,
-            params.x,
-            params.y,
-            params.w,
-            params.h,
-            userPtr
+            styles.style,
+            params.x, params.y,
+            params.w, params.h,
+            nullptr, nullptr, m_hInstance,
+            messageHandler // Pass handler pointer to WM_NCCREATE
         );
 
         if (!m_hwnd) return false;
@@ -215,18 +191,17 @@ namespace Spectrum {
     [[nodiscard]] MainWindow::WindowRectParams MainWindow::CalculateWindowRect(
         int width,
         int height,
-        const WindowUtils::Styles& styles
+        DWORD style,
+        DWORD exStyle
     ) const
     {
-        RECT rect{ 0, 0, width, height };
-        WindowUtils::AdjustRectIfNeeded(rect, styles, m_isOverlay);
+        if (m_isOverlay) return { 0, 0, width, height };
 
-        if (m_isOverlay)
-            return { 0, 0, width, height };
+        RECT rect{ 0, 0, width, height };
+        Win32Utils::AdjustRectForStyles(rect, { style, exStyle });
 
         return {
-            CW_USEDEFAULT,
-            CW_USEDEFAULT,
+            CW_USEDEFAULT, CW_USEDEFAULT,
             rect.right - rect.left,
             rect.bottom - rect.top
         };
@@ -234,8 +209,12 @@ namespace Spectrum {
 
     void MainWindow::ApplyPostCreationStyles() const
     {
-        if (m_isOverlay)
-            WindowUtils::ApplyOverlay(m_hwnd);
+        if (!m_isOverlay) return;
+
+        // For a click-through overlay, we apply transparency effects
+        SetLayeredWindowAttributes(m_hwnd, RGB(0, 0, 0), 0, LWA_COLORKEY);
+        LONG_PTR currentExStyle = GetWindowLongPtr(m_hwnd, GWL_EXSTYLE);
+        SetWindowLongPtr(m_hwnd, GWL_EXSTYLE, currentExStyle | WS_EX_TRANSPARENT);
     }
 
     void MainWindow::Cleanup() noexcept
@@ -257,25 +236,19 @@ namespace Spectrum {
     // Win32 Message Handling
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    LRESULT CALLBACK MainWindow::WndProc(
-        HWND hwnd,
-        UINT msg,
-        WPARAM wParam,
-        LPARAM lParam
-    )
+    LRESULT CALLBACK MainWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
     {
-        if (msg == WM_NCCREATE)
-            StoreManagerPointer(hwnd, lParam);
+        if (msg == WM_NCCREATE) StoreMessageHandlerPointer(hwnd, lParam);
 
-        WindowManager* manager = GetManagerFromHwnd(hwnd);
-
-        if (manager)
-            return manager->HandleWindowMessage(hwnd, msg, wParam, lParam);
+        if (MessageHandler* handler = GetMessageHandlerFromHwnd(hwnd))
+        {
+            return handler->HandleWindowMessage(hwnd, msg, wParam, lParam);
+        }
 
         return DefWindowProc(hwnd, msg, wParam, lParam);
     }
 
-    void MainWindow::StoreManagerPointer(HWND hwnd, LPARAM lParam)
+    void MainWindow::StoreMessageHandlerPointer(HWND hwnd, LPARAM lParam)
     {
         auto* createStruct = reinterpret_cast<CREATESTRUCT*>(lParam);
         SetWindowLongPtr(
@@ -285,11 +258,9 @@ namespace Spectrum {
         );
     }
 
-    WindowManager* MainWindow::GetManagerFromHwnd(HWND hwnd)
+    MessageHandler* MainWindow::GetMessageHandlerFromHwnd(HWND hwnd)
     {
-        return reinterpret_cast<WindowManager*>(
-            GetWindowLongPtr(hwnd, GWLP_USERDATA)
-            );
+        return reinterpret_cast<MessageHandler*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
     }
 
-} // namespace Spectrum
+} // namespace Spectrum::Platform

@@ -1,18 +1,6 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // Defines ControllerCore, the central orchestrator of the application that
 // coordinates all major subsystems (window, audio, rendering, input, UI).
-//
-// This class implements a state-driven architecture where all components
-// receive a unified frame state snapshot, ensuring deterministic behavior
-// and eliminating race conditions. It drives the main application loop,
-// managing the Input -> Update -> Render pipeline while remaining decoupled
-// from platform-specific implementation details.
-//
-// Key Responsibilities:
-// - Initialize and coordinate all manager subsystems
-// - Drive the main application loop with proper frame timing
-// - Collect and distribute frame state to all components
-// - Handle device loss and resource recreation
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #ifndef SPECTRUM_CPP_CONTROLLER_CORE_H
@@ -24,15 +12,18 @@
 #include <vector>
 
 namespace Spectrum {
-
-    // Forward declarations
     class AudioManager;
     class EventBus;
+    class RendererManager;
     class RenderEngine;
     class Canvas;
-    class InputManager;
-    class RendererManager;
-    class WindowManager;
+
+    namespace Platform {
+        class WindowManager;
+        namespace Input {
+            class InputManager;
+        }
+    }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Frame State Structures
@@ -95,7 +86,7 @@ namespace Spectrum {
 
         [[nodiscard]] RendererManager* GetRendererManager() const noexcept;
         [[nodiscard]] AudioManager* GetAudioManager() const noexcept;
-        [[nodiscard]] WindowManager* GetWindowManager() const noexcept;
+        [[nodiscard]] Platform::WindowManager* GetWindowManager() const noexcept;
 
     private:
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -116,10 +107,10 @@ namespace Spectrum {
         void Render(const FrameState& frameState);
 
         [[nodiscard]] bool CanRender(const FrameState& frameState) const;
-        void PrepareFrame(RenderEngine& engine, const FrameState& frameState) const;
-        void RenderSpectrum(Canvas& canvas) const;
-        void RenderUI(Canvas& canvas) const;
-        void FinalizeFrame(RenderEngine& engine);
+        void PrepareFrame(const FrameState& frameState) const;
+        void RenderSpectrum() const;
+        void RenderUI() const;
+        void FinalizeFrame();
 
         [[nodiscard]] bool ShouldProcessFrame() const;
         void ThrottleFrameRate() const;
@@ -128,16 +119,15 @@ namespace Spectrum {
         // Member Variables
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        static constexpr float kTargetFrameTime = 1.0f / 60.0f;  // 60 FPS target
-        static constexpr float kMaxFrameTime = 1.0f / 30.0f;     // 30 FPS minimum
+        static constexpr float kTargetFrameTime = 1.0f / 60.0f;
 
         HINSTANCE m_hInstance;
 
         std::unique_ptr<EventBus> m_eventBus;
-        std::unique_ptr<WindowManager> m_windowManager;
+        std::unique_ptr<Platform::WindowManager> m_windowManager;
         std::unique_ptr<AudioManager> m_audioManager;
         std::unique_ptr<RendererManager> m_rendererManager;
-        std::unique_ptr<InputManager> m_inputManager;
+        std::unique_ptr<Platform::Input::InputManager> m_inputManager;
 
         Utils::Timer m_timer;
         std::vector<InputAction> m_actions;

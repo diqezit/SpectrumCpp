@@ -6,6 +6,7 @@ project(SpectrumCpp)
 # ==============================================================================
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 # ==============================================================================
 # Executable Target
@@ -48,7 +49,6 @@ target_sources(${PROJECT_NAME} PRIVATE
     Common/EventBus.h
     Common/Logger.h
     Common/MathUtils.h
-    Common/PlatformUtils.h
     Common/Random.h
     Common/SpectrumTypes.h
     Common/StringUtils.h
@@ -78,10 +78,13 @@ target_sources(${PROJECT_NAME} PRIVATE
     Graphics/Visualizers/KenwoodBarsRenderer.h
     Graphics/Visualizers/LedPanelRenderer.h
     Graphics/Visualizers/WaveRenderer.h
-    Platform/InputManager.h
+    Platform/Input/IKeyboard.h
+    Platform/Input/InputManager.h
+    Platform/Input/Win32Keyboard.h
+    Platform/MessageHandler.h
     Platform/MainWindow.h
-    Platform/WindowHelper.h
     Platform/WindowManager.h
+    Platform/Win32Utils.h
     Resources/Resource.h
     UI/Common/UILayout.h
     UI/Components/UIButton.h
@@ -135,9 +138,9 @@ target_sources(${PROJECT_NAME} PRIVATE
     Graphics/Visualizers/KenwoodBarsRenderer.cpp
     Graphics/Visualizers/LedPanelRenderer.cpp
     Graphics/Visualizers/WaveRenderer.cpp
-    Platform/InputManager.cpp
+    Platform/Input/InputManager.cpp
+    Platform/MessageHandler.cpp
     Platform/MainWindow.cpp
-    Platform/WindowHelper.cpp
     Platform/WindowManager.cpp
     UI/Core/UIManager.cpp
     UI/Components/UIButton.cpp
@@ -169,7 +172,7 @@ source_group("Audio\\Sources" FILES
     Audio/Sources/RealtimeAudioSource.cpp Audio/Sources/RealtimeAudioSource.h)
 source_group("Common" FILES
     Common/ColorUtils.cpp Common/ColorUtils.h Common/Common.h Common/EventBus.h
-    Common/Logger.h Common/MathUtils.h Common/PlatformUtils.h Common/Random.cpp
+    Common/Logger.h Common/MathUtils.h Common/Random.cpp
     Common/Random.h Common/SpectrumTypes.h Common/StringUtils.cpp
     Common/StringUtils.h Common/TemplateUtils.h Common/Timer.cpp
     Common/Timer.h Common/Types.h)
@@ -202,17 +205,17 @@ source_group("Graphics\\Visualizers" FILES
     Graphics/Visualizers/LedPanelRenderer.cpp Graphics/Visualizers/LedPanelRenderer.h
     Graphics/Visualizers/WaveRenderer.cpp Graphics/Visualizers/WaveRenderer.h)
 source_group("Platform" FILES
-    Platform/InputManager.cpp Platform/InputManager.h Platform/MainWindow.cpp
-    Platform/MainWindow.h Platform/WindowHelper.cpp Platform/WindowHelper.h
-    Platform/WindowManager.cpp Platform/WindowManager.h)
+    Platform/MainWindow.cpp Platform/MainWindow.h
+    Platform/WindowManager.cpp Platform/WindowManager.h
+    Platform/MessageHandler.cpp Platform/MessageHandler.h
+    Platform/Win32Utils.h)
+source_group("Platform\\Input" FILES
+    Platform/Input/InputManager.cpp Platform/Input/InputManager.h
+    Platform/Input/IKeyboard.h Platform/Input/Win32Keyboard.h)
 source_group("Project Files" FILES CMakeLists.txt)
-
 source_group("Resources" FILES
     Resources/resource.rc.in
-    Resources/Resource.h
-    Resources/app.ico
-)
-
+    Resources/Resource.h)
 source_group("UI\\Common" FILES UI/Common/UILayout.h)
 source_group("UI\\Components" FILES
     UI/Components/UIButton.cpp UI/Components/UIButton.h
@@ -244,12 +247,12 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
 )
 
 if(MSVC)
-    target_compile_options(${PROJECT_NAME} PRIVATE /W4 /EHsc)
+    target_compile_options(${PROJECT_NAME} PRIVATE /W4 /WX /EHsc)
     set_target_properties(${PROJECT_NAME} PROPERTIES
         VS_RESOURCE_INCLUDE_DIRECTORIES "${CMAKE_SOURCE_DIR}/Resources"
     )
 else()
-    target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 
 # ==============================================================================
@@ -280,6 +283,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     "${CMAKE_SOURCE_DIR}/Graphics/Base"
     "${CMAKE_SOURCE_DIR}/Graphics/Visualizers"
     "${CMAKE_SOURCE_DIR}/Platform"
+    "${CMAKE_SOURCE_DIR}/Platform/Input"
     "${CMAKE_SOURCE_DIR}/Resources"
     "${CMAKE_SOURCE_DIR}/UI"
     "${CMAKE_SOURCE_DIR}/UI/Common"

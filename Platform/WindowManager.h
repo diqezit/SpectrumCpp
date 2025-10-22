@@ -1,19 +1,11 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // Defines the WindowManager, which orchestrates the lifecycle and
-// configuration of the main application window and the overlay window.
+// configuration of the application's windows.
 //
-// The WindowManager serves as the primary interface to the OS windowing
-// system, managing window creation, state transitions (normal/overlay mode),
-// ownership of the RenderEngine, and routing of raw Win32 messages to
-// appropriate subsystems. It maintains the current mouse state and provides
-// it to the ControllerCore for frame state collection.
-//
-// Key Responsibilities:
-// - Create and manage main and overlay windows
-// - Own and recreate RenderEngine on device loss
-// - Route Win32 messages to appropriate handlers
-// - Maintain mouse input state
-// - Coordinate overlay mode transitions
+// The WindowManager serves as the primary high-level interface to the
+// windowing system, managing window creation, state transitions (normal vs.
+// overlay), and ownership of the RenderEngine. It delegates raw message
+// processing to a dedicated MessageHandler.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #ifndef SPECTRUM_CPP_WINDOW_MANAGER_H
@@ -23,131 +15,98 @@
 #include <memory>
 
 namespace Spectrum {
-
     class ControllerCore;
     class EventBus;
     class RenderEngine;
-    class MainWindow;
     class UIManager;
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // WindowManager Class
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    namespace Platform {
+        class MainWindow;
+        class MessageHandler;
 
-    class WindowManager final {
-    public:
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Public Structures
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        class WindowManager final {
+        public:
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+            // Lifecycle Management
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        struct MouseState {
-            Point position{ 0.0f, 0.0f };
-            bool leftButtonDown = false;
-            bool rightButtonDown = false;
-            bool middleButtonDown = false;
-            float wheelDelta = 0.0f;
+            explicit WindowManager(HINSTANCE hInstance, ControllerCore* controller, EventBus* bus);
+            ~WindowManager() noexcept;
+
+            WindowManager(const WindowManager&) = delete;
+            WindowManager& operator=(const WindowManager&) = delete;
+            WindowManager(WindowManager&&) = delete;
+            WindowManager& operator=(WindowManager&&) = delete;
+
+            [[nodiscard]] bool Initialize();
+
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+            // Main Execution Loop
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+            void ProcessMessages();
+            void PropagateResizeToSubsystems(HWND hwnd);
+
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+            // State Management
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+            void ToggleOverlay();
+            [[nodiscard]] bool RecreateGraphicsAndNotify(HWND hwnd);
+
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+            // State Queries
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+            [[nodiscard]] bool IsRunning() const;
+            [[nodiscard]] bool IsOverlayMode() const noexcept;
+            [[nodiscard]] bool IsActive() const;
+
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+            // Public Getters
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+            [[nodiscard]] RenderEngine* GetRenderEngine() const noexcept;
+            [[nodiscard]] UIManager* GetUIManager() const noexcept;
+            [[nodiscard]] MessageHandler* GetMessageHandler() const noexcept;
+            [[nodiscard]] MainWindow* GetMainWindow() const noexcept;
+            [[nodiscard]] HWND GetCurrentHwnd() const;
+
+        private:
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+            // Private Implementation / Internal Helpers
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+            [[nodiscard]] bool InitializeMainWindow();
+            [[nodiscard]] bool InitializeOverlayWindow();
+
+            void ActivateOverlayMode();
+            void DeactivateOverlayMode();
+
+            void HideMainWindow() const;
+            void ShowMainWindow() const;
+            void HideOverlayWindow() const;
+            void PositionAndShowOverlay() const;
+
+            [[nodiscard]] bool RecreateGraphicsContext(HWND hwnd);
+            void NotifyRendererOfModeChange() const;
+
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+            // Member Variables
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+            HINSTANCE m_hInstance;
+            ControllerCore* m_controller; // Non-owning pointer to parent
+
+            bool m_isOverlay;
+
+            std::unique_ptr<MainWindow> m_mainWnd;
+            std::unique_ptr<MainWindow> m_overlayWnd;
+            std::unique_ptr<RenderEngine> m_engine;
+            std::unique_ptr<UIManager> m_uiManager;
+            std::unique_ptr<MessageHandler> m_messageHandler;
         };
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Lifecycle Management
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-        explicit WindowManager(
-            HINSTANCE hInstance,
-            ControllerCore* controller,
-            EventBus* bus
-        );
-        ~WindowManager() noexcept;
-
-        WindowManager(const WindowManager&) = delete;
-        WindowManager& operator=(const WindowManager&) = delete;
-        WindowManager(WindowManager&&) = delete;
-        WindowManager& operator=(WindowManager&&) = delete;
-
-        [[nodiscard]] bool Initialize();
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Main Execution Loop
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-        void ProcessMessages();
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Window Message Handling
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-        LRESULT HandleWindowMessage(
-            HWND hwnd,
-            UINT msg,
-            WPARAM wParam,
-            LPARAM lParam
-        );
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // State Management
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-        void ToggleOverlay();
-        bool RecreateGraphicsAndNotify(HWND hwnd);
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // State Queries
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-        [[nodiscard]] bool IsRunning() const;
-        [[nodiscard]] bool IsOverlayMode() const noexcept;
-        [[nodiscard]] bool IsActive() const;
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Public Getters
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-        [[nodiscard]] RenderEngine* GetRenderEngine() const noexcept;
-        [[nodiscard]] UIManager* GetUIManager() const noexcept;
-        [[nodiscard]] MainWindow* GetMainWindow() const noexcept;
-        [[nodiscard]] HWND GetCurrentHwnd() const;
-        [[nodiscard]] const MouseState& GetMouseState() const noexcept;
-
-    private:
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Private Implementation / Internal Helpers
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-        void SubscribeToEvents(EventBus* bus);
-
-        [[nodiscard]] bool InitializeMainWindow();
-        [[nodiscard]] bool InitializeOverlayWindow();
-
-        void ActivateOverlayMode();
-        void DeactivateOverlayMode();
-
-        void HideMainWindow() const;
-        void ShowMainWindow() const;
-        void HideOverlayWindow() const;
-        void PositionAndShowOverlay() const;
-
-        [[nodiscard]] bool RecreateGraphicsContext(HWND hwnd);
-        void PropagateResizeToSubsystems(HWND hwnd);
-        void NotifyRendererOfModeChange() const;
-
-        void OnExitRequest();
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Member Variables
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-        HINSTANCE m_hInstance;
-        ControllerCore* m_controller;
-
-        bool m_isOverlay;
-        MouseState m_mouseState;
-
-        std::unique_ptr<MainWindow> m_mainWnd;
-        std::unique_ptr<MainWindow> m_overlayWnd;
-        std::unique_ptr<RenderEngine> m_engine;
-        std::unique_ptr<UIManager> m_uiManager;
-    };
-
+    } // namespace Platform
 } // namespace Spectrum
 
 #endif // SPECTRUM_CPP_WINDOW_MANAGER_H

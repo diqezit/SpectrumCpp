@@ -3,38 +3,20 @@
 // native Win32 window (HWND).
 //
 // The MainWindow encapsulates the complete lifecycle of a Win32 window,
-// including window class registration, window creation, message processing,
-// and proper cleanup. It provides a high-level, type-safe interface that
-// abstracts the complexities of Win32 API, delegating application-specific
-// message handling to a WindowManager instance.
-//
-// Key Responsibilities:
-// - Register and unregister window classes
-// - Create and destroy window handles
-// - Process Windows messages through a message pump
-// - Maintain window state (running, dimensions, overlay mode)
-// - Delegate message handling to WindowManager via static WndProc
-//
-// RAII Guarantees:
-// - Window handle is destroyed in destructor
-// - Window class is unregistered in destructor
-// - Non-copyable and non-movable to prevent resource duplication
+// including class registration, window creation, and cleanup. It delegates
+// application-specific message handling to a MessageHandler instance via a
+// static WndProc, serving as a pure resource management class.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #ifndef SPECTRUM_CPP_MAINWINDOW_H
 #define SPECTRUM_CPP_MAINWINDOW_H
 
 #include "Common.h"
-#include "WindowHelper.h"
 #include <string>
 
-namespace Spectrum {
+namespace Spectrum::Platform {
 
-    class WindowManager;
-
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // MainWindow Class
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    class MessageHandler;
 
     class MainWindow final {
     public:
@@ -55,7 +37,7 @@ namespace Spectrum {
             int width,
             int height,
             bool isOverlay,
-            void* userPtr
+            MessageHandler* messageHandler
         );
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -110,15 +92,10 @@ namespace Spectrum {
             const std::wstring& title,
             int width,
             int height,
-            void* userPtr
+            MessageHandler* messageHandler
         );
 
-        [[nodiscard]] WindowRectParams CalculateWindowRect(
-            int width,
-            int height,
-            const WindowUtils::Styles& styles
-        ) const;
-
+        [[nodiscard]] WindowRectParams CalculateWindowRect(int width, int height, DWORD style, DWORD exStyle) const;
         void ApplyPostCreationStyles() const;
         void Cleanup() noexcept;
 
@@ -126,15 +103,9 @@ namespace Spectrum {
         // Win32 Message Handling
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        static LRESULT CALLBACK WndProc(
-            HWND hwnd,
-            UINT msg,
-            WPARAM wParam,
-            LPARAM lParam
-        );
-
-        static void StoreManagerPointer(HWND hwnd, LPARAM lParam);
-        static WindowManager* GetManagerFromHwnd(HWND hwnd);
+        static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+        static void StoreMessageHandlerPointer(HWND hwnd, LPARAM lParam);
+        static MessageHandler* GetMessageHandlerFromHwnd(HWND hwnd);
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Member Variables
@@ -152,6 +123,6 @@ namespace Spectrum {
         int m_height;
     };
 
-} // namespace Spectrum
+} // namespace Spectrum::Platform
 
 #endif // SPECTRUM_CPP_MAINWINDOW_H

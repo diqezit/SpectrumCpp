@@ -3,30 +3,23 @@
 // presses to application-specific actions.
 //
 // This implementation provides frame-based keyboard input handling through
-// polling. Each Update() call checks the state of all registered keys,
-// detects press events (state transitions from up to down), and queues
-// corresponding actions. The action queue is consumed by GetActions(),
-// which returns all actions that occurred during the current frame.
-//
-// Key Implementation Details:
-// - Edge detection: only triggers on transition from not-pressed to pressed
-// - Data-driven mapping: key bindings initialized in constructor
-// - Structured bindings for clean iteration over mappings
-// - Move semantics for efficient action queue transfer
-// - Platform abstraction via Utils::IsKeyPressed()
+// polling. It uses an IKeyboard dependency to abstract the platform-specific
+// key state checks, enabling testability and adhering to SRP.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "InputManager.h"
-#include "PlatformUtils.h"
+#include <stdexcept>
 
-namespace Spectrum {
+namespace Spectrum::Platform::Input {
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Lifecycle Management
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    InputManager::InputManager()
+    InputManager::InputManager(std::unique_ptr<IKeyboard> keyboard) :
+        m_keyboard(std::move(keyboard))
     {
+        if (!m_keyboard) throw std::invalid_argument("keyboard dependency cannot be null");
         InitializeKeyMappings();
     }
 
@@ -76,7 +69,9 @@ namespace Spectrum {
     void InputManager::PollKeys()
     {
         for (const auto& [key, action] : m_keyMappings)
+        {
             ProcessSingleKey(key, action);
+        }
     }
 
     void InputManager::ProcessSingleKey(int key, InputAction action)
@@ -97,7 +92,7 @@ namespace Spectrum {
 
     [[nodiscard]] bool InputManager::IsKeyCurrentlyPressed(int key) const
     {
-        return Utils::IsKeyPressed(key);
+        return m_keyboard->IsKeyPressed(key);
     }
 
-} // namespace Spectrum
+} // namespace Spectrum::Platform::Input

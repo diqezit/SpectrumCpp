@@ -3,47 +3,36 @@
 // the application's windows and their associated resources.
 //
 // This implementation handles the complete lifecycle of both the main window
-// and overlay window, managing transitions between modes, recreating graphics
-// contexts on device loss, and routing Win32 messages to appropriate handlers.
-// It maintains mouse input state and propagates resize events to all dependent
-// subsystems.
-//
-// Key Implementation Details:
-// - Two-window system: main (normal mode) and overlay (transparent mode)
-// - Graphics context recreation on WM_SIZE and device loss
-// - Mouse state tracking for state-driven input model
-// - Event-driven overlay toggling through EventBus
+// and overlay window, managing transitions between modes and recreating
+// graphics contexts. It delegates all message handling to MessageHandler.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "WindowManager.h"
 #include "ControllerCore.h"
-#include "EventBus.h"
 #include "RenderEngine.h"
-#include "Canvas.h"
 #include "IRenderer.h"
-#include "MainWindow.h"
 #include "RendererManager.h"
+#include "MainWindow.h"
+#include "MessageHandler.h"
+#include "Win32Utils.h"
 #include "UIManager.h"
-#include "WindowHelper.h"
+#include <stdexcept>
 
-namespace Spectrum {
+namespace Spectrum::Platform {
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Lifecycle Management
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    WindowManager::WindowManager(
-        HINSTANCE hInstance,
-        ControllerCore* controller,
-        EventBus* bus
-    ) :
+    WindowManager::WindowManager(HINSTANCE hInstance, ControllerCore* controller, EventBus* bus) :
         m_hInstance(hInstance),
         m_controller(controller),
-        m_isOverlay(false),
-        m_mouseState{}
+        m_isOverlay(false)
     {
+        if (!m_controller) throw std::invalid_argument("controller dependency cannot be null");
+
         m_uiManager = std::make_unique<UIManager>(m_controller, this);
-        SubscribeToEvents(bus);
+        m_messageHandler = std::make_unique<MessageHandler>(controller, this, m_uiManager.get(), bus);
     }
 
     WindowManager::~WindowManager() noexcept = default;
@@ -54,7 +43,16 @@ namespace Spectrum {
         if (!InitializeOverlayWindow()) return false;
         if (!RecreateGraphicsAndNotify(m_mainWnd->GetHwnd())) return false;
 
-        WindowUtils::CenterOnScreen(m_mainWnd->GetHwnd());
+        const auto screenSize = Win32Utils::GetScreenSize();
+        RECT windowRect;
+        GetWindowRect(m_mainWnd->GetHwnd(), &windowRect);
+        const auto windowSize = Win32Utils::Size{ windowRect.right - windowRect.left, windowRect.bottom - windowRect.top };
+        const auto centerPos = Win32Utils::CalculateCenterPosition(windowSize, screenSize);
+
+        SetWindowPos(
+            m_mainWnd->GetHwnd(), nullptr, centerPos.x, centerPos.y,
+            0, 0, SWP_NOSIZE | SWP_NOZORDER
+        );
         m_mainWnd->Show();
 
         return true;
@@ -66,86 +64,24 @@ namespace Spectrum {
 
     void WindowManager::ProcessMessages()
     {
-        if (!m_mainWnd) return;
-        if (!m_mainWnd->IsRunning()) return;
-
-        m_mainWnd->ProcessMessages();
+        if (m_mainWnd && m_mainWnd->IsRunning()) m_mainWnd->ProcessMessages();
     }
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Window Message Handling
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-    LRESULT WindowManager::HandleWindowMessage(
-        HWND hwnd,
-        UINT msg,
-        WPARAM wParam,
-        LPARAM lParam
-    )
+    void WindowManager::PropagateResizeToSubsystems(HWND hwnd)
     {
-        switch (msg)
-        {
-        case WM_CLOSE:
-            OnExitRequest();
-            return 0;
+        if (!hwnd) return;
 
-        case WM_DESTROY:
-            PostQuitMessage(0);
-            return 0;
+        RECT clientRect;
+        GetClientRect(hwnd, &clientRect);
 
-        case WM_SIZE:
-            if (wParam != SIZE_MINIMIZED)
-                PropagateResizeToSubsystems(hwnd);
-            return 0;
+        const int width = clientRect.right - clientRect.left;
+        const int height = clientRect.bottom - clientRect.top;
 
-        case WM_MOUSEMOVE:
-        {
-            int x = 0;
-            int y = 0;
-            WindowUtils::ExtractMousePos(lParam, x, y);
-            m_mouseState.position.x = static_cast<float>(x);
-            m_mouseState.position.y = static_cast<float>(y);
-            return 0;
-        }
+        if (width == 0 || height == 0) return;
 
-        case WM_LBUTTONDOWN:
-            m_mouseState.leftButtonDown = true;
-            return 0;
-
-        case WM_LBUTTONUP:
-            m_mouseState.leftButtonDown = false;
-            return 0;
-
-        case WM_RBUTTONDOWN:
-            m_mouseState.rightButtonDown = true;
-            return 0;
-
-        case WM_RBUTTONUP:
-            m_mouseState.rightButtonDown = false;
-            return 0;
-
-        case WM_MBUTTONDOWN:
-            m_mouseState.middleButtonDown = true;
-            return 0;
-
-        case WM_MBUTTONUP:
-            m_mouseState.middleButtonDown = false;
-            return 0;
-
-        case WM_MOUSEWHEEL:
-            m_mouseState.wheelDelta = static_cast<float>(GET_WHEEL_DELTA_WPARAM(wParam)) / WHEEL_DELTA;
-            return 0;
-
-        case WM_NCHITTEST:
-            if (m_isOverlay)
-                return HTCAPTION;
-            break;
-
-        case WM_ERASEBKGND:
-            return 1;
-        }
-
-        return DefWindowProc(hwnd, msg, wParam, lParam);
+        if (m_engine) m_engine->Resize(width, height);
+        if (m_uiManager && m_engine) m_uiManager->RecreateResources(m_engine->GetCanvas(), width, height);
+        if (m_controller) m_controller->OnResize(width, height);
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -156,15 +92,13 @@ namespace Spectrum {
     {
         m_isOverlay = !m_isOverlay;
 
-        if (m_isOverlay)
-            ActivateOverlayMode();
-        else
-            DeactivateOverlayMode();
+        if (m_isOverlay) ActivateOverlayMode();
+        else DeactivateOverlayMode();
 
         NotifyRendererOfModeChange();
     }
 
-    bool WindowManager::RecreateGraphicsAndNotify(HWND hwnd)
+    [[nodiscard]] bool WindowManager::RecreateGraphicsAndNotify(HWND hwnd)
     {
         if (!hwnd) return false;
         if (!RecreateGraphicsContext(hwnd)) return false;
@@ -213,6 +147,11 @@ namespace Spectrum {
         return m_uiManager.get();
     }
 
+    [[nodiscard]] MessageHandler* WindowManager::GetMessageHandler() const noexcept
+    {
+        return m_messageHandler.get();
+    }
+
     [[nodiscard]] MainWindow* WindowManager::GetMainWindow() const noexcept
     {
         return m_mainWnd.get();
@@ -220,77 +159,43 @@ namespace Spectrum {
 
     [[nodiscard]] HWND WindowManager::GetCurrentHwnd() const
     {
-        if (m_isOverlay)
-            return m_overlayWnd ? m_overlayWnd->GetHwnd() : nullptr;
-
+        if (m_isOverlay) return m_overlayWnd ? m_overlayWnd->GetHwnd() : nullptr;
         return m_mainWnd ? m_mainWnd->GetHwnd() : nullptr;
-    }
-
-    [[nodiscard]] const WindowManager::MouseState& WindowManager::GetMouseState() const noexcept
-    {
-        return m_mouseState;
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Private Implementation / Internal Helpers
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    void WindowManager::SubscribeToEvents(EventBus* bus)
-    {
-        if (!bus) return;
-
-        bus->Subscribe(InputAction::ToggleOverlay, [this]() {
-            ToggleOverlay();
-            });
-
-        bus->Subscribe(InputAction::Exit, [this]() {
-            OnExitRequest();
-            });
-    }
-
     [[nodiscard]] bool WindowManager::InitializeMainWindow()
     {
         m_mainWnd = std::make_unique<MainWindow>(m_hInstance);
         if (!m_mainWnd) return false;
 
-        return m_mainWnd->Initialize(
-            L"Spectrum Visualizer",
-            800,
-            600,
-            false,
-            this
-        );
+        return m_mainWnd->Initialize(L"Spectrum Visualizer", 800, 600, false, m_messageHandler.get());
     }
 
     [[nodiscard]] bool WindowManager::InitializeOverlayWindow()
     {
-        const auto screenSize = WindowUtils::GetScreenSize();
-
+        const auto screenSize = Win32Utils::GetScreenSize();
         m_overlayWnd = std::make_unique<MainWindow>(m_hInstance);
         if (!m_overlayWnd) return false;
 
-        return m_overlayWnd->Initialize(
-            L"Spectrum Overlay",
-            screenSize.w,
-            300,
-            true,
-            this
-        );
+        return m_overlayWnd->Initialize(L"Spectrum Overlay", screenSize.w, 300, true, m_messageHandler.get());
     }
 
     void WindowManager::ActivateOverlayMode()
     {
-        LOG_INFO("=== ACTIVATING OVERLAY MODE ===");
         HideMainWindow();
         PositionAndShowOverlay();
 
         if (m_overlayWnd)
         {
-            HWND hwnd = m_overlayWnd->GetHwnd();
-            LOG_INFO("Recreating graphics for overlay HWND: " << hwnd);
-            RecreateGraphicsAndNotify(hwnd);
+            if (!RecreateGraphicsAndNotify(m_overlayWnd->GetHwnd()))
+            {
+                LOG_ERROR("Failed to recreate graphics context for overlay window");
+            }
         }
-        LOG_INFO("=== OVERLAY MODE ACTIVATED ===");
     }
 
     void WindowManager::DeactivateOverlayMode()
@@ -299,27 +204,29 @@ namespace Spectrum {
         ShowMainWindow();
 
         if (m_mainWnd)
-            RecreateGraphicsAndNotify(m_mainWnd->GetHwnd());
+        {
+            if (!RecreateGraphicsAndNotify(m_mainWnd->GetHwnd()))
+            {
+                LOG_ERROR("Failed to recreate graphics context for main window");
+            }
+        }
     }
 
     void WindowManager::HideMainWindow() const
     {
-        if (!m_mainWnd) return;
-        m_mainWnd->Hide();
+        if (m_mainWnd) m_mainWnd->Hide();
     }
 
     void WindowManager::ShowMainWindow() const
     {
         if (!m_mainWnd) return;
-
         m_mainWnd->Show();
         SetForegroundWindow(m_mainWnd->GetHwnd());
     }
 
     void WindowManager::HideOverlayWindow() const
     {
-        if (!m_overlayWnd) return;
-        m_overlayWnd->Hide();
+        if (m_overlayWnd) m_overlayWnd->Hide();
     }
 
     void WindowManager::PositionAndShowOverlay() const
@@ -327,72 +234,32 @@ namespace Spectrum {
         if (!m_overlayWnd) return;
 
         const HWND hwnd = m_overlayWnd->GetHwnd();
-        const auto screenSize = WindowUtils::GetScreenSize();
+        const auto screenSize = Win32Utils::GetScreenSize();
         const int overlayHeight = m_overlayWnd->GetHeight();
-        const int overlayWidth = m_overlayWnd->GetWidth();
 
         SetWindowPos(
-            hwnd,
-            HWND_TOPMOST,
-            0,
-            screenSize.h - overlayHeight,
-            overlayWidth,
-            overlayHeight,
-            SWP_SHOWWINDOW
+            hwnd, HWND_TOPMOST, 0, screenSize.h - overlayHeight,
+            screenSize.w, overlayHeight, SWP_SHOWWINDOW
         );
-
         InvalidateRect(hwnd, nullptr, FALSE);
     }
 
-    bool WindowManager::RecreateGraphicsContext(HWND hwnd)
+    [[nodiscard]] bool WindowManager::RecreateGraphicsContext(HWND hwnd)
     {
-        m_engine.reset();
-
         m_engine = std::make_unique<RenderEngine>(hwnd, m_isOverlay);
-
-        if (!m_engine) return false;
-        if (!m_engine->Initialize()) return false;
-
-        return true;
-    }
-
-    void WindowManager::PropagateResizeToSubsystems(HWND hwnd)
-    {
-        RECT clientRect;
-        GetClientRect(hwnd, &clientRect);
-
-        const int width = clientRect.right - clientRect.left;
-        const int height = clientRect.bottom - clientRect.top;
-
-        if (m_engine)
-            m_engine->Resize(width, height);
-
-        if (m_uiManager && m_engine)
-            m_uiManager->RecreateResources(m_engine->GetCanvas(), width, height);
-
-        if (m_controller)
-            m_controller->OnResize(width, height);
+        return m_engine && m_engine->Initialize();
     }
 
     void WindowManager::NotifyRendererOfModeChange() const
     {
         if (!m_controller) return;
-
-        auto* rendererManager = m_controller->GetRendererManager();
-        if (!rendererManager) return;
-
-        auto* renderer = rendererManager->GetCurrentRenderer();
-        if (!renderer) return;
-
-        renderer->SetOverlayMode(m_isOverlay);
+        if (auto* rendererManager = m_controller->GetRendererManager())
+        {
+            if (auto* renderer = rendererManager->GetCurrentRenderer())
+            {
+                renderer->SetOverlayMode(m_isOverlay);
+            }
+        }
     }
 
-    void WindowManager::OnExitRequest()
-    {
-        if (IsOverlayMode())
-            ToggleOverlay();
-        else if (m_controller)
-            m_controller->OnCloseRequest();
-    }
-
-} // namespace Spectrum
+} // namespace Spectrum::Platform

@@ -3,10 +3,9 @@
 
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // Defines the ControlPanel, the main user interface for application control.
-// 
+//
 // This panel provides navigation controls for renderer selection and quality
 // settings, as well as action buttons for audio settings and overlay mode.
-// It features a slide-in/out animation controlled by a toggle button.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Common.h"
@@ -23,7 +22,10 @@ namespace Spectrum
     class Canvas;
     class RendererManager;
     class UIButton;
-    class WindowManager;
+
+    namespace Platform {
+        class WindowManager; // Corrected namespace
+    }
 
     class ControlPanel final
     {
@@ -37,6 +39,8 @@ namespace Spectrum
 
         ControlPanel(const ControlPanel&) = delete;
         ControlPanel& operator=(const ControlPanel&) = delete;
+        ControlPanel(ControlPanel&&) = delete;
+        ControlPanel& operator=(ControlPanel&&) = delete;
 
         void Initialize();
 
@@ -69,8 +73,8 @@ namespace Spectrum
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void CreateWidgets();
-        void CreateNavigationControls(RendererManager* rm, WindowManager* wm, AudioManager* am);
-        void CreateActionButtons(WindowManager* wm, AudioManager* am);
+        void CreateNavigationControls(RendererManager* rm, Platform::WindowManager* wm, AudioManager* am);
+        void CreateActionButtons(Platform::WindowManager* wm, AudioManager* am);
 
         void ToggleVisibility();
         void DrawContent(Canvas& canvas) const;
