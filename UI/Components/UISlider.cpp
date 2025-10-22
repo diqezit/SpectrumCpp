@@ -1,4 +1,4 @@
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+﻿// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // Implements the UISlider class with smooth, delta-time based animations
 // for professional-quality UI feedback.
 //
@@ -92,7 +92,12 @@ namespace Spectrum {
     void UISlider::Drag(const Point& mousePos)
     {
         if (m_isDragging)
+        {
             SetTargetValueFromPosition(mousePos);
+            m_currentValueNormalized = m_targetValueNormalized;
+            m_visualValueNormalized = m_targetValueNormalized;
+            InvokeCallbackIfChanged();
+        }
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=

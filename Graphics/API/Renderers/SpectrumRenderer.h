@@ -23,11 +23,12 @@
 
 #include "Common.h"
 #include "SpectrumTypes.h"
-#include "GeometryBuilder.h"
-#include "GradientRenderer.h"
-#include "PrimitiveRenderer.h"
 
 namespace Spectrum {
+
+    class PrimitiveRenderer;
+    class GradientRenderer;
+    class GeometryBuilder;
 
     class SpectrumRenderer final
     {
@@ -86,4 +87,4 @@ namespace Spectrum {
 
 } // namespace Spectrum
 
-#endif
+#endif // SPECTRUM_CPP_SPECTRUM_RENDERER_H

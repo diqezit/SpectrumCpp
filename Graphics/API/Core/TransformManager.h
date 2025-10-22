@@ -1,7 +1,4 @@
 // TransformManager.h
-#ifndef SPECTRUM_CPP_TRANSFORM_MANAGER_H
-#define SPECTRUM_CPP_TRANSFORM_MANAGER_H
-
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // Defines the TransformManager for handling 2D transformations.
 //
@@ -29,12 +26,16 @@
 //   } // Automatic transform restoration
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
+#ifndef SPECTRUM_CPP_TRANSFORM_MANAGER_H
+#define SPECTRUM_CPP_TRANSFORM_MANAGER_H
+
 #include "Common.h"
+#include "Core/IRenderComponent.h"
 #include <stack>
 
 namespace Spectrum {
 
-    class TransformManager final
+    class TransformManager final : public IRenderComponent
     {
     public:
         static constexpr size_t kMaxStackDepth = 32;
@@ -68,10 +69,14 @@ namespace Spectrum {
         // Lifecycle Management
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        explicit TransformManager(ID2D1RenderTarget* renderTarget);
+        explicit TransformManager();
 
         TransformManager(const TransformManager&) = delete;
         TransformManager& operator=(const TransformManager&) = delete;
+
+        // IRenderComponent implementation
+        void OnRenderTargetChanged(ID2D1RenderTarget* renderTarget) override;
+        void OnDeviceLost() override;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Transform Stack Management
@@ -91,12 +96,6 @@ namespace Spectrum {
 
         void SetTransform(const D2D1_MATRIX_3X2_F& transform) const;
         void ResetTransform() const;
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // State Management
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-        void UpdateRenderTarget(ID2D1RenderTarget* renderTarget);
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // State Queries

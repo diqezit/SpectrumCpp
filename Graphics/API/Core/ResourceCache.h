@@ -1,7 +1,4 @@
 // ResourceCache.h
-#ifndef SPECTRUM_CPP_RESOURCE_CACHE_H
-#define SPECTRUM_CPP_RESOURCE_CACHE_H
-
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // Defines the ResourceCache for managing expensive Direct2D resources.
 //
@@ -25,24 +22,32 @@
 // - Device-dependent resources cleared on render target change
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
+#ifndef SPECTRUM_CPP_RESOURCE_CACHE_H
+#define SPECTRUM_CPP_RESOURCE_CACHE_H
+
 #include "Common.h"
+#include "Core/IRenderComponent.h"
 #include <unordered_map>
 #include <string>
 #include <functional>
 
 namespace Spectrum {
 
-    class ResourceCache final
+    class ResourceCache final : public IRenderComponent
     {
     public:
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Lifecycle Management
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        explicit ResourceCache(ID2D1Factory* factory, ID2D1RenderTarget* renderTarget);
+        explicit ResourceCache(ID2D1Factory* factory);
 
         ResourceCache(const ResourceCache&) = delete;
         ResourceCache& operator=(const ResourceCache&) = delete;
+
+        // IRenderComponent implementation
+        void OnRenderTargetChanged(ID2D1RenderTarget* renderTarget) override;
+        void OnDeviceLost() override;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Resource Retrieval
@@ -72,7 +77,6 @@ namespace Spectrum {
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void Clear();
-        void UpdateRenderTarget(ID2D1RenderTarget* renderTarget);
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // State Queries

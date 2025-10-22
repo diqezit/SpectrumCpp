@@ -12,24 +12,39 @@
 
 #include "PrimitiveRenderer.h"
 #include "D2DHelpers.h"
+#include "Core/GeometryBuilder.h"
 
 namespace Spectrum {
 
-    using namespace D2DHelpers;
+    using namespace Helpers::TypeConversion;
+    using namespace Helpers::Validate;
+    using namespace Helpers::Sanitize;
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Lifecycle Management
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    PrimitiveRenderer::PrimitiveRenderer(
-        ID2D1RenderTarget* renderTarget,
-        ID2D1SolidColorBrush* brush,
-        GeometryBuilder* geometryBuilder
-    )
-        : m_renderTarget(renderTarget)
-        , m_brush(brush)
+    PrimitiveRenderer::PrimitiveRenderer(GeometryBuilder* geometryBuilder)
+        : m_renderTarget(nullptr)
+        , m_brush(nullptr)
         , m_geometryBuilder(geometryBuilder)
     {
+    }
+
+    void PrimitiveRenderer::OnRenderTargetChanged(ID2D1RenderTarget* renderTarget)
+    {
+        m_renderTarget = renderTarget;
+    }
+
+    void PrimitiveRenderer::OnDeviceLost()
+    {
+        m_renderTarget = nullptr;
+        m_brush = nullptr;
+    }
+
+    void PrimitiveRenderer::SetSolidBrush(ID2D1SolidColorBrush* brush)
+    {
+        m_brush = brush;
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -43,7 +58,7 @@ namespace Spectrum {
         float strokeWidth
     ) const
     {
-        if (!Validate::RenderTargetAndBrush(m_renderTarget, m_brush)) return;
+        if (!RenderTargetAndBrush(m_renderTarget, m_brush)) return;
 
         SetBrushColor(color);
         const D2D1_RECT_F d2dRect = ToD2DRect(rect);
@@ -60,10 +75,10 @@ namespace Spectrum {
         float strokeWidth
     ) const
     {
-        if (!Validate::RenderTargetAndBrush(m_renderTarget, m_brush)) return;
+        if (!RenderTargetAndBrush(m_renderTarget, m_brush)) return;
 
         SetBrushColor(color);
-        const float sanitizedRadius = Sanitize::NonNegativeFloat(radius);
+        const float sanitizedRadius = NonNegativeFloat(radius);
         const D2D1_ROUNDED_RECT rr = { ToD2DRect(rect), sanitizedRadius, sanitizedRadius };
 
         if (filled) m_renderTarget->FillRoundedRectangle(&rr, m_brush);
@@ -90,8 +105,8 @@ namespace Spectrum {
         float strokeWidth
     ) const
     {
-        if (!Validate::RenderTargetAndBrush(m_renderTarget, m_brush)) return;
-        if (!Validate::PositiveRadius(radiusX) || !Validate::PositiveRadius(radiusY)) return;
+        if (!RenderTargetAndBrush(m_renderTarget, m_brush)) return;
+        if (!PositiveRadius(radiusX) || !PositiveRadius(radiusY)) return;
 
         SetBrushColor(color);
         const D2D1_ELLIPSE ellipse = {
@@ -111,7 +126,7 @@ namespace Spectrum {
         float strokeWidth
     ) const
     {
-        if (!Validate::RenderTargetAndBrush(m_renderTarget, m_brush)) return;
+        if (!RenderTargetAndBrush(m_renderTarget, m_brush)) return;
 
         SetBrushColor(color);
         m_renderTarget->DrawLine(
@@ -132,9 +147,9 @@ namespace Spectrum {
         float strokeWidth
     ) const
     {
-        if (!Validate::RenderTargetAndBrush(m_renderTarget, m_brush)) return;
+        if (!RenderTargetAndBrush(m_renderTarget, m_brush)) return;
         if (!m_geometryBuilder) return;
-        if (!Validate::PointArray(points, 2)) return;
+        if (!PointArray(points, 2)) return;
 
         auto geo = m_geometryBuilder->CreatePathFromPoints(points, false, false);
         if (!geo) return;
@@ -150,9 +165,9 @@ namespace Spectrum {
         float strokeWidth
     ) const
     {
-        if (!Validate::RenderTargetAndBrush(m_renderTarget, m_brush)) return;
+        if (!RenderTargetAndBrush(m_renderTarget, m_brush)) return;
         if (!m_geometryBuilder) return;
-        if (!Validate::PointArray(points, 3)) return;
+        if (!PointArray(points, 3)) return;
 
         auto geo = m_geometryBuilder->CreatePathFromPoints(points, true, filled);
         if (!geo) return;
@@ -176,10 +191,10 @@ namespace Spectrum {
         float strokeWidth
     ) const
     {
-        if (!Validate::RenderTargetAndBrush(m_renderTarget, m_brush)) return;
+        if (!RenderTargetAndBrush(m_renderTarget, m_brush)) return;
         if (!m_geometryBuilder) return;
-        if (!Validate::PositiveRadius(radius)) return;
-        if (!Validate::NonZeroAngle(sweepAngle)) return;
+        if (!PositiveRadius(radius)) return;
+        if (!NonZeroAngle(sweepAngle)) return;
 
         auto geo = m_geometryBuilder->CreateArc(center, radius, startAngle, sweepAngle);
         if (!geo) return;
@@ -196,7 +211,7 @@ namespace Spectrum {
     ) const
     {
         if (!m_renderTarget) return;
-        if (!Validate::RadiusRange(innerRadius, outerRadius)) return;
+        if (!RadiusRange(innerRadius, outerRadius)) return;
 
         const float strokeWidth = outerRadius - innerRadius;
         const float radius = innerRadius + strokeWidth * 0.5f;
@@ -213,10 +228,10 @@ namespace Spectrum {
         bool filled
     ) const
     {
-        if (!Validate::RenderTargetAndBrush(m_renderTarget, m_brush)) return;
+        if (!RenderTargetAndBrush(m_renderTarget, m_brush)) return;
         if (!m_geometryBuilder) return;
-        if (!Validate::PositiveRadius(radius)) return;
-        if (!Validate::NonZeroAngle(sweepAngle)) return;
+        if (!PositiveRadius(radius)) return;
+        if (!NonZeroAngle(sweepAngle)) return;
 
         auto geo = m_geometryBuilder->CreateAngularSlice(
             center, radius, startAngle, startAngle + sweepAngle
@@ -243,11 +258,11 @@ namespace Spectrum {
         float strokeWidth
     ) const
     {
-        if (!Validate::RenderTargetAndBrush(m_renderTarget, m_brush)) return;
+        if (!RenderTargetAndBrush(m_renderTarget, m_brush)) return;
         if (!m_geometryBuilder) return;
-        if (!Validate::PositiveRadius(radius)) return;
+        if (!PositiveRadius(radius)) return;
 
-        const int sanitizedSides = Sanitize::PolygonSides(sides);
+        const int sanitizedSides = PolygonSides(sides);
 
         auto geo = m_geometryBuilder->CreateRegularPolygon(center, radius, sanitizedSides, rotation);
         if (!geo) return;
@@ -268,9 +283,9 @@ namespace Spectrum {
     ) const
     {
         if (!m_geometryBuilder) return;
-        if (!Validate::RadiusRange(innerRadius, outerRadius)) return;
+        if (!RadiusRange(innerRadius, outerRadius)) return;
 
-        const int sanitizedPoints = Sanitize::StarPoints(points);
+        const int sanitizedPoints = StarPoints(points);
 
         auto vertices = m_geometryBuilder->GenerateStarVertices(
             center, outerRadius, innerRadius, sanitizedPoints
@@ -287,8 +302,8 @@ namespace Spectrum {
         float strokeWidth
     ) const
     {
-        const int sanitizedRows = Sanitize::MinValue(rows, 1);
-        const int sanitizedCols = Sanitize::MinValue(cols, 1);
+        const int sanitizedRows = MinValue(rows, 1);
+        const int sanitizedCols = MinValue(cols, 1);
 
         const float dx = bounds.width / static_cast<float>(sanitizedCols);
         const float dy = bounds.height / static_cast<float>(sanitizedRows);
@@ -325,8 +340,8 @@ namespace Spectrum {
         bool filled
     ) const
     {
-        if (!Validate::RenderTargetAndBrush(m_renderTarget, m_brush)) return;
-        if (!Validate::PositiveRadius(radius)) return;
+        if (!RenderTargetAndBrush(m_renderTarget, m_brush)) return;
+        if (!PositiveRadius(radius)) return;
 
         SetBrushColor(color);
 
@@ -348,7 +363,7 @@ namespace Spectrum {
         bool filled
     ) const
     {
-        if (!Validate::RenderTargetAndBrush(m_renderTarget, m_brush)) return;
+        if (!RenderTargetAndBrush(m_renderTarget, m_brush)) return;
 
         SetBrushColor(color);
 
@@ -361,23 +376,13 @@ namespace Spectrum {
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // State Management
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-    void PrimitiveRenderer::UpdateRenderTarget(ID2D1RenderTarget* renderTarget)
-    {
-        m_renderTarget = renderTarget;
-    }
-
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Private Implementation
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     void PrimitiveRenderer::SetBrushColor(const Color& color) const
     {
         if (!m_brush) return;
-
-        const_cast<ID2D1SolidColorBrush*>(m_brush)->SetColor(ToD2DColor(color));
+        m_brush->SetColor(ToD2DColor(color));
     }
 
 } // namespace Spectrum

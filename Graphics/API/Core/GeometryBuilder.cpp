@@ -16,6 +16,11 @@
 namespace Spectrum {
 
     using namespace D2DHelpers;
+    using namespace Helpers::TypeConversion;
+    using namespace Helpers::Math;
+    using namespace Helpers::Validate;
+    using namespace Helpers::Sanitize;
+    using namespace Helpers::HResult;
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Lifecycle Management
@@ -36,17 +41,17 @@ namespace Spectrum {
         bool filled
     ) const
     {
-        if (!Validate::PointArray(points, 2) || !m_factory) return nullptr;
+        if (!PointArray(points, 2) || !m_factory) return nullptr;
 
         wrl::ComPtr<ID2D1PathGeometry> geometry;
         HRESULT hr = m_factory->CreatePathGeometry(geometry.GetAddressOf());
-        if (!HResult::CheckComCreation(hr, "ID2D1Factory::CreatePathGeometry", geometry)) {
+        if (!CheckComCreation(hr, "ID2D1Factory::CreatePathGeometry", geometry)) {
             return nullptr;
         }
 
         wrl::ComPtr<ID2D1GeometrySink> sink;
         hr = geometry->Open(sink.GetAddressOf());
-        if (!HResult::CheckComCreation(hr, "ID2D1PathGeometry::Open", sink)) {
+        if (!CheckComCreation(hr, "ID2D1PathGeometry::Open", sink)) {
             return nullptr;
         }
 
@@ -70,18 +75,18 @@ namespace Spectrum {
     ) const
     {
         if (!m_factory) return nullptr;
-        if (!Validate::PositiveRadius(radius)) return nullptr;
-        if (!Validate::NonZeroAngle(sweepAngle)) return nullptr;
+        if (!PositiveRadius(radius)) return nullptr;
+        if (!NonZeroAngle(sweepAngle)) return nullptr;
 
         wrl::ComPtr<ID2D1PathGeometry> geometry;
         HRESULT hr = m_factory->CreatePathGeometry(geometry.GetAddressOf());
-        if (!HResult::CheckComCreation(hr, "ID2D1Factory::CreatePathGeometry", geometry)) {
+        if (!CheckComCreation(hr, "ID2D1Factory::CreatePathGeometry", geometry)) {
             return nullptr;
         }
 
         wrl::ComPtr<ID2D1GeometrySink> sink;
         hr = geometry->Open(sink.GetAddressOf());
-        if (!HResult::CheckComCreation(hr, "ID2D1PathGeometry::Open", sink)) {
+        if (!CheckComCreation(hr, "ID2D1PathGeometry::Open", sink)) {
             return nullptr;
         }
 
@@ -126,19 +131,19 @@ namespace Spectrum {
     ) const
     {
         if (!m_factory) return nullptr;
-        if (!Validate::PositiveRadius(radius)) return nullptr;
+        if (!PositiveRadius(radius)) return nullptr;
 
-        const int sanitizedSides = Sanitize::PolygonSides(sides);
+        const int sanitizedSides = PolygonSides(sides);
 
         wrl::ComPtr<ID2D1PathGeometry> geometry;
         HRESULT hr = m_factory->CreatePathGeometry(geometry.GetAddressOf());
-        if (!HResult::CheckComCreation(hr, "ID2D1Factory::CreatePathGeometry", geometry)) {
+        if (!CheckComCreation(hr, "ID2D1Factory::CreatePathGeometry", geometry)) {
             return nullptr;
         }
 
         wrl::ComPtr<ID2D1GeometrySink> sink;
         hr = geometry->Open(sink.GetAddressOf());
-        if (!HResult::CheckComCreation(hr, "ID2D1PathGeometry::Open", sink)) {
+        if (!CheckComCreation(hr, "ID2D1PathGeometry::Open", sink)) {
             return nullptr;
         }
 
@@ -175,17 +180,17 @@ namespace Spectrum {
     ) const
     {
         if (!m_factory) return nullptr;
-        if (!Validate::PositiveRadius(radius)) return nullptr;
+        if (!PositiveRadius(radius)) return nullptr;
 
         wrl::ComPtr<ID2D1PathGeometry> geometry;
         HRESULT hr = m_factory->CreatePathGeometry(geometry.GetAddressOf());
-        if (!HResult::CheckComCreation(hr, "ID2D1Factory::CreatePathGeometry", geometry)) {
+        if (!CheckComCreation(hr, "ID2D1Factory::CreatePathGeometry", geometry)) {
             return nullptr;
         }
 
         wrl::ComPtr<ID2D1GeometrySink> sink;
         hr = geometry->Open(sink.GetAddressOf());
-        if (!HResult::CheckComCreation(hr, "ID2D1PathGeometry::Open", sink)) {
+        if (!CheckComCreation(hr, "ID2D1PathGeometry::Open", sink)) {
             return nullptr;
         }
 
@@ -219,7 +224,7 @@ namespace Spectrum {
         int segments
     )
     {
-        const int sanitizedSegments = Sanitize::CircleSegments(segments);
+        const int sanitizedSegments = CircleSegments(segments);
 
         std::vector<Point> points;
         points.reserve(static_cast<size_t>(sanitizedSegments) + 1);
@@ -244,7 +249,7 @@ namespace Spectrum {
         int points
     )
     {
-        const int sanitizedPoints = Sanitize::StarPoints(points);
+        const int sanitizedPoints = StarPoints(points);
 
         std::vector<Point> vertices;
         vertices.reserve(static_cast<size_t>(sanitizedPoints) * 2);
@@ -279,7 +284,7 @@ namespace Spectrum {
         const float stepX = bounds.width / static_cast<float>(spectrum.size() - 1);
 
         for (size_t i = 0; i < spectrum.size(); ++i) {
-            const float sanitizedValue = Sanitize::NormalizedFloat(spectrum[i]);
+            const float sanitizedValue = NormalizedFloat(spectrum[i]);
             points.push_back({
                 bounds.x + i * stepX,
                 midline - sanitizedValue * amplitude

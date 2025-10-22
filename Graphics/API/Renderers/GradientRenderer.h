@@ -20,13 +20,15 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Common.h"
-#include "ResourceCache.h"
-#include "GeometryBuilder.h"
+#include "Core/IRenderComponent.h"
 #include <vector>
 
 namespace Spectrum {
 
-    class GradientRenderer final
+    class ResourceCache;
+    class GeometryBuilder;
+
+    class GradientRenderer final : public IRenderComponent
     {
     public:
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -34,14 +36,18 @@ namespace Spectrum {
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         GradientRenderer(
-            ID2D1RenderTarget* renderTarget,
-            ID2D1SolidColorBrush* solidBrush,
             ResourceCache* cache,
             GeometryBuilder* geometryBuilder
         );
 
         GradientRenderer(const GradientRenderer&) = delete;
         GradientRenderer& operator=(const GradientRenderer&) = delete;
+
+        // IRenderComponent implementation
+        void OnRenderTargetChanged(ID2D1RenderTarget* renderTarget) override;
+        void OnDeviceLost() override;
+
+        void SetSolidBrush(ID2D1SolidColorBrush* brush);
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Gradient Rendering
@@ -87,12 +93,6 @@ namespace Spectrum {
             float cornerRadius = 0.0f
         ) const;
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // State Management
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-        void UpdateRenderTarget(ID2D1RenderTarget* renderTarget);
-
     private:
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Member Variables
@@ -106,4 +106,4 @@ namespace Spectrum {
 
 } // namespace Spectrum
 
-#endif
+#endif // SPECTRUM_CPP_GRADIENT_RENDERER_H

@@ -16,21 +16,38 @@
 
 namespace Spectrum {
 
-    using namespace D2DHelpers;
+    using namespace Helpers::TypeConversion;
+    using namespace Helpers::Validate;
+    using namespace Helpers::HResult;
+    using namespace Helpers::Scopes;
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Lifecycle Management
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    TextRenderer::TextRenderer(
-        ID2D1RenderTarget* renderTarget,
-        IDWriteFactory* writeFactory,
-        ID2D1SolidColorBrush* brush
-    )
-        : m_renderTarget(renderTarget)
+    TextRenderer::TextRenderer(IDWriteFactory* writeFactory)
+        : m_renderTarget(nullptr)
         , m_writeFactory(writeFactory)
-        , m_brush(brush)
+        , m_brush(nullptr)
     {
+    }
+
+    void TextRenderer::OnRenderTargetChanged(ID2D1RenderTarget* renderTarget)
+    {
+        m_renderTarget = renderTarget;
+        m_formatCache.clear();
+    }
+
+    void TextRenderer::OnDeviceLost()
+    {
+        m_renderTarget = nullptr;
+        m_brush = nullptr;
+        m_formatCache.clear();
+    }
+
+    void TextRenderer::SetSolidBrush(ID2D1SolidColorBrush* brush)
+    {
+        m_brush = brush;
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -45,10 +62,10 @@ namespace Spectrum {
         DWRITE_TEXT_ALIGNMENT alignment
     ) const
     {
-        if (!Validate::RenderTargetAndBrush(m_renderTarget, m_brush)) return;
+        if (!RenderTargetAndBrush(m_renderTarget, m_brush)) return;
         if (text.empty()) return;
 
-        const float sanitizedFontSize = Sanitize::PositiveFloat(fontSize, 12.0f);
+        const float sanitizedFontSize = std::max(fontSize, 1.0f);
 
         auto format = CreateTextFormat(sanitizedFontSize, alignment);
         if (!format) return;
@@ -80,8 +97,8 @@ namespace Spectrum {
     {
         if (!m_renderTarget || text.empty()) return;
 
-        const float sanitizedFontSize = Sanitize::PositiveFloat(fontSize, 12.0f);
-        const float sanitizedOutlineWidth = Sanitize::PositiveFloat(outlineWidth, 1.0f);
+        const float sanitizedFontSize = std::max(fontSize, 1.0f);
+        const float sanitizedOutlineWidth = std::max(outlineWidth, 0.0f);
 
         constexpr std::array<float, 3> offsets = { -1.0f, 0.0f, 1.0f };
 
@@ -112,7 +129,7 @@ namespace Spectrum {
     {
         if (!m_renderTarget) return;
 
-        const float sanitizedFontSize = Sanitize::PositiveFloat(fontSize, 12.0f);
+        const float sanitizedFontSize = std::max(fontSize, 1.0f);
 
         const ScopedTransform transform(
             m_renderTarget,
@@ -120,16 +137,6 @@ namespace Spectrum {
         );
 
         DrawText(text, position, color, sanitizedFontSize, DWRITE_TEXT_ALIGNMENT_CENTER);
-    }
-
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // State Management
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-    void TextRenderer::UpdateRenderTarget(ID2D1RenderTarget* renderTarget)
-    {
-        m_renderTarget = renderTarget;
-        m_formatCache.clear();
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -161,7 +168,7 @@ namespace Spectrum {
             textFormat.GetAddressOf()
         );
 
-        if (!HResult::CheckComCreation(hr, "IDWriteFactory::CreateTextFormat", textFormat)) {
+        if (!CheckComCreation(hr, "IDWriteFactory::CreateTextFormat", textFormat)) {
             return nullptr;
         }
 
@@ -193,7 +200,7 @@ namespace Spectrum {
             textLayout.GetAddressOf()
         );
 
-        if (!HResult::CheckComCreation(hr, "IDWriteFactory::CreateTextLayout", textLayout)) {
+        if (!CheckComCreation(hr, "IDWriteFactory::CreateTextLayout", textLayout)) {
             return nullptr;
         }
 
@@ -250,8 +257,7 @@ namespace Spectrum {
     void TextRenderer::SetBrushColor(const Color& color) const
     {
         if (!m_brush) return;
-
-        const_cast<ID2D1SolidColorBrush*>(m_brush)->SetColor(ToD2DColor(color));
+        m_brush->SetColor(ToD2DColor(color));
     }
 
     uint64_t TextRenderer::GenerateFormatKey(

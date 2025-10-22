@@ -21,26 +21,30 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Common.h"
-#include "GeometryBuilder.h"
+#include "Core/IRenderComponent.h"
 #include <vector>
 
 namespace Spectrum {
 
-    class PrimitiveRenderer final
+    class GeometryBuilder;
+
+    class PrimitiveRenderer final : public IRenderComponent
     {
     public:
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Lifecycle Management
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        PrimitiveRenderer(
-            ID2D1RenderTarget* renderTarget,
-            ID2D1SolidColorBrush* brush,
-            GeometryBuilder* geometryBuilder
-        );
+        PrimitiveRenderer(GeometryBuilder* geometryBuilder);
 
         PrimitiveRenderer(const PrimitiveRenderer&) = delete;
         PrimitiveRenderer& operator=(const PrimitiveRenderer&) = delete;
+
+        // IRenderComponent implementation
+        void OnRenderTargetChanged(ID2D1RenderTarget* renderTarget) override;
+        void OnDeviceLost() override;
+
+        void SetSolidBrush(ID2D1SolidColorBrush* brush);
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Basic Shape Rendering
@@ -179,12 +183,6 @@ namespace Spectrum {
             bool filled = true
         ) const;
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // State Management
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-        void UpdateRenderTarget(ID2D1RenderTarget* renderTarget);
-
     private:
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Private Implementation
@@ -203,4 +201,4 @@ namespace Spectrum {
 
 } // namespace Spectrum
 
-#endif
+#endif // SPECTRUM_CPP_PRIMITIVE_RENDERER_H

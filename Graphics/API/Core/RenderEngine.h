@@ -25,18 +25,22 @@
 #define SPECTRUM_CPP_RENDER_ENGINE_H
 
 #include "Common.h"
-#include "Canvas.h"
-#include "ResourceCache.h"
-#include "GeometryBuilder.h"
-#include "PrimitiveRenderer.h"
-#include "GradientRenderer.h"
-#include "TextRenderer.h"
-#include "EffectsRenderer.h"
-#include "TransformManager.h"
-#include "SpectrumRenderer.h"
+#include "Core/IRenderComponent.h"
 #include <memory>
+#include <vector>
 
 namespace Spectrum {
+
+    // Forward-declarations to improve compile times
+    class Canvas;
+    class ResourceCache;
+    class GeometryBuilder;
+    class PrimitiveRenderer;
+    class GradientRenderer;
+    class TextRenderer;
+    class EffectsRenderer;
+    class TransformManager;
+    class SpectrumRenderer;
 
     class RenderEngine final
     {
@@ -114,7 +118,7 @@ namespace Spectrum {
         [[nodiscard]] bool CreateHwndRenderTarget();
         [[nodiscard]] bool CreateSolidBrush();
         void DiscardDeviceResources();
-        void UpdateComponentsRenderTarget();
+        void RegisterComponent(IRenderComponent* component);
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Member Variables
@@ -143,6 +147,9 @@ namespace Spectrum {
 
         // The drawing facade, owned by the engine
         std::unique_ptr<Canvas> m_canvas;
+
+        // Polymorphic list of all device-dependent components
+        std::vector<IRenderComponent*> m_components;
     };
 
 } // namespace Spectrum

@@ -60,9 +60,16 @@ target_sources(${PROJECT_NAME} PRIVATE
     Graphics/API/Canvas.h
     Graphics/API/D2DHelpers.h
     Graphics/API/Core/GeometryBuilder.h
+    Graphics/API/Core/IRenderComponent.h              # <<< [NEW]
     Graphics/API/Core/RenderEngine.h
     Graphics/API/Core/ResourceCache.h
     Graphics/API/Core/TransformManager.h
+    Graphics/API/Helpers/D2DScopes.h                  # <<< [NEW]
+    Graphics/API/Helpers/HResultHelpers.h             # <<< [NEW]
+    Graphics/API/Helpers/MathConstants.h              # <<< [NEW]
+    Graphics/API/Helpers/Sanitization.h               # <<< [NEW]
+    Graphics/API/Helpers/TypeConversion.h             # <<< [NEW]
+    Graphics/API/Helpers/Validation.h                 # <<< [NEW]
     Graphics/API/Renderers/EffectsRenderer.h
     Graphics/API/Renderers/GradientRenderer.h
     Graphics/API/Renderers/PrimitiveRenderer.h
@@ -183,9 +190,18 @@ source_group("Graphics\\API" FILES
     Graphics/API/D2DHelpers.h)
 source_group("Graphics\\API\\Core" FILES
     Graphics/API/Core/GeometryBuilder.cpp Graphics/API/Core/GeometryBuilder.h
+    Graphics/API/Core/IRenderComponent.h              # <<< [NEW]
     Graphics/API/Core/RenderEngine.cpp Graphics/API/Core/RenderEngine.h
     Graphics/API/Core/ResourceCache.cpp Graphics/API/Core/ResourceCache.h
     Graphics/API/Core/TransformManager.cpp Graphics/API/Core/TransformManager.h)
+# <<< [NEW] New source group for helpers
+source_group("Graphics\\API\\Helpers" FILES
+    Graphics/API/Helpers/D2DScopes.h
+    Graphics/API/Helpers/HResultHelpers.h
+    Graphics/API/Helpers/MathConstants.h
+    Graphics/API/Helpers/Sanitization.h
+    Graphics/API/Helpers/TypeConversion.h
+    Graphics/API/Helpers/Validation.h)
 source_group("Graphics\\API\\Renderers" FILES
     Graphics/API/Renderers/EffectsRenderer.cpp Graphics/API/Renderers/EffectsRenderer.h
     Graphics/API/Renderers/GradientRenderer.cpp Graphics/API/Renderers/GradientRenderer.h
@@ -279,6 +295,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     "${CMAKE_SOURCE_DIR}/Graphics"
     "${CMAKE_SOURCE_DIR}/Graphics/API"
     "${CMAKE_SOURCE_DIR}/Graphics/API/Core"
+    "${CMAKE_SOURCE_DIR}/Graphics/API/Helpers"           # <<< [NEW]
     "${CMAKE_SOURCE_DIR}/Graphics/API/Renderers"
     "${CMAKE_SOURCE_DIR}/Graphics/Base"
     "${CMAKE_SOURCE_DIR}/Graphics/Visualizers"

@@ -16,29 +16,27 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "CubesRenderer.h"
-#include "D2DHelpers.h"
+#include "../API/D2DHelpers.h"
 #include "MathUtils.h"
 #include "ColorUtils.h"
-#include "RenderUtils.h"
-#include "Canvas.h"
+#include "../Base/RenderUtils.h"
+#include "../API/Canvas.h"
 
 namespace Spectrum {
 
-    using namespace D2DHelpers;
+    using namespace Helpers::Sanitize;
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Constants
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     namespace {
-
         constexpr float kMinMagnitude = 0.01f;
         constexpr float kSpacing = 2.0f;
         constexpr float kHeightScale = 0.9f;
         constexpr float kShadowOffset = 3.0f;
         constexpr float kShadowAlpha = 0.2f;
         constexpr float kTopBrightness = 1.2f;
-
     } // anonymous namespace
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -90,7 +88,7 @@ namespace Spectrum {
         cubes.reserve(spectrum.size());
 
         for (size_t i = 0; i < spectrum.size(); ++i) {
-            const float magnitude = Sanitize::NormalizedFloat(spectrum[i]);
+            const float magnitude = NormalizedFloat(spectrum[i]);
 
             if (magnitude < kMinMagnitude) continue;
 

@@ -20,54 +20,38 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Common.h"
+#include "Core/IRenderComponent.h"
 #include <functional>
 
 namespace Spectrum {
 
-    class EffectsRenderer final
+    class EffectsRenderer final : public IRenderComponent
     {
     public:
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Lifecycle Management
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        EffectsRenderer(
-            ID2D1RenderTarget* renderTarget,
-            ID2D1SolidColorBrush* brush
-        );
-
+        EffectsRenderer();
         EffectsRenderer(const EffectsRenderer&) = delete;
         EffectsRenderer& operator=(const EffectsRenderer&) = delete;
+
+        // IRenderComponent implementation
+        void OnRenderTargetChanged(ID2D1RenderTarget* renderTarget) override;
+        void OnDeviceLost() override;
+
+        void SetSolidBrush(ID2D1SolidColorBrush* brush);
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Effect Rendering
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        void DrawWithShadow(
-            std::function<void()> drawCallback,
-            const Point& offset,
-            float blur,
-            const Color& shadowColor
-        ) const;
-
-        void DrawGlow(
-            const Point& center,
-            float radius,
-            const Color& glowColor,
-            float intensity = 1.0f
-        ) const;
-
+        void DrawWithShadow(std::function<void()> drawCallback, const Point& offset, float blur, const Color& shadowColor) const;
+        void DrawGlow(const Point& center, float radius, const Color& glowColor, float intensity = 1.0f) const;
         void BeginOpacityLayer(float opacity) const;
         void EndOpacityLayer() const;
-
         void PushClipRect(const Rect& rect) const;
         void PopClipRect() const;
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // State Management
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-        void UpdateRenderTarget(ID2D1RenderTarget* renderTarget);
 
     private:
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -80,4 +64,4 @@ namespace Spectrum {
 
 } // namespace Spectrum
 
-#endif
+#endif // SPECTRUM_CPP_EFFECTS_RENDERER_H

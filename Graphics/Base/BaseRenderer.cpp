@@ -16,12 +16,12 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "BaseRenderer.h"
-#include "D2DHelpers.h"
-#include "Canvas.h"
+#include "../API/D2DHelpers.h"
+#include "../API/Canvas.h"
 
 namespace Spectrum {
 
-    using namespace D2DHelpers;
+    using namespace Helpers::Sanitize;
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Lifecycle Management
@@ -101,7 +101,7 @@ namespace Spectrum {
             return Rect{ 0.0f, 0.0f, viewWidth, viewHeight };
         }
 
-        const float sanitizedPadding = Sanitize::NormalizedFloat(m_padding);
+        const float sanitizedPadding = NormalizedFloat(m_padding);
         float renderWidth;
         float renderHeight;
 

@@ -13,12 +13,16 @@
 #include "GradientRenderer.h"
 #include "D2DHelpers.h"
 #include "ColorUtils.h"
+#include "Core/ResourceCache.h"
+#include "Core/GeometryBuilder.h"
 #include <sstream>
 #include <iomanip>
 
 namespace Spectrum {
 
-    using namespace D2DHelpers;
+    using namespace Helpers::TypeConversion;
+    using namespace Helpers::Validate;
+    using namespace Helpers::Sanitize;
 
     namespace {
 
@@ -48,16 +52,30 @@ namespace Spectrum {
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     GradientRenderer::GradientRenderer(
-        ID2D1RenderTarget* renderTarget,
-        ID2D1SolidColorBrush* solidBrush,
         ResourceCache* cache,
         GeometryBuilder* geometryBuilder
     )
-        : m_renderTarget(renderTarget)
-        , m_solidBrush(solidBrush)
+        : m_renderTarget(nullptr)
+        , m_solidBrush(nullptr)
         , m_cache(cache)
         , m_geometryBuilder(geometryBuilder)
     {
+    }
+
+    void GradientRenderer::OnRenderTargetChanged(ID2D1RenderTarget* renderTarget)
+    {
+        m_renderTarget = renderTarget;
+    }
+
+    void GradientRenderer::OnDeviceLost()
+    {
+        m_renderTarget = nullptr;
+        m_solidBrush = nullptr;
+    }
+
+    void GradientRenderer::SetSolidBrush(ID2D1SolidColorBrush* brush)
+    {
+        m_solidBrush = brush;
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -71,7 +89,7 @@ namespace Spectrum {
     ) const
     {
         if (!m_renderTarget || !m_cache) return;
-        if (!Validate::GradientStops(stops)) return;
+        if (!GradientStops(stops)) return;
 
         const Point start = { rect.x, rect.y };
         const Point end = horizontal
@@ -94,8 +112,8 @@ namespace Spectrum {
     ) const
     {
         if (!m_renderTarget || !m_cache) return;
-        if (!Validate::GradientStops(stops)) return;
-        if (!Validate::PositiveRadius(radius)) return;
+        if (!GradientStops(stops)) return;
+        if (!PositiveRadius(radius)) return;
 
         const std::string key = GenerateGradientKey("radial_gradient", stops);
         auto* brush = m_cache->GetRadialGradient(key, center, radius, stops);
@@ -118,22 +136,22 @@ namespace Spectrum {
         bool filled
     ) const
     {
-        if (!Validate::GradientStops(stops)) return;
+        if (!GradientStops(stops)) return;
 
         if (filled) {
             DrawRadialGradient(center, radius, stops);
             return;
         }
 
-        if (!Validate::RenderTargetAndBrush(m_renderTarget, m_solidBrush)) return;
+        if (!RenderTargetAndBrush(m_renderTarget, m_solidBrush)) return;
 
         const auto& backColor = stops.back().color;
         const Color color = { backColor.r, backColor.g, backColor.b, backColor.a };
 
         constexpr float strokeWidth = 2.0f;
-        const float adjustedRadius = Sanitize::PositiveFloat(radius - strokeWidth * 0.5f, 0.0f);
+        const float adjustedRadius = std::max(radius - strokeWidth * 0.5f, 0.0f);
 
-        if (!Validate::PositiveRadius(adjustedRadius)) return;
+        if (!PositiveRadius(adjustedRadius)) return;
 
         m_solidBrush->SetColor(ToD2DColor(color));
 
@@ -153,8 +171,8 @@ namespace Spectrum {
     ) const
     {
         if (!m_renderTarget || !m_cache || !m_geometryBuilder) return;
-        if (!Validate::PointArray(points, 2)) return;
-        if (!Validate::GradientStops(stops)) return;
+        if (!PointArray(points, 2)) return;
+        if (!GradientStops(stops)) return;
 
         const std::string key = GenerateGradientKey("path_gradient", stops);
         auto* brush = m_cache->GetLinearGradient(
@@ -180,15 +198,15 @@ namespace Spectrum {
         const Color& endColor
     ) const
     {
-        if (!Validate::RenderTargetAndBrush(m_renderTarget, m_solidBrush)) return;
+        if (!RenderTargetAndBrush(m_renderTarget, m_solidBrush)) return;
         if (!m_geometryBuilder) return;
-        if (!Validate::PositiveRadius(radius)) return;
+        if (!PositiveRadius(radius)) return;
 
         const float sweep = endAngle - startAngle;
-        if (!Validate::NonZeroAngle(sweep)) return;
+        if (!NonZeroAngle(sweep)) return;
 
         constexpr int kDefaultSegments = 180;
-        const int segments = Sanitize::CircleSegments(kDefaultSegments);
+        const int segments = std::clamp(kDefaultSegments, 3, 360);
 
         const float angleStep = sweep / static_cast<float>(segments);
 
@@ -214,7 +232,7 @@ namespace Spectrum {
     ) const
     {
         if (!m_renderTarget || !m_cache) return;
-        if (!Validate::GradientStops(stops)) return;
+        if (!GradientStops(stops)) return;
 
         const std::string key = GenerateGradientKey("vbar_gradient", stops);
         auto* brush = m_cache->GetLinearGradient(
@@ -226,7 +244,7 @@ namespace Spectrum {
 
         if (!brush) return;
 
-        const float sanitizedRadius = Sanitize::NonNegativeFloat(cornerRadius);
+        const float sanitizedRadius = NonNegativeFloat(cornerRadius);
 
         if (sanitizedRadius > 0.0f) {
             const D2D1_ROUNDED_RECT rr = {
@@ -240,15 +258,6 @@ namespace Spectrum {
             const D2D1_RECT_F d2dRect = ToD2DRect(rect);
             m_renderTarget->FillRectangle(&d2dRect, brush);
         }
-    }
-
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // State Management
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-    void GradientRenderer::UpdateRenderTarget(ID2D1RenderTarget* renderTarget)
-    {
-        m_renderTarget = renderTarget;
     }
 
 } // namespace Spectrum

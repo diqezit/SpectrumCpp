@@ -17,21 +17,20 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "FireRenderer.h"
-#include "D2DHelpers.h"
+#include "../API/D2DHelpers.h"
 #include "MathUtils.h"
 #include "ColorUtils.h"
-#include "Canvas.h"
+#include "../API/Canvas.h"
 
 namespace Spectrum {
 
-    using namespace D2DHelpers;
+    using namespace Helpers::Sanitize;
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Constants
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     namespace {
-
         constexpr float kWindSpeed = 2.0f;
         constexpr float kWindPhaseOffset = 0.5f;
         constexpr float kWindAmplitude = 2.0f;
@@ -41,7 +40,6 @@ namespace Spectrum {
         constexpr float kMinVisibleAlpha = 0.01f;
         constexpr float kAlphaSmoothStepMin = 0.0f;
         constexpr float kAlphaSmoothStepMax = 0.1f;
-
     } // anonymous namespace
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -167,7 +165,7 @@ namespace Spectrum {
         if (bottomY < 0) return;
 
         for (size_t i = 0; i < spectrum.size(); ++i) {
-            const float normalized = Sanitize::NormalizedFloat(spectrum[i]);
+            const float normalized = NormalizedFloat(spectrum[i]);
             const int x = static_cast<int>(
                 (static_cast<float>(i) / std::max<size_t>(1, spectrum.size() - 1))
                 * (m_gridWidth - 1)

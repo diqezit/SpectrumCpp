@@ -25,26 +25,29 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Common.h"
+#include "Core/IRenderComponent.h"
 #include <string>
 #include <unordered_map>
 
 namespace Spectrum {
 
-    class TextRenderer final
+    class TextRenderer final : public IRenderComponent
     {
     public:
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Lifecycle Management
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        TextRenderer(
-            ID2D1RenderTarget* renderTarget,
-            IDWriteFactory* writeFactory,
-            ID2D1SolidColorBrush* brush
-        );
+        TextRenderer(IDWriteFactory* writeFactory);
 
         TextRenderer(const TextRenderer&) = delete;
         TextRenderer& operator=(const TextRenderer&) = delete;
+
+        // IRenderComponent implementation
+        void OnRenderTargetChanged(ID2D1RenderTarget* renderTarget) override;
+        void OnDeviceLost() override;
+
+        void SetSolidBrush(ID2D1SolidColorBrush* brush);
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Text Rendering
@@ -74,12 +77,6 @@ namespace Spectrum {
             const Color& color,
             float fontSize = 12.0f
         ) const;
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // State Management
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-        void UpdateRenderTarget(ID2D1RenderTarget* renderTarget);
 
     private:
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -122,4 +119,4 @@ namespace Spectrum {
 
 } // namespace Spectrum
 
-#endif
+#endif // SPECTRUM_CPP_TEXT_RENDERER_H

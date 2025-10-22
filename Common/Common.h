@@ -56,9 +56,11 @@ namespace wrl = Microsoft::WRL;
 // Logging macros
 #ifdef _DEBUG
 #define LOG_DEBUG(msg) std::cout << "[DEBUG] " << msg << std::endl
+#define LOG_WARNING(msg) std::cout << "[WARNING] " << msg << std::endl
 #define LOG_ERROR(msg) std::cerr << "[ERROR] " << msg << std::endl
 #else
 #define LOG_DEBUG(msg)
+#define LOG_WARNING(msg)
 #define LOG_ERROR(msg)
 #endif
 

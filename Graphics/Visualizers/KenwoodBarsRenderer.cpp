@@ -22,15 +22,15 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "KenwoodBarsRenderer.h"
-#include "D2DHelpers.h"
-#include "RenderUtils.h"
+#include "../API/D2DHelpers.h"
+#include "../Base/RenderUtils.h"
 #include "MathUtils.h"
 #include "ColorUtils.h"
-#include "Canvas.h"
+#include "../API/Canvas.h"
 
 namespace Spectrum {
 
-    using namespace D2DHelpers;
+    using namespace Helpers::Sanitize;
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Constants
@@ -167,7 +167,7 @@ namespace Spectrum {
     {
         if (index >= m_peaks.size()) return;
 
-        const float sanitizedValue = Sanitize::NormalizedFloat(value);
+        const float sanitizedValue = NormalizedFloat(value);
 
         if (sanitizedValue >= m_peaks[index]) {
             m_peaks[index] = sanitizedValue;
@@ -272,7 +272,7 @@ namespace Spectrum {
             : kOutlineAlpha;
 
         for (size_t i = 0; i < spectrum.size(); ++i) {
-            const float magnitude = Sanitize::NormalizedFloat(spectrum[i]);
+            const float magnitude = NormalizedFloat(spectrum[i]);
 
             if (magnitude <= kMinMagnitudeForRender) continue;
 

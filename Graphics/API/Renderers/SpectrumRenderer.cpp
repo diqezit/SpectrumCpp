@@ -13,10 +13,14 @@
 
 #include "SpectrumRenderer.h"
 #include "D2DHelpers.h"
+#include "PrimitiveRenderer.h"
+#include "GradientRenderer.h"
+#include "Core/GeometryBuilder.h"
 
 namespace Spectrum {
 
-    using namespace D2DHelpers;
+    using namespace Helpers::Validate;
+    using namespace Helpers::Sanitize;
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Lifecycle Management
@@ -57,7 +61,7 @@ namespace Spectrum {
         constexpr float kMinVisibleHeight = 1.0f;
 
         for (size_t i = 0; i < barCount; ++i) {
-            const float normalizedHeight = Sanitize::NormalizedFloat(spectrum[i]);
+            const float normalizedHeight = NormalizedFloat(spectrum[i]);
             const float height = normalizedHeight * bounds.height;
 
             if (height < kMinVisibleHeight) continue;
@@ -82,7 +86,7 @@ namespace Spectrum {
     ) const
     {
         if (!m_geometryBuilder || !m_primitiveRenderer) return;
-        if (!Validate::PointArray(std::vector<Point>(spectrum.size()), 2)) return;
+        if (!PointArray(std::vector<Point>(spectrum.size()), 2)) return;
 
         auto points = m_geometryBuilder->GenerateWaveformPoints(spectrum, bounds);
         if (points.empty()) return;
@@ -113,7 +117,7 @@ namespace Spectrum {
         const Color& color
     ) const
     {
-        if (style.useGradient && Validate::GradientStops(style.gradientStops) && m_gradientRenderer) {
+        if (style.useGradient && GradientStops(style.gradientStops) && m_gradientRenderer) {
             m_gradientRenderer->DrawVerticalGradientBar(
                 barRect,
                 style.gradientStops,

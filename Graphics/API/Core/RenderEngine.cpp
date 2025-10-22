@@ -12,12 +12,23 @@
 #include "RenderEngine.h"
 #include "D2DHelpers.h"
 
+// Include full component definitions
+#include "Canvas.h"
+#include "ResourceCache.h"
+#include "GeometryBuilder.h"
+#include "TransformManager.h"
+#include "Renderers/PrimitiveRenderer.h"
+#include "Renderers/GradientRenderer.h"
+#include "Renderers/TextRenderer.h"
+#include "Renderers/EffectsRenderer.h"
+#include "Renderers/SpectrumRenderer.h"
+
 namespace Spectrum {
 
-    using namespace D2DHelpers;
+    using namespace Helpers::TypeConversion;
+    using namespace Helpers::HResult;
 
     namespace {
-
         [[nodiscard]] D2D1_SIZE_U GetClientSize(HWND hwnd) noexcept
         {
             RECT rc{};
@@ -27,7 +38,6 @@ namespace Spectrum {
                 static_cast<UINT32>(rc.bottom - rc.top)
             );
         }
-
     } // anonymous namespace
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -58,64 +68,28 @@ namespace Spectrum {
             LOG_ERROR("Failed to create D2D factory");
             return false;
         }
-
         if (!CreateDWriteFactory()) {
             LOG_ERROR("Failed to create DWrite factory");
             return false;
         }
 
-        if (!CreateDeviceResources()) {
-            LOG_ERROR("Failed to create device resources");
-            return false;
-        }
-
-        // Initialize all sub-components (worker classes)
-        m_resourceCache = std::make_unique<ResourceCache>(
-            m_d2dFactory.Get(),
-            m_renderTarget.Get()
-        );
-
-        m_geometryBuilder = std::make_unique<GeometryBuilder>(
-            m_d2dFactory.Get()
-        );
-
-        m_primitiveRenderer = std::make_unique<PrimitiveRenderer>(
-            m_renderTarget.Get(),
-            m_solidBrush.Get(),
-            m_geometryBuilder.get()
-        );
-
+        m_geometryBuilder = std::make_unique<GeometryBuilder>(m_d2dFactory.Get());
+        m_resourceCache = std::make_unique<ResourceCache>(m_d2dFactory.Get());
+        m_primitiveRenderer = std::make_unique<PrimitiveRenderer>(m_geometryBuilder.get());
         m_gradientRenderer = std::make_unique<GradientRenderer>(
-            m_renderTarget.Get(),
-            m_solidBrush.Get(),
             m_resourceCache.get(),
             m_geometryBuilder.get()
         );
-
-        m_textRenderer = std::make_unique<TextRenderer>(
-            m_renderTarget.Get(),
-            m_writeFactory.Get(),
-            m_solidBrush.Get()
-        );
-
-        m_effectsRenderer = std::make_unique<EffectsRenderer>(
-            m_renderTarget.Get(),
-            m_solidBrush.Get()
-        );
-
-        m_transformManager = std::make_unique<TransformManager>(
-            m_renderTarget.Get()
-        );
-
+        m_textRenderer = std::make_unique<TextRenderer>(m_writeFactory.Get());
+        m_effectsRenderer = std::make_unique<EffectsRenderer>();
+        m_transformManager = std::make_unique<TransformManager>();
         m_spectrumRenderer = std::make_unique<SpectrumRenderer>(
             m_primitiveRenderer.get(),
             m_gradientRenderer.get(),
             m_geometryBuilder.get()
         );
 
-        // Create the Canvas facade, injecting all dependencies
         m_canvas = std::make_unique<Canvas>(
-            m_renderTarget.Get(),
             m_primitiveRenderer.get(),
             m_gradientRenderer.get(),
             m_textRenderer.get(),
@@ -123,6 +97,19 @@ namespace Spectrum {
             m_transformManager.get(),
             m_spectrumRenderer.get()
         );
+
+        RegisterComponent(m_resourceCache.get());
+        RegisterComponent(m_primitiveRenderer.get());
+        RegisterComponent(m_gradientRenderer.get());
+        RegisterComponent(m_textRenderer.get());
+        RegisterComponent(m_effectsRenderer.get());
+        RegisterComponent(m_transformManager.get());
+        RegisterComponent(m_canvas.get());
+
+        if (!CreateDeviceResources()) {
+            LOG_ERROR("Failed to create initial device resources");
+            return false;
+        }
 
         return true;
     }
@@ -135,15 +122,17 @@ namespace Spectrum {
         if (!m_renderTarget) return;
 
         const HRESULT hr = m_renderTarget->Resize(
-            ToD2DSizeU(
-                static_cast<UINT32>(width),
-                static_cast<UINT32>(height)
-            )
+            ToD2DSizeU(static_cast<UINT32>(width), static_cast<UINT32>(height))
         );
 
         if (FAILED(hr)) {
             LOG_ERROR("Render target resize failed, discarding device resources");
             DiscardDeviceResources();
+        }
+        else {
+            for (auto* comp : m_components) {
+                comp->OnRenderTargetChanged(m_renderTarget.Get());
+            }
         }
     }
 
@@ -154,11 +143,8 @@ namespace Spectrum {
     void RenderEngine::BeginDraw()
     {
         if (!m_renderTarget) {
-            if (CreateDeviceResources()) {
-                UpdateComponentsRenderTarget();
-            }
+            (void)CreateDeviceResources();
         }
-
         if (m_renderTarget) {
             m_renderTarget->BeginDraw();
         }
@@ -211,14 +197,22 @@ namespace Spectrum {
     // Private Implementation
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
+    void RenderEngine::RegisterComponent(IRenderComponent* component)
+    {
+        if (component) {
+            m_components.push_back(component);
+        }
+    }
+
     bool RenderEngine::CreateD2DFactory()
     {
-        const HRESULT hr = D2D1CreateFactory(
-            D2D1_FACTORY_TYPE_SINGLE_THREADED,
-            m_d2dFactory.GetAddressOf()
+        return CheckWithReturn(
+            D2D1CreateFactory(
+                D2D1_FACTORY_TYPE_SINGLE_THREADED,
+                m_d2dFactory.GetAddressOf()
+            ),
+            "D2D1CreateFactory"
         );
-
-        return HResult::CheckWithReturn(hr, "D2D1CreateFactory");
     }
 
     bool RenderEngine::CreateDWriteFactory()
@@ -228,8 +222,7 @@ namespace Spectrum {
             __uuidof(IDWriteFactory),
             reinterpret_cast<IUnknown**>(m_writeFactory.GetAddressOf())
         );
-
-        return HResult::CheckWithReturn(hr, "DWriteCreateFactory");
+        return CheckWithReturn(hr, "DWriteCreateFactory");
     }
 
     bool RenderEngine::CreateDeviceResources()
@@ -240,11 +233,19 @@ namespace Spectrum {
             LOG_ERROR("Failed to create HWND render target");
             return false;
         }
-
         if (!CreateSolidBrush()) {
             LOG_ERROR("Failed to create solid brush");
             return false;
         }
+
+        for (auto* comp : m_components) {
+            comp->OnRenderTargetChanged(m_renderTarget.Get());
+        }
+
+        m_primitiveRenderer->SetSolidBrush(m_solidBrush.Get());
+        m_gradientRenderer->SetSolidBrush(m_solidBrush.Get());
+        m_textRenderer->SetSolidBrush(m_solidBrush.Get());
+        m_effectsRenderer->SetSolidBrush(m_solidBrush.Get());
 
         return true;
     }
@@ -264,19 +265,19 @@ namespace Spectrum {
             D2D1_PRESENT_OPTIONS_NONE
         );
 
-        const HRESULT hr = m_d2dFactory->CreateHwndRenderTarget(
-            rtProps,
-            hwndProps,
-            m_renderTarget.GetAddressOf()
-        );
-
-        if (!HResult::CheckWithReturn(hr, "ID2D1Factory::CreateHwndRenderTarget")) {
+        if (!CheckWithReturn(
+            m_d2dFactory->CreateHwndRenderTarget(
+                rtProps,
+                hwndProps,
+                m_renderTarget.GetAddressOf()
+            ),
+            "ID2D1Factory::CreateHwndRenderTarget"
+        )) {
             return false;
         }
 
         m_renderTarget->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE);
         m_renderTarget->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
-
         return true;
     }
 
@@ -284,56 +285,21 @@ namespace Spectrum {
     {
         if (!m_renderTarget) return false;
 
-        const HRESULT hr = m_renderTarget->CreateSolidColorBrush(
-            ToD2DColor(Color::White()),
-            m_solidBrush.GetAddressOf()
+        return CheckWithReturn(
+            m_renderTarget->CreateSolidColorBrush(
+                ToD2DColor(Color::White()),
+                m_solidBrush.GetAddressOf()
+            ),
+            "ID2D1RenderTarget::CreateSolidColorBrush"
         );
-
-        return HResult::CheckWithReturn(hr, "ID2D1RenderTarget::CreateSolidColorBrush");
     }
 
     void RenderEngine::DiscardDeviceResources()
     {
-        // Reset Canvas first (it depends on the workers)
-        m_canvas.reset();
-
-        // Reset all worker components
-        m_spectrumRenderer.reset();
-        m_transformManager.reset();
-        m_effectsRenderer.reset();
-        m_textRenderer.reset();
-        m_gradientRenderer.reset();
-        m_primitiveRenderer.reset();
-        m_geometryBuilder.reset();
-        m_resourceCache.reset();
-
-        // Reset D2D resources
+        for (auto* comp : m_components) {
+            comp->OnDeviceLost();
+        }
         m_solidBrush.Reset();
         m_renderTarget.Reset();
     }
-
-    void RenderEngine::UpdateComponentsRenderTarget()
-    {
-        if (!m_renderTarget) return;
-
-        if (m_resourceCache) {
-            m_resourceCache->UpdateRenderTarget(m_renderTarget.Get());
-        }
-        if (m_primitiveRenderer) {
-            m_primitiveRenderer->UpdateRenderTarget(m_renderTarget.Get());
-        }
-        if (m_gradientRenderer) {
-            m_gradientRenderer->UpdateRenderTarget(m_renderTarget.Get());
-        }
-        if (m_textRenderer) {
-            m_textRenderer->UpdateRenderTarget(m_renderTarget.Get());
-        }
-        if (m_effectsRenderer) {
-            m_effectsRenderer->UpdateRenderTarget(m_renderTarget.Get());
-        }
-        if (m_transformManager) {
-            m_transformManager->UpdateRenderTarget(m_renderTarget.Get());
-        }
-    }
-
-} // namespace Spectrum
+}

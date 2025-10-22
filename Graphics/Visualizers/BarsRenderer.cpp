@@ -16,22 +16,21 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "BarsRenderer.h"
-#include "D2DHelpers.h"
+#include "../API/D2DHelpers.h"
 #include "MathUtils.h"
 #include "ColorUtils.h"
-#include "RenderUtils.h"
-#include "Canvas.h"
+#include "../Base/RenderUtils.h"
+#include "../API/Canvas.h"
 
 namespace Spectrum {
 
-    using namespace D2DHelpers;
+    using namespace Helpers::Sanitize;
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Constants
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     namespace {
-
         constexpr float kHeightScale = 0.9f;
         constexpr float kMinVisibleHeight = 1.0f;
         constexpr float kShadowOffsetX = 2.0f;
@@ -43,7 +42,6 @@ namespace Spectrum {
         constexpr float kHighlightAlpha = 0.2f;
         constexpr float kBrightnessMin = 0.7f;
         constexpr float kBrightnessRange = 0.6f;
-
     } // anonymous namespace
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -91,7 +89,7 @@ namespace Spectrum {
         if (layout.barWidth <= 0.0f) return;
 
         for (size_t i = 0; i < barCount; ++i) {
-            const float magnitude = Sanitize::NormalizedFloat(spectrum[i]);
+            const float magnitude = NormalizedFloat(spectrum[i]);
             const float height = RenderUtils::MagnitudeToHeight(magnitude, m_height, kHeightScale);
 
             if (height < kMinVisibleHeight) continue;

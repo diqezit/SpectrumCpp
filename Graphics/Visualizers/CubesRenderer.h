@@ -77,10 +77,10 @@ namespace Spectrum {
 
         struct CubeGeometry
         {
-            Rect frontFace;
-            float topHeight;
-            float sideWidth;
-            float magnitude;
+            Rect frontFace{};
+            float topHeight = 0.0f;
+            float sideWidth = 0.0f;
+            float magnitude = 0.0f;
         };
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=

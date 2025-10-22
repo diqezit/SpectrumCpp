@@ -15,16 +15,31 @@
 
 namespace Spectrum {
 
-    using namespace D2DHelpers;
+    using namespace Helpers::TypeConversion;
+    using namespace Helpers::Validate;
+    using namespace Helpers::HResult;
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Lifecycle Management
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    ResourceCache::ResourceCache(ID2D1Factory* factory, ID2D1RenderTarget* renderTarget)
-        : m_factory(factory)
-        , m_renderTarget(renderTarget)
+    ResourceCache::ResourceCache(ID2D1Factory* factory)
+        : m_factory(factory), m_renderTarget(nullptr)
     {
+    }
+
+    void ResourceCache::OnRenderTargetChanged(ID2D1RenderTarget* renderTarget)
+    {
+        m_renderTarget = renderTarget;
+        m_linearGradientCache.clear();
+        m_radialGradientCache.clear();
+    }
+
+    void ResourceCache::OnDeviceLost()
+    {
+        m_renderTarget = nullptr;
+        m_linearGradientCache.clear();
+        m_radialGradientCache.clear();
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -32,9 +47,7 @@ namespace Spectrum {
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     ID2D1LinearGradientBrush* ResourceCache::GetLinearGradient(
-        const std::string& key,
-        const Point& start,
-        const Point& end,
+        const std::string& key, const Point& start, const Point& end,
         const std::vector<D2D1_GRADIENT_STOP>& stops
     ) const
     {
@@ -42,18 +55,14 @@ namespace Spectrum {
         if (it != m_linearGradientCache.end()) {
             return it->second.Get();
         }
-
         auto brush = CreateLinearGradient(start, end, stops);
         if (!brush) return nullptr;
-
         m_linearGradientCache[key] = brush;
         return brush.Get();
     }
 
     ID2D1RadialGradientBrush* ResourceCache::GetRadialGradient(
-        const std::string& key,
-        const Point& center,
-        float radius,
+        const std::string& key, const Point& center, float radius,
         const std::vector<D2D1_GRADIENT_STOP>& stops
     ) const
     {
@@ -61,17 +70,14 @@ namespace Spectrum {
         if (it != m_radialGradientCache.end()) {
             return it->second.Get();
         }
-
         auto brush = CreateRadialGradient(center, radius, stops);
         if (!brush) return nullptr;
-
         m_radialGradientCache[key] = brush;
         return brush.Get();
     }
 
     ID2D1PathGeometry* ResourceCache::GetPathGeometry(
-        const std::string& key,
-        std::function<void(ID2D1GeometrySink*)> buildFunc
+        const std::string& key, std::function<void(ID2D1GeometrySink*)> buildFunc
     ) const
     {
         auto it = m_geometryCache.find(key);
@@ -83,18 +89,19 @@ namespace Spectrum {
 
         wrl::ComPtr<ID2D1PathGeometry> geometry;
         HRESULT hr = m_factory->CreatePathGeometry(geometry.GetAddressOf());
-        if (!HResult::CheckComCreation(hr, "ID2D1Factory::CreatePathGeometry", geometry)) {
+        if (!CheckComCreation(hr, "ID2D1Factory::CreatePathGeometry", geometry)) {
             return nullptr;
         }
 
         wrl::ComPtr<ID2D1GeometrySink> sink;
         hr = geometry->Open(sink.GetAddressOf());
-        if (!HResult::CheckComCreation(hr, "ID2D1PathGeometry::Open", sink)) {
+        if (!CheckComCreation(hr, "ID2D1PathGeometry::Open", sink)) {
             return nullptr;
         }
 
         buildFunc(sink.Get());
-        sink->Close();
+        HRESULT closeHr = sink->Close();
+        Check(closeHr, "ID2D1GeometrySink::Close");
 
         m_geometryCache[key] = geometry;
         return geometry.Get();
@@ -109,12 +116,6 @@ namespace Spectrum {
         m_linearGradientCache.clear();
         m_radialGradientCache.clear();
         m_geometryCache.clear();
-    }
-
-    void ResourceCache::UpdateRenderTarget(ID2D1RenderTarget* renderTarget)
-    {
-        m_renderTarget = renderTarget;
-        Clear();
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -141,85 +142,47 @@ namespace Spectrum {
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     wrl::ComPtr<ID2D1LinearGradientBrush> ResourceCache::CreateLinearGradient(
-        const Point& start,
-        const Point& end,
-        const std::vector<D2D1_GRADIENT_STOP>& stops
+        const Point& start, const Point& end, const std::vector<D2D1_GRADIENT_STOP>& stops
     ) const
     {
         if (!m_renderTarget) return nullptr;
-        if (!Validate::GradientStops(stops)) return nullptr;
+        if (!GradientStops(stops)) return nullptr;
 
         wrl::ComPtr<ID2D1GradientStopCollection> stopCollection;
-        HRESULT hr = m_renderTarget->CreateGradientStopCollection(
-            stops.data(),
-            static_cast<UINT32>(stops.size()),
-            stopCollection.GetAddressOf()
-        );
-
-        if (!HResult::CheckComCreation(hr, "ID2D1RenderTarget::CreateGradientStopCollection", stopCollection)) {
+        HRESULT hr = m_renderTarget->CreateGradientStopCollection(stops.data(), static_cast<UINT32>(stops.size()), stopCollection.GetAddressOf());
+        if (!CheckComCreation(hr, "ID2D1RenderTarget::CreateGradientStopCollection", stopCollection)) {
             return nullptr;
         }
 
         wrl::ComPtr<ID2D1LinearGradientBrush> brush;
-        const D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES props =
-            D2D1::LinearGradientBrushProperties(
-                ToD2DPoint(start),
-                ToD2DPoint(end)
-            );
-
-        hr = m_renderTarget->CreateLinearGradientBrush(
-            props,
-            stopCollection.Get(),
-            brush.GetAddressOf()
-        );
-
-        if (!HResult::CheckComCreation(hr, "ID2D1RenderTarget::CreateLinearGradientBrush", brush)) {
+        const D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES props = D2D1::LinearGradientBrushProperties(ToD2DPoint(start), ToD2DPoint(end));
+        hr = m_renderTarget->CreateLinearGradientBrush(props, stopCollection.Get(), brush.GetAddressOf());
+        if (!CheckComCreation(hr, "ID2D1RenderTarget::CreateLinearGradientBrush", brush)) {
             return nullptr;
         }
-
         return brush;
     }
 
     wrl::ComPtr<ID2D1RadialGradientBrush> ResourceCache::CreateRadialGradient(
-        const Point& center,
-        float radius,
-        const std::vector<D2D1_GRADIENT_STOP>& stops
+        const Point& center, float radius, const std::vector<D2D1_GRADIENT_STOP>& stops
     ) const
     {
         if (!m_renderTarget) return nullptr;
-        if (!Validate::GradientStops(stops)) return nullptr;
-        if (!Validate::PositiveRadius(radius)) return nullptr;
+        if (!GradientStops(stops)) return nullptr;
+        if (!PositiveRadius(radius)) return nullptr;
 
         wrl::ComPtr<ID2D1GradientStopCollection> stopCollection;
-        HRESULT hr = m_renderTarget->CreateGradientStopCollection(
-            stops.data(),
-            static_cast<UINT32>(stops.size()),
-            stopCollection.GetAddressOf()
-        );
-
-        if (!HResult::CheckComCreation(hr, "ID2D1RenderTarget::CreateGradientStopCollection", stopCollection)) {
+        HRESULT hr = m_renderTarget->CreateGradientStopCollection(stops.data(), static_cast<UINT32>(stops.size()), stopCollection.GetAddressOf());
+        if (!CheckComCreation(hr, "ID2D1RenderTarget::CreateGradientStopCollection", stopCollection)) {
             return nullptr;
         }
 
         wrl::ComPtr<ID2D1RadialGradientBrush> brush;
-        const D2D1_RADIAL_GRADIENT_BRUSH_PROPERTIES props =
-            D2D1::RadialGradientBrushProperties(
-                ToD2DPoint(center),
-                D2D1::Point2F(0.0f, 0.0f),
-                radius,
-                radius
-            );
-
-        hr = m_renderTarget->CreateRadialGradientBrush(
-            props,
-            stopCollection.Get(),
-            brush.GetAddressOf()
-        );
-
-        if (!HResult::CheckComCreation(hr, "ID2D1RenderTarget::CreateRadialGradientBrush", brush)) {
+        const D2D1_RADIAL_GRADIENT_BRUSH_PROPERTIES props = D2D1::RadialGradientBrushProperties(ToD2DPoint(center), D2D1::Point2F(0.0f, 0.0f), radius, radius);
+        hr = m_renderTarget->CreateRadialGradientBrush(props, stopCollection.Get(), brush.GetAddressOf());
+        if (!CheckComCreation(hr, "ID2D1RenderTarget::CreateRadialGradientBrush", brush)) {
             return nullptr;
         }
-
         return brush;
     }
 

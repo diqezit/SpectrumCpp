@@ -24,7 +24,7 @@
 
 namespace Spectrum::RenderUtils {
 
-    using namespace D2DHelpers;
+    using namespace Helpers::Sanitize;
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Range Utilities
@@ -113,8 +113,8 @@ namespace Spectrum::RenderUtils {
 
         if (count == 0 || viewWidth <= 0) return layout;
 
-        const float sanitizedSpacing = Sanitize::NonNegativeFloat(spacing);
-        const float sanitizedWidth = Sanitize::PositiveFloat(
+        const float sanitizedSpacing = NonNegativeFloat(spacing);
+        const float sanitizedWidth = PositiveFloat(
             static_cast<float>(viewWidth),
             1.0f
         );
@@ -147,15 +147,15 @@ namespace Spectrum::RenderUtils {
 
         out.resize(n);
 
-        const float sanitizedAmplitude = Sanitize::NonNegativeFloat(amplitude);
-        const float sanitizedWidth = Sanitize::PositiveFloat(
+        const float sanitizedAmplitude = NonNegativeFloat(amplitude);
+        const float sanitizedWidth = PositiveFloat(
             static_cast<float>(viewWidth),
             1.0f
         );
         const float xDivisor = static_cast<float>(std::max<size_t>(1, n - 1));
 
         for (size_t i = 0; i < n; ++i) {
-            const float magnitude = Sanitize::NormalizedFloat(spectrum[i]);
+            const float magnitude = NormalizedFloat(spectrum[i]);
 
             out[i].x = (static_cast<float>(i) / xDivisor) * sanitizedWidth;
             out[i].y = midlineY - magnitude * sanitizedAmplitude;
@@ -166,8 +166,8 @@ namespace Spectrum::RenderUtils {
     {
         if (viewHeight <= 0) return 0.0f;
 
-        const float sanitizedMagnitude = Sanitize::NormalizedFloat(magnitude);
-        const float sanitizedScale = Sanitize::NormalizedFloat(scale);
+        const float sanitizedMagnitude = NormalizedFloat(magnitude);
+        const float sanitizedScale = NormalizedFloat(scale);
         const float height = sanitizedMagnitude * static_cast<float>(viewHeight) * sanitizedScale;
 
         return std::clamp(height, 0.0f, static_cast<float>(viewHeight));

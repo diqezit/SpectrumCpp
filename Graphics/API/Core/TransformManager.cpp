@@ -1,3 +1,4 @@
+// TransformManager.cpp
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // Implements the TransformManager for 2D transformation handling.
 //
@@ -10,20 +11,37 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "TransformManager.h"
-#include "D2DHelpers.h"
+#include "../API/D2DHelpers.h"
 #include "Logger.h"
 
 namespace Spectrum {
 
-    using namespace D2DHelpers;
+    using namespace Helpers::TypeConversion;
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Lifecycle Management
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    TransformManager::TransformManager(ID2D1RenderTarget* renderTarget)
-        : m_renderTarget(renderTarget)
+    TransformManager::TransformManager()
+        : m_renderTarget(nullptr)
     {
+    }
+
+    void TransformManager::OnRenderTargetChanged(ID2D1RenderTarget* renderTarget)
+    {
+        m_renderTarget = renderTarget;
+        // Clear the stack as it relates to the old render target's state
+        while (!m_transformStack.empty()) {
+            m_transformStack.pop();
+        }
+    }
+
+    void TransformManager::OnDeviceLost()
+    {
+        m_renderTarget = nullptr;
+        while (!m_transformStack.empty()) {
+            m_transformStack.pop();
+        }
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -69,9 +87,7 @@ namespace Spectrum {
         D2D1_MATRIX_3X2_F currentTransform;
         m_renderTarget->GetTransform(&currentTransform);
 
-        const D2D1_MATRIX_3X2_F rotation =
-            D2D1::Matrix3x2F::Rotation(angleDegrees, ToD2DPoint(center));
-
+        const D2D1_MATRIX_3X2_F rotation = D2D1::Matrix3x2F::Rotation(angleDegrees, ToD2DPoint(center));
         m_renderTarget->SetTransform(rotation * currentTransform);
     }
 
@@ -82,9 +98,7 @@ namespace Spectrum {
         D2D1_MATRIX_3X2_F currentTransform;
         m_renderTarget->GetTransform(&currentTransform);
 
-        const D2D1_MATRIX_3X2_F scale =
-            D2D1::Matrix3x2F::Scale(scaleX, scaleY, ToD2DPoint(center));
-
+        const D2D1_MATRIX_3X2_F scale = D2D1::Matrix3x2F::Scale(scaleX, scaleY, ToD2DPoint(center));
         m_renderTarget->SetTransform(scale * currentTransform);
     }
 
@@ -95,9 +109,7 @@ namespace Spectrum {
         D2D1_MATRIX_3X2_F currentTransform;
         m_renderTarget->GetTransform(&currentTransform);
 
-        const D2D1_MATRIX_3X2_F translation =
-            D2D1::Matrix3x2F::Translation(dx, dy);
-
+        const D2D1_MATRIX_3X2_F translation = D2D1::Matrix3x2F::Translation(dx, dy);
         m_renderTarget->SetTransform(translation * currentTransform);
     }
 
@@ -115,17 +127,4 @@ namespace Spectrum {
         }
     }
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // State Management
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-    void TransformManager::UpdateRenderTarget(ID2D1RenderTarget* renderTarget)
-    {
-        m_renderTarget = renderTarget;
-
-        while (!m_transformStack.empty()) {
-            m_transformStack.pop();
-        }
-    }
-
-} // namespace Spectrum
+} // namespace Spectrum 
