@@ -8,6 +8,7 @@
 // - Wind effect: horizontal sine wave offset based on time
 // - Smoothing: neighbor averaging for softer flames
 // - Color mapped from intensity via interpolated palette
+// - Uses GeometryHelpers for all geometric operations
 //
 // Performance considerations:
 // - Grid size controlled by quality (pixel size)
@@ -16,17 +17,16 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Graphics/Visualizers/FireRenderer.h"
-#include "Graphics/API/D2DHelpers.h"
-#include "Graphics/API/Structs/Paint.h"
-#include "Common/MathUtils.h"
-#include "Common/ColorUtils.h"
+#include "Graphics/API/GraphicsHelpers.h"
 #include "Graphics/Base/RenderUtils.h"
-#include "Graphics/API/Canvas.h"
+#include "Graphics/Visualizers/Settings/QualityPresets.h"
 #include <cmath>
 
 namespace Spectrum {
 
     using namespace Helpers::Sanitize;
+    using namespace Helpers::Geometry;
+    using namespace Helpers::Math;
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Constants
@@ -78,18 +78,7 @@ namespace Spectrum {
 
     void FireRenderer::UpdateSettings()
     {
-        switch (m_quality) {
-        case RenderQuality::Low:
-            m_settings = { false, false, 12.0f, 0.93f, 1.2f };
-            break;
-        case RenderQuality::High:
-            m_settings = { true, true, 6.0f, 0.97f, 1.8f };
-            break;
-        case RenderQuality::Medium:
-        default:
-            m_settings = { true, true, 8.0f, 0.95f, 1.5f };
-            break;
-        }
+        m_settings = QualityPresets::Get<FireRenderer>(m_quality);
 
         InitializeGrid();
     }
@@ -212,7 +201,7 @@ namespace Spectrum {
         float normalizedValue
     )
     {
-        const int clampedX = Utils::Clamp(x, 0, m_gridWidth - 1);
+        const int clampedX = Helpers::Math::Clamp(x, 0, m_gridWidth - 1);
         const size_t idx = GetGridIndex(clampedX, bottomY);
 
         if (!IsGridIndexValid(idx)) return;
@@ -247,7 +236,7 @@ namespace Spectrum {
             srcX += CalculateWindOffset(x, GetTime());
         }
 
-        srcX = Utils::Clamp(srcX, 0, m_gridWidth - 1);
+        srcX = Helpers::Math::Clamp(srcX, 0, m_gridWidth - 1);
 
         float value = GetCellValue(readGrid, srcX, srcY);
 
@@ -311,10 +300,15 @@ namespace Spectrum {
     {
         if (spectrumSize <= 1) return 0;
 
-        const float ratio = static_cast<float>(spectrumIndex) /
-            static_cast<float>(spectrumSize - 1);
+        const float mapped = Helpers::Math::Map(
+            static_cast<float>(spectrumIndex),
+            0.0f,
+            static_cast<float>(spectrumSize - 1),
+            0.0f,
+            static_cast<float>(m_gridWidth - 1)
+        );
 
-        return static_cast<int>(ratio * (m_gridWidth - 1));
+        return static_cast<int>(mapped);
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -335,7 +329,7 @@ namespace Spectrum {
 
         if (!IsPixelVisible(intensity)) return;
 
-        const float clampedIntensity = Utils::Clamp(intensity, 0.0f, 1.0f);
+        const float clampedIntensity = Helpers::Math::Clamp(intensity, 0.0f, 1.0f);
         Color color = GetColorFromPalette(clampedIntensity);
         color = ApplyAlphaAdjustment(color, clampedIntensity);
 
@@ -402,11 +396,16 @@ namespace Spectrum {
         float intensity
     ) const
     {
-        color.a *= Utils::SmoothStep(
+        const float alphaMultiplier = Helpers::Math::Map(
+            Helpers::Math::Clamp(intensity, kAlphaSmoothStepMin, kAlphaSmoothStepMax),
             kAlphaSmoothStepMin,
             kAlphaSmoothStepMax,
-            intensity
+            0.0f,
+            1.0f
         );
+
+        const float smoothed = alphaMultiplier * alphaMultiplier * (3.0f - 2.0f * alphaMultiplier);
+        color.a *= smoothed;
 
         return color;
     }
@@ -417,7 +416,7 @@ namespace Spectrum {
         float t
     ) const
     {
-        return Utils::InterpolateColor(
+        return Helpers::Color::InterpolateColor(
             m_firePalette[index1],
             m_firePalette[index2],
             t

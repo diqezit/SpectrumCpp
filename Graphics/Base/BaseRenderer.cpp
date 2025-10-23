@@ -7,21 +7,29 @@
 // - Aspect ratio calculations support letterbox/pillarbox modes
 // - Frame timing with overflow protection (resets at threshold)
 // - Uses D2DHelpers for parameter sanitization
+// - GetQualitySettings<>() template method eliminates duplication
+// - CreatePeakConfig() provides consistent peak tracker initialization
+// - Uses unified validation system (Validation.h) for data validation
 //
 // Rendering pipeline:
-// 1. IsRenderable() - validate spectrum and viewport
+// 1. IsRenderable() - validate spectrum and viewport (uses Validation.h)
 // 2. UpdateTime() - advance animation timer
 // 3. UpdateAnimation() - derived class animation logic
 // 4. DoRender() - derived class rendering logic
+//
+// DRY improvements:
+// - GetQualitySettings<>() replaces manual QualityPresets::Get calls
+// - CreatePeakConfig() centralizes peak configuration creation
+// - Unified validation for consistent error reporting
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "BaseRenderer.h"
-#include "Graphics/API/D2DHelpers.h"
-#include "Graphics/API/Canvas.h"
+#include "Graphics/Base/BaseRenderer.h"
+#include "Graphics/API/GraphicsHelpers.h"
 
 namespace Spectrum {
 
     using namespace Helpers::Sanitize;
+    using namespace Helpers::Validate;
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Lifecycle Management
@@ -87,8 +95,14 @@ namespace Spectrum {
 
     bool BaseRenderer::IsRenderable(const SpectrumData& spectrum) const noexcept
     {
-        if (spectrum.empty()) return false;
-        if (m_width <= 0 || m_height <= 0) return false;
+        if (!Condition(!spectrum.empty(), "Spectrum data is empty", "BaseRenderer")) {
+            return false;
+        }
+
+        if (!Condition(m_width > 0 && m_height > 0, "Invalid viewport dimensions", "BaseRenderer")) {
+            return false;
+        }
+
         return true;
     }
 
@@ -122,6 +136,19 @@ namespace Spectrum {
             renderWidth,
             renderHeight
         };
+    }
+
+    PeakTracker::Config BaseRenderer::CreatePeakConfig(
+        float holdTime,
+        float decayRate,
+        float minVisible
+    )
+    {
+        PeakTracker::Config config;
+        config.holdTime = holdTime;
+        config.decayRate = decayRate;
+        config.minVisible = minVisible;
+        return config;
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=

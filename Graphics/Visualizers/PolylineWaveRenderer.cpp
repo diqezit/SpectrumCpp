@@ -1,34 +1,32 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// Implements the PolylineWaveRenderer for sunburst/starburst visualization.
+// Implements the PolylineWaveRenderer with enhanced visual effects
 //
-// Implementation details:
-// - Bars radiate from center with length based on frequency magnitude
-// - Direction vectors pre-calculated once per bar count change
-// - Multi-layer rendering for proper effect composition
-// - Bar width dynamically adjusted to prevent overlap
-// - Glow effect achieved through shadow with blur
+// Advanced rendering features:
+// - Gradient bars with smooth color transitions
+// - Pulsating core synchronized with audio intensity
+// - Multi-layer depth with glow and highlight effects
+// - Dynamic color interpolation based on magnitude
+// - Optimized rendering with pre-calculated directions
+// - Uses GeometryHelpers for all geometric operations
 //
-// Rendering pipeline:
-// 1. Inner circle: decorative ring at base of bars
-// 2. Glow layer: blurred shadow behind high-intensity bars
-// 3. Main bars: primary visualization with rounded caps
-// 4. Highlight layer: white accents on peaks for emphasis
+// Visual design:
+// - Base color fades to accent color along bar length
+// - Core pulses in sync with average spectrum intensity
+// - Highlights only appear on strong peaks
+// - Outer glow creates depth perception
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Graphics/Visualizers/PolylineWaveRenderer.h"
-#include "Graphics/API/D2DHelpers.h"
-#include "Graphics/API/Structs/Paint.h"
-#include "Common/MathUtils.h"
-#include "Common/ColorUtils.h"
+#include "Graphics/API/GraphicsHelpers.h"
 #include "Graphics/Base/RenderUtils.h"
-#include "Graphics/API/Canvas.h"
-#include "Common/Types.h"
+#include "Graphics/Visualizers/Settings/QualityPresets.h"
 #include <algorithm>
 #include <cmath>
 
 namespace Spectrum {
 
-    using namespace D2DHelpers;
+    using namespace Helpers::Geometry;
+    using namespace Helpers::Math;
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Constants
@@ -36,27 +34,31 @@ namespace Spectrum {
 
     namespace {
 
-        // Radius calculations
-        constexpr float kRadiusFactor = 0.8f;
-        constexpr float kInnerRadiusFactor = 0.9f;
+        constexpr float kRadiusFactor = 0.7f;
+        constexpr float kCoreRadiusMin = 0.08f;
+        constexpr float kCoreRadiusMax = 0.15f;
+        constexpr float kCoreRadiusSmoothing = 0.1f;
 
-        // Bar dimensions
-        constexpr float kMinBarLengthFactor = 0.03f;
-        constexpr float kBarLengthScale = 0.5f;
+        constexpr float kBarLengthScale = 0.6f;
+        constexpr float kMinBarLengthFactor = 0.05f;
         constexpr float kMinBarWidth = 2.0f;
-        constexpr float kMaxBarWidth = 20.0f;
+        constexpr float kMaxBarWidth = 15.0f;
+        constexpr float kBarSpacingRatio = 0.75f;
 
-        // Magnitude thresholds
-        constexpr float kMagnitudeThreshold = 0.01f;
-        constexpr float kGlowMagnitudeThreshold = 0.6f;
-        constexpr float kHighlightMagnitudeThreshold = 0.4f;
+        constexpr float kMinMagnitude = 0.02f;
+        constexpr float kGlowMagnitudeThreshold = 0.5f;
+        constexpr float kHighlightMagnitudeThreshold = 0.7f;
 
-        // Effect parameters
-        constexpr float kHighlightStartOffset = 0.7f;
-        constexpr float kHighlightStrokeMultiplier = 0.5f;
-        constexpr float kGlowStrokeMultiplier = 1.5f;
-        constexpr float kInnerCircleStrokeWidth = 2.0f;
-        constexpr float kGlowBlurRadius = 3.0f;
+        constexpr float kGlowBlurRadius = 8.0f;
+        constexpr float kGlowAlpha = 0.6f;
+        constexpr float kHighlightStartPosition = 0.6f;
+        constexpr float kHighlightAlpha = 0.8f;
+
+        constexpr float kCoreGlowAlpha = 0.4f;
+        constexpr float kCoreStrokeWidth = 3.0f;
+        constexpr float kOuterGlowStrokeMultiplier = 2.0f;
+
+        constexpr int kGradientSegments = 5;
 
     } // anonymous namespace
 
@@ -65,6 +67,8 @@ namespace Spectrum {
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     PolylineWaveRenderer::PolylineWaveRenderer()
+        : m_currentCoreRadius(0.0f)
+        , m_targetCoreRadius(0.0f)
     {
         m_primaryColor = Color::FromRGB(0, 180, 255);
         UpdateSettings();
@@ -76,36 +80,18 @@ namespace Spectrum {
 
     void PolylineWaveRenderer::UpdateSettings()
     {
-        switch (m_quality) {
-        case RenderQuality::Low:
-            m_settings = {
-                false,  // useGlow
-                false,  // useHighlight
-                0.0f,   // glowIntensity
-                0.3f,   // innerCircleAlpha
-                0.7f    // barSpacingRatio
-            };
-            break;
-        case RenderQuality::High:
-            m_settings = {
-                true,   // useGlow
-                true,   // useHighlight
-                0.6f,   // glowIntensity
-                0.5f,   // innerCircleAlpha
-                0.8f    // barSpacingRatio
-            };
-            break;
-        case RenderQuality::Medium:
-        default:
-            m_settings = {
-                true,   // useGlow
-                false,  // useHighlight
-                0.4f,   // glowIntensity
-                0.4f,   // innerCircleAlpha
-                0.75f   // barSpacingRatio
-            };
-            break;
-        }
+        m_settings = QualityPresets::Get<PolylineWaveRenderer>(m_quality);
+
+        m_currentCoreRadius = kCoreRadiusMin;
+        m_targetCoreRadius = kCoreRadiusMin;
+    }
+
+    void PolylineWaveRenderer::UpdateAnimation(
+        const SpectrumData& spectrum,
+        float deltaTime
+    )
+    {
+        UpdateCoreRadius(spectrum, deltaTime);
     }
 
     void PolylineWaveRenderer::DoRender(
@@ -117,153 +103,32 @@ namespace Spectrum {
 
         EnsureBarDirections(spectrum.size());
 
-        const Point center = {
-            m_width * 0.5f,
-            m_height * 0.5f
-        };
-
-        const float radius = CalculateRadius();
-        const float barWidth = CalculateBarWidth(spectrum.size(), radius);
-
-        // Render layers in order for proper composition
-        RenderInnerCircle(canvas, center, radius);
+        const Point center = GetViewportCenter();
+        const float baseRadius = CalculateBaseRadius();
+        const float barWidth = CalculateBarWidth(spectrum.size(), baseRadius);
 
         if (m_settings.useGlow) {
-            RenderGlowLayer(
-                canvas,
-                spectrum,
-                center,
-                radius,
-                barWidth
-            );
+            RenderOuterGlow(canvas, spectrum, center, baseRadius, barWidth);
         }
 
-        RenderMainBars(
-            canvas,
-            spectrum,
-            center,
-            radius,
-            barWidth
-        );
+        if (m_settings.useFill) {
+            RenderPulsingCore(canvas, center, baseRadius);
+        }
 
-        if (m_settings.useHighlight) {
-            RenderHighlightLayer(
-                canvas,
-                spectrum,
-                center,
-                radius,
-                barWidth
-            );
+        if (m_settings.lineWidth > 0.0f) {
+            RenderGradientBars(canvas, spectrum, center, baseRadius, barWidth);
+        }
+        else {
+            RenderSolidBars(canvas, spectrum, center, baseRadius, barWidth);
+        }
+
+        if (m_settings.smoothness > kHighlightMagnitudeThreshold) {
+            RenderDynamicHighlights(canvas, spectrum, center, baseRadius, barWidth);
         }
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Main Rendering Components (SRP)
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-    void PolylineWaveRenderer::RenderInnerCircle(
-        Canvas& canvas,
-        const Point& center,
-        float radius
-    ) const
-    {
-        const Color circleColor = m_primaryColor.WithAlpha(m_settings.innerCircleAlpha);
-        const Paint paint = Paint::Stroke(circleColor, kInnerCircleStrokeWidth);
-
-        canvas.DrawCircle(
-            center,
-            radius * kInnerRadiusFactor,
-            paint
-        );
-    }
-
-    void PolylineWaveRenderer::RenderGlowLayer(
-        Canvas& canvas,
-        const SpectrumData& spectrum,
-        const Point& center,
-        float radius,
-        float barWidth
-    ) const
-    {
-        const Color glowColor = m_primaryColor.WithAlpha(m_settings.glowIntensity);
-        const Paint paint = Paint::Stroke(
-            glowColor,
-            barWidth * kGlowStrokeMultiplier
-        ).WithStrokeCap(StrokeCap::Round);
-
-        auto drawGlow = [&]() {
-            for (size_t i = 0; i < spectrum.size(); ++i) {
-                if (spectrum[i] < kGlowMagnitudeThreshold) continue;
-
-                const float barLength = CalculateBarLength(spectrum[i], radius);
-                const Point startPoint = center + m_barDirections[i] * radius;
-                const Point endPoint = center + m_barDirections[i] * (radius + barLength);
-
-                canvas.DrawLine(startPoint, endPoint, paint);
-            }
-            };
-
-        canvas.DrawWithShadow(
-            drawGlow,
-            { 0.0f, 0.0f },
-            kGlowBlurRadius,
-            glowColor.WithAlpha(1.0f)
-        );
-    }
-
-    void PolylineWaveRenderer::RenderMainBars(
-        Canvas& canvas,
-        const SpectrumData& spectrum,
-        const Point& center,
-        float radius,
-        float barWidth
-    ) const
-    {
-        const Paint paint = Paint::Stroke(
-            m_primaryColor,
-            barWidth
-        ).WithStrokeCap(StrokeCap::Round);
-
-        for (size_t i = 0; i < spectrum.size(); ++i) {
-            if (spectrum[i] < kMagnitudeThreshold) continue;
-
-            const float barLength = CalculateBarLength(spectrum[i], radius);
-            const Point startPoint = center + m_barDirections[i] * radius;
-            const Point endPoint = center + m_barDirections[i] * (radius + barLength);
-
-            canvas.DrawLine(startPoint, endPoint, paint);
-        }
-    }
-
-    void PolylineWaveRenderer::RenderHighlightLayer(
-        Canvas& canvas,
-        const SpectrumData& spectrum,
-        const Point& center,
-        float radius,
-        float barWidth
-    ) const
-    {
-        const Paint paint = Paint::Stroke(
-            Color::White(),
-            barWidth * kHighlightStrokeMultiplier
-        ).WithStrokeCap(StrokeCap::Round);
-
-        for (size_t i = 0; i < spectrum.size(); ++i) {
-            if (spectrum[i] < kHighlightMagnitudeThreshold) continue;
-
-            const float barLength = CalculateBarLength(spectrum[i], radius);
-            const float highlightStart = radius + barLength * kHighlightStartOffset;
-            const float highlightEnd = radius + barLength;
-
-            const Point startPoint = center + m_barDirections[i] * highlightStart;
-            const Point endPoint = center + m_barDirections[i] * highlightEnd;
-
-            canvas.DrawLine(startPoint, endPoint, paint);
-        }
-    }
-
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Configuration Management
+    // Configuration
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     void PolylineWaveRenderer::EnsureBarDirections(size_t barCount)
@@ -275,11 +140,260 @@ namespace Spectrum {
 
             for (size_t i = 0; i < barCount; ++i) {
                 const float angle = i * angleStep;
-                m_barDirections[i] = {
-                    std::cos(angle),
-                    std::sin(angle)
-                };
+
+                m_barDirections[i] = DirectionFromAngle(angle);
             }
+        }
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Animation
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    void PolylineWaveRenderer::UpdateCoreRadius(
+        const SpectrumData& spectrum,
+        float deltaTime
+    )
+    {
+        if (!m_settings.useFill) {
+            m_currentCoreRadius = kCoreRadiusMin;
+            m_targetCoreRadius = kCoreRadiusMin;
+            return;
+        }
+
+        const float avgIntensity = CalculateAverageIntensity(spectrum);
+
+        m_targetCoreRadius = Helpers::Math::Lerp(
+            kCoreRadiusMin,
+            kCoreRadiusMax,
+            avgIntensity
+        );
+
+        const float smoothingFactor = Helpers::Math::Clamp(
+            kCoreRadiusSmoothing * deltaTime * 60.0f,
+            0.0f,
+            1.0f
+        );
+
+        m_currentCoreRadius = Helpers::Math::Lerp(
+            m_currentCoreRadius,
+            m_targetCoreRadius,
+            smoothingFactor
+        );
+    }
+
+    float PolylineWaveRenderer::CalculateAverageIntensity(
+        const SpectrumData& spectrum
+    ) const
+    {
+        if (spectrum.empty()) return 0.0f;
+
+        float sum = 0.0f;
+        for (float magnitude : spectrum) {
+            sum += magnitude;
+        }
+
+        return Saturate(sum / spectrum.size());
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Rendering Layers
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    void PolylineWaveRenderer::RenderOuterGlow(
+        Canvas& canvas,
+        const SpectrumData& spectrum,
+        const Point& center,
+        float baseRadius,
+        float barWidth
+    ) const
+    {
+        const Color glowColor = m_primaryColor.WithAlpha(
+            m_settings.lineWidth * kGlowAlpha
+        );
+
+        const Paint paint = Paint::Stroke(
+            glowColor,
+            barWidth * kOuterGlowStrokeMultiplier
+        ).WithStrokeCap(StrokeCap::Round);
+
+        auto drawGlow = [&]() {
+            for (size_t i = 0; i < spectrum.size(); ++i) {
+                if (!ShouldRenderGlow(spectrum[i])) continue;
+
+                const float barLength = CalculateBarLength(spectrum[i], baseRadius);
+
+                const Point start = Add(center, Multiply(m_barDirections[i], baseRadius));
+                const Point end = Add(center, Multiply(m_barDirections[i], baseRadius + barLength));
+
+                canvas.DrawLine(start, end, paint);
+            }
+            };
+
+        canvas.DrawWithShadow(
+            drawGlow,
+            { 0.0f, 0.0f },
+            kGlowBlurRadius,
+            glowColor
+        );
+    }
+
+    void PolylineWaveRenderer::RenderPulsingCore(
+        Canvas& canvas,
+        const Point& center,
+        float baseRadius
+    ) const
+    {
+        const float coreRadius = baseRadius * m_currentCoreRadius;
+
+        const Color fillColor = m_primaryColor.WithAlpha(0.3f);
+        canvas.DrawCircle(center, coreRadius, Paint::Fill(fillColor));
+
+        const Color glowColor = m_primaryColor.WithAlpha(kCoreGlowAlpha);
+        auto drawCoreGlow = [&]() {
+            canvas.DrawCircle(
+                center,
+                coreRadius,
+                Paint::Stroke(m_primaryColor, kCoreStrokeWidth)
+            );
+            };
+
+        canvas.DrawWithShadow(
+            drawCoreGlow,
+            { 0.0f, 0.0f },
+            kGlowBlurRadius * 0.5f,
+            glowColor
+        );
+
+        drawCoreGlow();
+    }
+
+    void PolylineWaveRenderer::RenderGradientBars(
+        Canvas& canvas,
+        const SpectrumData& spectrum,
+        const Point& center,
+        float baseRadius,
+        float barWidth
+    ) const
+    {
+        for (size_t i = 0; i < spectrum.size(); ++i) {
+            if (!ShouldRenderBar(spectrum[i])) continue;
+
+            const float barLength = CalculateBarLength(spectrum[i], baseRadius);
+
+            RenderGradientBar(
+                canvas,
+                center,
+                m_barDirections[i],
+                baseRadius,
+                barLength,
+                barWidth,
+                spectrum[i]
+            );
+        }
+    }
+
+    void PolylineWaveRenderer::RenderSolidBars(
+        Canvas& canvas,
+        const SpectrumData& spectrum,
+        const Point& center,
+        float baseRadius,
+        float barWidth
+    ) const
+    {
+        const Paint paint = Paint::Stroke(
+            m_primaryColor,
+            barWidth
+        ).WithStrokeCap(StrokeCap::Round);
+
+        for (size_t i = 0; i < spectrum.size(); ++i) {
+            if (!ShouldRenderBar(spectrum[i])) continue;
+
+            const float barLength = CalculateBarLength(spectrum[i], baseRadius);
+
+            const Point start = Add(center, Multiply(m_barDirections[i], baseRadius));
+            const Point end = Add(center, Multiply(m_barDirections[i], baseRadius + barLength));
+
+            canvas.DrawLine(start, end, paint);
+        }
+    }
+
+    void PolylineWaveRenderer::RenderDynamicHighlights(
+        Canvas& canvas,
+        const SpectrumData& spectrum,
+        const Point& center,
+        float baseRadius,
+        float barWidth
+    ) const
+    {
+        const Color highlightColor = Color::White().WithAlpha(
+            m_settings.smoothness * kHighlightAlpha
+        );
+
+        const Paint paint = Paint::Stroke(
+            highlightColor,
+            barWidth * 0.4f
+        ).WithStrokeCap(StrokeCap::Round);
+
+        for (size_t i = 0; i < spectrum.size(); ++i) {
+            if (!ShouldRenderHighlight(spectrum[i])) continue;
+
+            const float barLength = CalculateBarLength(spectrum[i], baseRadius);
+
+            const float highlightStart = Helpers::Math::Lerp(
+                baseRadius,
+                baseRadius + barLength,
+                kHighlightStartPosition
+            );
+            const float highlightEnd = baseRadius + barLength;
+
+            const Point start = Add(center, Multiply(m_barDirections[i], highlightStart));
+            const Point end = Add(center, Multiply(m_barDirections[i], highlightEnd));
+
+            canvas.DrawLine(start, end, paint);
+        }
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Individual Bar Rendering
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    void PolylineWaveRenderer::RenderGradientBar(
+        Canvas& canvas,
+        const Point& center,
+        const Point& direction,
+        float baseRadius,
+        float barLength,
+        float barWidth,
+        float magnitude
+    ) const
+    {
+        const float segmentLength = barLength / kGradientSegments;
+        const Paint paint = Paint::Stroke(
+            Color::White(),
+            barWidth
+        ).WithStrokeCap(StrokeCap::Round);
+
+        for (int seg = 0; seg < kGradientSegments; ++seg) {
+            const float startDist = baseRadius + seg * segmentLength;
+            const float endDist = baseRadius + (seg + 1) * segmentLength;
+
+            const float normalizedPos = Helpers::Math::Normalize(
+                static_cast<float>(seg),
+                0.0f,
+                static_cast<float>(kGradientSegments - 1)
+            );
+
+            const Color segmentColor = CalculateBarColorAtPosition(normalizedPos, magnitude);
+
+            const Point start = Add(center, Multiply(direction, startDist));
+            const Point end = Add(center, Multiply(direction, endDist));
+
+            canvas.DrawLine(
+                start,
+                end,
+                Paint::Stroke(segmentColor, barWidth).WithStrokeCap(StrokeCap::Round)
+            );
         }
     }
 
@@ -287,7 +401,7 @@ namespace Spectrum {
     // Calculation Helpers
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    float PolylineWaveRenderer::CalculateRadius() const
+    float PolylineWaveRenderer::CalculateBaseRadius() const
     {
         return std::min(m_width, m_height) * 0.5f * kRadiusFactor;
     }
@@ -300,13 +414,9 @@ namespace Spectrum {
         if (barCount == 0) return kMinBarWidth;
 
         const float circumference = TWO_PI * radius;
-        const float idealWidth = circumference / barCount * m_settings.barSpacingRatio;
+        const float idealWidth = circumference / barCount * kBarSpacingRatio;
 
-        return Utils::Clamp(
-            idealWidth,
-            kMinBarWidth,
-            kMaxBarWidth
-        );
+        return Helpers::Math::Clamp(idealWidth, kMinBarWidth, kMaxBarWidth);
     }
 
     float PolylineWaveRenderer::CalculateBarLength(
@@ -318,6 +428,61 @@ namespace Spectrum {
         const float minLength = radius * kMinBarLengthFactor;
 
         return std::max(normalizedLength, minLength);
+    }
+
+    Color PolylineWaveRenderer::CalculateBarColorAtPosition(
+        float normalizedPosition,
+        float magnitude
+    ) const
+    {
+        const Color accentColor = GetAccentColor();
+
+        const Color blended = Helpers::Color::InterpolateColor(
+            m_primaryColor,
+            accentColor,
+            normalizedPosition
+        );
+
+        const float alpha = Helpers::Math::Lerp(0.8f, 1.0f, magnitude);
+        return blended.WithAlpha(alpha);
+    }
+
+    Color PolylineWaveRenderer::GetAccentColor() const
+    {
+        const float h = m_primaryColor.r * 0.299f +
+            m_primaryColor.g * 0.587f +
+            m_primaryColor.b * 0.114f;
+
+        if (h > 0.5f) {
+            return Helpers::Color::AdjustBrightness(m_primaryColor, 1.5f);
+        }
+        else {
+            return Color::White();
+        }
+    }
+
+    Point PolylineWaveRenderer::GetViewportCenter() const
+    {
+        return Helpers::Geometry::GetViewportCenter(m_width, m_height);
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Validation
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    bool PolylineWaveRenderer::ShouldRenderBar(float magnitude) const
+    {
+        return magnitude >= kMinMagnitude;
+    }
+
+    bool PolylineWaveRenderer::ShouldRenderGlow(float magnitude) const
+    {
+        return magnitude >= kGlowMagnitudeThreshold;
+    }
+
+    bool PolylineWaveRenderer::ShouldRenderHighlight(float magnitude) const
+    {
+        return magnitude >= kHighlightMagnitudeThreshold;
     }
 
 } // namespace Spectrum

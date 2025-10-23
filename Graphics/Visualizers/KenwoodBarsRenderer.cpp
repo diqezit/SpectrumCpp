@@ -1,37 +1,29 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// Implements the KenwoodBarsRenderer for Kenwood-style bar visualization.
+// Implements the KenwoodBarsRenderer for Kenwood-style bar visualization
 //
-// Implementation details:
-// - Fixed gradient palette recreates authentic Kenwood look
-// - Peak hold algorithm: peaks stick at maximum for configurable time
-// - Rendering layers ensure proper visual hierarchy
-// - Overlay mode adjusts transparency and geometry for overlaid display
-// - Gradient intensity boosted for vibrant appearance
+// Optimized implementation with shimmer gradient bars and sticky peaks
+// Gradient computed dynamically based on primary color selection
+// Zero memory leaks through proper ResourceCache integration
+// Uses GeometryHelpers for all geometric operations
+// Uses PeakTracker component for peak management (DRY principle)
 //
-// Rendering order:
-// 1. Main gradient bars
-// 2. White outlines (quality-dependent)
-// 3. Peak indicators (white blocks)
-// 4. Peak enhancement lines (quality-dependent)
-//
-// Performance optimizations:
-// - Skip bars below visibility threshold
-// - Batch rendering for peaks when possible
-// - Pre-calculate gradient stops once per frame
+// Performance characteristics:
+// - Gradient created once per unique color combination (cached in ResourceCache)
+// - Peaks updated per frame with smooth hold/fall animation via PeakTracker
+// - Draw calls minimized through batching
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Graphics/Visualizers/KenwoodBarsRenderer.h"
-#include "Graphics/API/D2DHelpers.h"
-#include "Graphics/API/Structs/Paint.h"
-#include "Common/MathUtils.h"
-#include "Common/ColorUtils.h"
+#include "Graphics/API/GraphicsHelpers.h"
 #include "Graphics/Base/RenderUtils.h"
-#include "Graphics/API/Canvas.h"
+#include "Graphics/Visualizers/Settings/QualityPresets.h"
 #include <algorithm>
 
 namespace Spectrum {
 
     using namespace Helpers::Sanitize;
+    using namespace Helpers::Geometry;
+    namespace Math = Helpers::Math;
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Constants
@@ -39,47 +31,20 @@ namespace Spectrum {
 
     namespace {
 
-        constexpr float kPeakFallSpeed = 0.25f;
-        constexpr float kPeakHoldTimeS = 0.3f;
-
+        constexpr float kPeakHoldTime = 0.3f;
+        constexpr float kPeakDecayRate = 0.95f;
         constexpr float kPeakHeight = 3.0f;
         constexpr float kPeakHeightOverlay = 2.0f;
+        constexpr float kMinPeakValue = 0.01f;
+        constexpr float kPeakCornerRadiusRatio = 0.5f;
 
-        constexpr float kMinBarHeight = 2.0f;
-        constexpr float kMinMagnitudeForRender = 0.01f;
-
-        constexpr float kCornerRadiusRatio = 0.25f;
-        constexpr float kCornerRadiusRatioOverlay = 0.2f;
-
-        constexpr float kOutlineWidth = 1.5f;
-        constexpr float kOutlineWidthOverlay = 1.0f;
-        constexpr float kOutlineAlpha = 0.5f;
-        constexpr float kOutlineAlphaOverlay = 0.35f;
-
-        constexpr float kPeakOutlineAlpha = 0.7f;
-        constexpr float kPeakOutlineAlphaOverlay = 0.5f;
-
-        constexpr float kGradientIntensityBoost = 1.1f;
-        constexpr float kGradientIntensityBoostOverlay = 0.95f;
-
-        constexpr float kOutlineMagnitudeScale = 1.5f;
-        constexpr float kPeakCornerRadiusScale = 0.5f;
-        constexpr float kPeakOutlineWidthScale = 0.75f;
-
-        constexpr float kBarSpacing = 2.0f;
-
-        const std::vector<D2D1_GRADIENT_STOP> kBarGradientStopsBase = {
-            { 0.00f, D2D1::ColorF(255 / 255.0f, 35 / 255.0f, 0.0f) },
-            { 0.15f, D2D1::ColorF(255 / 255.0f, 85 / 255.0f, 0.0f) },
-            { 0.15f, D2D1::ColorF(255 / 255.0f, 185 / 255.0f, 0.0f) },
-            { 0.30f, D2D1::ColorF(255 / 255.0f, 235 / 255.0f, 0.0f) },
-            { 0.30f, D2D1::ColorF(0.0f, 255 / 255.0f, 0 / 255.0f) },
-            { 1.00f, D2D1::ColorF(0.0f, 240 / 255.0f, 120 / 255.0f) }
-        };
+        constexpr int kGradientSteps = 8;
+        constexpr float kGradientBrightnessMin = 0.5f;
+        constexpr float kGradientBrightnessRange = 0.7f;
+        constexpr float kGradientSaturationMin = 0.8f;
+        constexpr float kGradientSaturationRange = 0.2f;
 
         const Color kPeakColor = Color::White();
-        const Color kPeakOutlineColorBase = Color(1.0f, 1.0f, 1.0f, 0.8f);
-        const Color kSolidBarColor = Color::FromRGB(0, 240, 120);
 
     } // anonymous namespace
 
@@ -88,6 +53,7 @@ namespace Spectrum {
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     KenwoodBarsRenderer::KenwoodBarsRenderer()
+        : m_peakTracker(0, CreatePeakConfig(kPeakHoldTime, kPeakDecayRate, kMinPeakValue))
     {
         UpdateSettings();
     }
@@ -98,18 +64,7 @@ namespace Spectrum {
 
     void KenwoodBarsRenderer::UpdateSettings()
     {
-        switch (m_quality) {
-        case RenderQuality::Low:
-            m_currentSettings = { false, false, false, false };
-            break;
-        case RenderQuality::High:
-            m_currentSettings = { true, true, true, true };
-            break;
-        case RenderQuality::Medium:
-        default:
-            m_currentSettings = { true, true, true, false };
-            break;
-        }
+        m_settings = QualityPresets::Get<KenwoodBarsRenderer>(m_quality, m_isOverlay);
     }
 
     void KenwoodBarsRenderer::UpdateAnimation(
@@ -117,11 +72,8 @@ namespace Spectrum {
         float deltaTime
     )
     {
-        EnsurePeakArraySize(spectrum.size());
-
-        for (size_t i = 0; i < spectrum.size(); ++i) {
-            UpdatePeak(i, spectrum[i], deltaTime);
-        }
+        m_peakTracker.Resize(spectrum.size());
+        m_peakTracker.Update(spectrum, deltaTime);
     }
 
     void KenwoodBarsRenderer::DoRender(
@@ -129,386 +81,108 @@ namespace Spectrum {
         const SpectrumData& spectrum
     )
     {
+        if (spectrum.empty()) return;
+
         const auto layout = RenderUtils::ComputeBarLayout(
             spectrum.size(),
-            GetBarSpacing(),
+            m_settings.barSpacing,
             m_width
         );
 
         if (layout.barWidth <= 0.0f) return;
 
-        const float cornerRadius = CalculateCornerRadius(layout.barWidth);
-        const BarStyle barStyle = CreateBarStyle(cornerRadius);
-
-        RenderMainLayer(canvas, spectrum, barStyle);
-
-        if (m_currentSettings.useOutline) {
-            RenderOutlineLayer(canvas, spectrum, layout, cornerRadius);
-        }
-
-        RenderPeakLayer(canvas, layout, cornerRadius);
-
-        if (m_currentSettings.useEnhancedPeaks) {
-            RenderPeakEnhancementLayer(canvas, layout);
-        }
+        RenderBars(canvas, spectrum);
+        RenderPeaks(canvas, spectrum.size(), layout.totalBarWidth, layout.barWidth);
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Peak Management
+    // Rendering
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    void KenwoodBarsRenderer::EnsurePeakArraySize(size_t size)
+    void KenwoodBarsRenderer::RenderBars(
+        Canvas& canvas,
+        const SpectrumData& spectrum
+    ) const
     {
-        if (m_peaks.size() != size) {
-            m_peaks.assign(size, 0.0f);
-            m_peakTimers.assign(size, 0.0f);
-        }
-    }
+        const Rect bounds = GetViewportBounds();
 
-    void KenwoodBarsRenderer::UpdatePeak(
-        size_t index,
-        float value,
-        float deltaTime
-    )
-    {
-        if (!IsPeakIndexValid(index)) return;
-
-        const float sanitizedValue = NormalizedFloat(value);
-
-        if (ShouldUpdatePeak(sanitizedValue, index)) {
-            m_peaks[index] = sanitizedValue;
-            m_peakTimers[index] = kPeakHoldTimeS;
-        }
-        else if (IsPeakHoldActive(index)) {
-            UpdatePeakHoldTimer(index, deltaTime);
-        }
-        else {
-            UpdatePeakFall(index, deltaTime);
-        }
-    }
-
-    void KenwoodBarsRenderer::UpdatePeakHoldTimer(
-        size_t index,
-        float deltaTime
-    )
-    {
-        m_peakTimers[index] -= deltaTime;
-    }
-
-    void KenwoodBarsRenderer::UpdatePeakFall(
-        size_t index,
-        float deltaTime
-    )
-    {
-        m_peaks[index] = std::max(
-            0.0f,
-            m_peaks[index] - kPeakFallSpeed * deltaTime
+        canvas.DrawSpectrumBars(
+            spectrum,
+            bounds,
+            CreateBarStyle(),
+            m_primaryColor
         );
     }
 
-    float KenwoodBarsRenderer::GetPeakValue(size_t index) const
-    {
-        return IsPeakIndexValid(index) ? m_peaks[index] : 0.0f;
-    }
-
-    bool KenwoodBarsRenderer::IsPeakIndexValid(size_t index) const
-    {
-        return index < m_peaks.size();
-    }
-
-    bool KenwoodBarsRenderer::ShouldUpdatePeak(
-        float value,
-        size_t index
-    ) const
-    {
-        return value >= m_peaks[index];
-    }
-
-    bool KenwoodBarsRenderer::IsPeakHoldActive(size_t index) const
-    {
-        return m_peakTimers[index] > 0.0f;
-    }
-
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Style Helpers
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-    float KenwoodBarsRenderer::CalculateCornerRadius(float barWidth) const
-    {
-        if (!m_currentSettings.useRoundCorners) return 0.0f;
-
-        return barWidth * GetCornerRadiusRatio();
-    }
-
-    float KenwoodBarsRenderer::GetCornerRadiusRatio() const
-    {
-        return m_isOverlay ? kCornerRadiusRatioOverlay : kCornerRadiusRatio;
-    }
-
-    BarStyle KenwoodBarsRenderer::CreateBarStyle(float cornerRadius) const
-    {
-        BarStyle style;
-        style.spacing = GetBarSpacing();
-        style.cornerRadius = cornerRadius;
-        style.useGradient = m_currentSettings.useGradient;
-
-        if (style.useGradient) {
-            style.gradientStops = GetAdjustedGradientStops();
-        }
-
-        return style;
-    }
-
-    float KenwoodBarsRenderer::GetBarSpacing() const
-    {
-        return kBarSpacing;
-    }
-
-    std::vector<D2D1_GRADIENT_STOP> KenwoodBarsRenderer::GetAdjustedGradientStops() const
-    {
-        const float intensityBoost = GetGradientIntensityBoost();
-
-        std::vector<D2D1_GRADIENT_STOP> adjustedStops;
-        adjustedStops.reserve(kBarGradientStopsBase.size());
-
-        for (const auto& stop : kBarGradientStopsBase) {
-            adjustedStops.push_back(AdjustGradientStop(stop, intensityBoost));
-        }
-
-        return adjustedStops;
-    }
-
-    float KenwoodBarsRenderer::GetGradientIntensityBoost() const
-    {
-        return m_isOverlay ? kGradientIntensityBoostOverlay : kGradientIntensityBoost;
-    }
-
-    D2D1_GRADIENT_STOP KenwoodBarsRenderer::AdjustGradientStop(
-        const D2D1_GRADIENT_STOP& stop,
-        float intensityBoost
-    ) const
-    {
-        D2D1_GRADIENT_STOP newStop = stop;
-        newStop.color.r = std::min(1.0f, stop.color.r * intensityBoost);
-        newStop.color.g = std::min(1.0f, stop.color.g * intensityBoost);
-        newStop.color.b = std::min(1.0f, stop.color.b * intensityBoost);
-        return newStop;
-    }
-
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Rendering Layers
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-    void KenwoodBarsRenderer::RenderMainLayer(
+    void KenwoodBarsRenderer::RenderPeaks(
         Canvas& canvas,
-        const SpectrumData& spectrum,
-        const BarStyle& barStyle
-    ) const
-    {
-        if (spectrum.empty()) return;
-
-        const Rect bounds{
-            0.0f,
-            0.0f,
-            static_cast<float>(m_width),
-            static_cast<float>(m_height)
-        };
-
-        canvas.DrawSpectrumBars(spectrum, bounds, barStyle, kSolidBarColor);
-    }
-
-    void KenwoodBarsRenderer::RenderOutlineLayer(
-        Canvas& canvas,
-        const SpectrumData& spectrum,
-        const RenderUtils::BarLayout& layout,
-        float cornerRadius
-    ) const
-    {
-        for (size_t i = 0; i < spectrum.size(); ++i) {
-            const float magnitude = NormalizedFloat(spectrum[i]);
-
-            if (!ShouldRenderBar(magnitude)) continue;
-
-            const Rect barRect = CalculateBarRect(i, magnitude, layout);
-
-            RenderBarOutline(canvas, barRect, magnitude, cornerRadius);
-        }
-    }
-
-    void KenwoodBarsRenderer::RenderPeakLayer(
-        Canvas& canvas,
-        const RenderUtils::BarLayout& layout,
-        float cornerRadius
-    ) const
-    {
-        std::vector<Rect> peakRects;
-        peakRects.reserve(m_peaks.size());
-
-        CollectPeakRects(peakRects, layout);
-
-        if (peakRects.empty()) return;
-
-        const float peakCornerRadius = GetPeakCornerRadius(cornerRadius);
-
-        RenderPeakRects(canvas, peakRects, peakCornerRadius);
-    }
-
-    void KenwoodBarsRenderer::RenderPeakEnhancementLayer(
-        Canvas& canvas,
-        const RenderUtils::BarLayout& /*layout*/
-    ) const
-    {
-        if (m_peaks.empty()) return;
-
-        const float totalBarWidth = static_cast<float>(m_width) / m_peaks.size();
-        const float barWidth = totalBarWidth - GetBarSpacing();
-
-        for (size_t i = 0; i < m_peaks.size(); ++i) {
-            RenderPeakEnhancement(canvas, i, totalBarWidth, barWidth);
-        }
-    }
-
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Bar Rendering
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-    void KenwoodBarsRenderer::RenderBarOutline(
-        Canvas& canvas,
-        const Rect& barRect,
-        float magnitude,
-        float cornerRadius
-    ) const
-    {
-        const Color outlineColor = GetOutlineColor(magnitude);
-        const float outlineWidth = GetOutlineWidth();
-
-        canvas.DrawRoundedRectangle(
-            barRect,
-            cornerRadius,
-            Paint::Stroke(outlineColor, outlineWidth)
-        );
-    }
-
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Peak Rendering
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-    void KenwoodBarsRenderer::CollectPeakRects(
-        std::vector<Rect>& peakRects,
-        const RenderUtils::BarLayout& layout
-    ) const
-    {
-        for (size_t i = 0; i < m_peaks.size(); ++i) {
-            const float peakValue = GetPeakValue(i);
-
-            if (!ShouldRenderPeak(peakValue)) continue;
-
-            peakRects.push_back(CalculatePeakRect(i, peakValue, layout));
-        }
-    }
-
-    void KenwoodBarsRenderer::RenderPeakRects(
-        Canvas& canvas,
-        const std::vector<Rect>& peakRects,
-        float cornerRadius
-    ) const
-    {
-        if (cornerRadius > 0.0f) {
-            for (const auto& rect : peakRects) {
-                canvas.DrawRoundedRectangle(
-                    rect,
-                    cornerRadius,
-                    Paint::Fill(kPeakColor)
-                );
-            }
-        }
-        else {
-            canvas.DrawRectangleBatch(peakRects, Paint::Fill(kPeakColor));
-        }
-    }
-
-    void KenwoodBarsRenderer::RenderPeakEnhancement(
-        Canvas& canvas,
-        size_t index,
+        size_t barCount,
         float totalBarWidth,
         float barWidth
     ) const
     {
-        const float peakValue = GetPeakValue(index);
+        const auto& peaks = m_peakTracker.GetPeaks();
+        if (peaks.empty()) return;
 
-        if (!ShouldRenderPeak(peakValue)) return;
+        const float cornerRadius = GetPeakCornerRadius();
 
-        const Rect peakRect = CalculatePeakRectForEnhancement(
+        for (size_t i = 0; i < barCount && i < peaks.size(); ++i) {
+            if (m_peakTracker.IsPeakVisible(i)) {
+                RenderSinglePeak(
+                    canvas,
+                    i,
+                    totalBarWidth,
+                    barWidth,
+                    cornerRadius
+                );
+            }
+        }
+    }
+
+    void KenwoodBarsRenderer::RenderSinglePeak(
+        Canvas& canvas,
+        size_t index,
+        float totalBarWidth,
+        float barWidth,
+        float cornerRadius
+    ) const
+    {
+        const Rect rect = CalculatePeakRect(
             index,
-            peakValue,
+            m_peakTracker.GetPeak(index),
             totalBarWidth,
             barWidth
         );
 
-        const Color outlineColor = GetPeakOutlineColor();
-        const float outlineWidth = GetPeakEnhancementOutlineWidth();
-
-        RenderPeakEnhancementLines(canvas, peakRect, outlineColor, outlineWidth);
+        DrawPeakRectangle(canvas, rect, cornerRadius);
     }
 
-    void KenwoodBarsRenderer::RenderPeakEnhancementLines(
+    void KenwoodBarsRenderer::DrawPeakRectangle(
         Canvas& canvas,
-        const Rect& peakRect,
-        const Color& outlineColor,
-        float outlineWidth
+        const Rect& rect,
+        float cornerRadius
     ) const
     {
-        canvas.DrawLine(
-            { peakRect.x, peakRect.y },
-            { peakRect.GetRight(), peakRect.y },
-            Paint::Stroke(outlineColor, outlineWidth)
-        );
-
-        canvas.DrawLine(
-            { peakRect.x, peakRect.GetBottom() },
-            { peakRect.GetRight(), peakRect.GetBottom() },
-            Paint::Stroke(outlineColor, outlineWidth)
-        );
+        if (cornerRadius > 0.0f) {
+            canvas.DrawRoundedRectangle(
+                rect,
+                cornerRadius,
+                Paint::Fill(kPeakColor)
+            );
+        }
+        else {
+            canvas.DrawRectangle(
+                rect,
+                Paint::Fill(kPeakColor)
+            );
+        }
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Geometry Calculation
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    Rect KenwoodBarsRenderer::CalculateBarRect(
-        size_t index,
-        float magnitude,
-        const RenderUtils::BarLayout& layout
-    ) const
-    {
-        const float barHeight = CalculateBarHeight(magnitude);
-
-        return {
-            index * layout.totalBarWidth,
-            m_height - barHeight,
-            layout.barWidth,
-            barHeight
-        };
-    }
-
     Rect KenwoodBarsRenderer::CalculatePeakRect(
-        size_t index,
-        float peakValue,
-        const RenderUtils::BarLayout& layout
-    ) const
-    {
-        const float peakY = CalculatePeakY(peakValue);
-        const float peakHeight = GetPeakHeight();
-
-        return {
-            index * layout.totalBarWidth,
-            std::max(0.0f, peakY - peakHeight),
-            layout.barWidth,
-            peakHeight
-        };
-    }
-
-    Rect KenwoodBarsRenderer::CalculatePeakRectForEnhancement(
         size_t index,
         float peakValue,
         float totalBarWidth,
@@ -520,23 +194,15 @@ namespace Spectrum {
 
         return {
             index * totalBarWidth,
-            std::max(0.0f, peakY - peakHeight),
+            Clamp(peakY - peakHeight, 0.0f, static_cast<float>(m_height)),
             barWidth,
             peakHeight
         };
     }
 
-    float KenwoodBarsRenderer::CalculateBarHeight(float magnitude) const
-    {
-        return std::max(
-            RenderUtils::MagnitudeToHeight(magnitude, m_height),
-            kMinBarHeight
-        );
-    }
-
     float KenwoodBarsRenderer::CalculatePeakY(float peakValue) const
     {
-        return m_height - (peakValue * m_height);
+        return Map(peakValue, 0.0f, 1.0f, static_cast<float>(m_height), 0.0f);
     }
 
     float KenwoodBarsRenderer::GetPeakHeight() const
@@ -544,66 +210,112 @@ namespace Spectrum {
         return m_isOverlay ? kPeakHeightOverlay : kPeakHeight;
     }
 
-    float KenwoodBarsRenderer::GetPeakCornerRadius(float baseCornerRadius) const
+    float KenwoodBarsRenderer::GetPeakCornerRadius() const
     {
-        return baseCornerRadius * kPeakCornerRadiusScale;
+        return m_settings.cornerRadius * kPeakCornerRadiusRatio;
+    }
+
+    Rect KenwoodBarsRenderer::GetViewportBounds() const
+    {
+        return CreateViewportBounds(m_width, m_height);
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Color Calculation
+    // Color Helpers
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    Color KenwoodBarsRenderer::GetOutlineColor(float magnitude) const
+    Color KenwoodBarsRenderer::ModifyColorBrightness(
+        const Color& color,
+        float factor
+    ) const
     {
-        const float alpha = Utils::Saturate(
-            magnitude * kOutlineMagnitudeScale
-        ) * GetOutlineAlpha();
-
-        return Color(1.0f, 1.0f, 1.0f, alpha);
+        return {
+            Clamp(color.r * factor, 0.0f, 1.0f),
+            Clamp(color.g * factor, 0.0f, 1.0f),
+            Clamp(color.b * factor, 0.0f, 1.0f),
+            color.a
+        };
     }
 
-    Color KenwoodBarsRenderer::GetPeakOutlineColor() const
+    Color KenwoodBarsRenderer::ModifyColorSaturation(
+        const Color& color,
+        float factor
+    ) const
     {
-        return kPeakOutlineColorBase.WithAlpha(GetPeakOutlineAlpha());
-    }
+        const float gray =
+            color.r * 0.299f +
+            color.g * 0.587f +
+            color.b * 0.114f;
 
-    float KenwoodBarsRenderer::GetOutlineAlpha() const
-    {
-        return m_isOverlay ? kOutlineAlphaOverlay : kOutlineAlpha;
-    }
-
-    float KenwoodBarsRenderer::GetPeakOutlineAlpha() const
-    {
-        return m_isOverlay ? kPeakOutlineAlphaOverlay : kPeakOutlineAlpha;
-    }
-
-    float KenwoodBarsRenderer::GetOutlineWidth() const
-    {
-        return m_isOverlay ? kOutlineWidthOverlay : kOutlineWidth;
-    }
-
-    float KenwoodBarsRenderer::GetPeakEnhancementOutlineWidth() const
-    {
-        return GetOutlineWidth() * kPeakOutlineWidthScale;
+        return {
+            Lerp(gray, color.r, factor),
+            Lerp(gray, color.g, factor),
+            Lerp(gray, color.b, factor),
+            color.a
+        };
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Validation Helpers
+    // Gradient Generation
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    bool KenwoodBarsRenderer::ShouldRenderBar(float magnitude) const
+    void KenwoodBarsRenderer::BuildGradientStops(
+        std::vector<D2D1_GRADIENT_STOP>& stops,
+        const Color& baseColor
+    ) const
     {
-        return magnitude > kMinMagnitudeForRender;
+        stops.reserve(kGradientSteps);
+
+        for (int i = 0; i < kGradientSteps; ++i) {
+            const float t = Math::Normalize(
+                static_cast<float>(i),
+                0.0f,
+                static_cast<float>(kGradientSteps - 1)
+            );
+
+            const float brightness = Lerp(
+                kGradientBrightnessMin,
+                kGradientBrightnessMin + kGradientBrightnessRange,
+                t
+            );
+
+            const float saturation = Lerp(
+                kGradientSaturationMin,
+                kGradientSaturationMin + kGradientSaturationRange,
+                t
+            );
+
+            Color stepColor = ModifyColorBrightness(baseColor, brightness);
+            stepColor = ModifyColorSaturation(stepColor, saturation);
+
+            stops.push_back({
+                t,
+                D2D1::ColorF(
+                    stepColor.r,
+                    stepColor.g,
+                    stepColor.b,
+                    stepColor.a
+                )
+                });
+        }
     }
 
-    bool KenwoodBarsRenderer::ShouldRenderPeak(float peakValue) const
-    {
-        return peakValue > kMinMagnitudeForRender;
-    }
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Style Helpers
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    bool KenwoodBarsRenderer::IsBarHeightValid(float height) const
+    BarStyle KenwoodBarsRenderer::CreateBarStyle() const
     {
-        return height >= kMinBarHeight;
+        BarStyle style;
+        style.spacing = m_settings.barSpacing;
+        style.cornerRadius = m_settings.cornerRadius;
+        style.useGradient = m_settings.useGradient;
+
+        if (style.useGradient) {
+            BuildGradientStops(style.gradientStops, m_primaryColor);
+        }
+
+        return style;
     }
 
 } // namespace Spectrum

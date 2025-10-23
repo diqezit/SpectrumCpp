@@ -56,12 +56,21 @@ namespace Spectrum
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Lifecycle Management
-        // =-=--=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        // Called when the renderer becomes active or viewport changes.
+        // Called when the renderer becomes active (initial activation)
+        // Renderers should initialize all resources needed for rendering
         virtual void OnActivate(int /*width*/, int /*height*/) {}
 
-        // Called when the renderer is switched out. Allows for state cleanup.
+        // Called when viewport size changes (without deactivation)
+        // Default implementation re-activates, but renderers can override
+        // for more efficient resize-specific logic
+        virtual void OnResize(int width, int height) {
+            // Default: re-activate (backward compatible)
+            OnActivate(width, height);
+        }
+
+        // Called when the renderer is switched out. Allows for state cleanup
         virtual void OnDeactivate() {}
     };
 

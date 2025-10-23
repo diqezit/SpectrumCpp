@@ -14,6 +14,7 @@
 // - Batch rendering by grouping similar alpha values
 // - Adaptive sphere count based on spectrum size
 // - Pre-calculated trigonometry for performance
+// - Uses GeometryHelpers for all geometric calculations
 //
 // Design notes:
 // - All rendering methods are const (state in m_currentAlphas)
@@ -23,7 +24,8 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Graphics/Base/BaseRenderer.h"
-#include "Graphics/API/Structs/Paint.h"
+#include "Graphics/API/GraphicsAPI.h"
+#include "Graphics/Visualizers/Settings/QualityTraits.h"
 #include <vector>
 
 namespace Spectrum {
@@ -69,14 +71,14 @@ namespace Spectrum {
 
     private:
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Data Structures
+        // Settings
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        struct QualitySettings
-        {
-            bool useGradient;
-            float responseSpeed;
-        };
+        using Settings = Settings::SphereSettings;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Data Structures
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         struct AlphaGroup
         {
@@ -128,12 +130,14 @@ namespace Spectrum {
         [[nodiscard]] Point GetSpherePosition(size_t index) const;
         [[nodiscard]] float GetSphereSize(size_t index) const;
         [[nodiscard]] float GetMaxRadius() const;
+        [[nodiscard]] Point GetOrbitCenter() const;
+        [[nodiscard]] float QuantizeAlphaForRendering(float alpha) const noexcept;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Member Variables
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        QualitySettings m_settings;
+        Settings m_settings;
         size_t m_sphereCount;
         float m_sphereRadius;
         std::vector<float> m_cosValues;

@@ -1,11 +1,9 @@
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-// FrequencyMapper.cpp: Implementation of the FrequencyMapper class.
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-
 #include "FrequencyMapper.h"
-#include "Common/MathUtils.h"
+#include "Graphics/API/GraphicsHelpers.h"
 
 namespace Spectrum {
+
+    using namespace Helpers::Math;
 
     FrequencyMapper::FrequencyMapper(size_t barCount, size_t sampleRate)
         : m_barCount(barCount)
@@ -90,14 +88,14 @@ namespace Spectrum {
     }
 
     FrequencyMapper::FrequencyRange FrequencyMapper::GetMelRange(size_t barIndex) const {
-        const float maxMel = Utils::FreqToMel(m_nyquistFrequency);
+        const float maxMel = FreqToMel(m_nyquistFrequency);
 
         const float melStart = (barIndex * maxMel) / static_cast<float>(m_barCount);
         const float melEnd = ((barIndex + 1) * maxMel) / static_cast<float>(m_barCount);
 
         FrequencyRange range;
-        range.start = Utils::MelToFreq(melStart);
-        range.end = Utils::MelToFreq(melEnd);
+        range.start = MelToFreq(melStart);
+        range.end = MelToFreq(melEnd);
         return range;
     }
 

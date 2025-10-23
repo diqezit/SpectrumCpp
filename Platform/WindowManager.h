@@ -1,13 +1,4 @@
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// Defines the WindowManager, which orchestrates the lifecycle and
-// configuration of the application's windows.
-//
-// The WindowManager serves as the primary high-level interface to the
-// windowing system, managing window creation, state transitions (normal vs.
-// overlay), and ownership of the RenderEngine. It delegates raw message
-// processing to a dedicated MessageHandler.
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
+﻿// WindowManager.h
 #ifndef SPECTRUM_CPP_WINDOW_MANAGER_H
 #define SPECTRUM_CPP_WINDOW_MANAGER_H
 
@@ -15,22 +6,28 @@
 #include <memory>
 
 namespace Spectrum {
+
     class ControllerCore;
     class EventBus;
     class RenderEngine;
     class UIManager;
 
     namespace Platform {
+
         class MainWindow;
+        class UIWindow;
         class MessageHandler;
+        class UIMessageHandler;
 
-        class WindowManager final {
+        class WindowManager final
+        {
         public:
-            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-            // Lifecycle Management
-            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+            explicit WindowManager(
+                HINSTANCE hInstance,
+                ControllerCore* controller,
+                EventBus* bus
+            );
 
-            explicit WindowManager(HINSTANCE hInstance, ControllerCore* controller, EventBus* bus);
             ~WindowManager() noexcept;
 
             WindowManager(const WindowManager&) = delete;
@@ -40,73 +37,96 @@ namespace Spectrum {
 
             [[nodiscard]] bool Initialize();
 
-            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-            // Main Execution Loop
-            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+            [[nodiscard]] bool HandleVisualizationResize(
+                int width,
+                int height,
+                bool recreateContext = false
+            );
 
-            void ProcessMessages();
-            void PropagateResizeToSubsystems(HWND hwnd);
+            [[nodiscard]] bool HandleUIResize(
+                int width,
+                int height,
+                bool recreateContext = false
+            );
 
-            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-            // State Management
-            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+            void OnResizeStart();
+            void OnResizeEnd(HWND hwnd);
+            void OnResize(HWND hwnd, int width, int height);
+
+            void OnUIResizeStart();
+            void OnUIResizeEnd(HWND hwnd);
+            void OnUIResize(HWND hwnd, int width, int height);
 
             void ToggleOverlay();
-            [[nodiscard]] bool RecreateGraphicsAndNotify(HWND hwnd);
-
-            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-            // State Queries
-            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+            void ShowUIWindow() const;
+            void HideUIWindow() const;
+            void ForceUIRender();
 
             [[nodiscard]] bool IsRunning() const;
             [[nodiscard]] bool IsOverlayMode() const noexcept;
             [[nodiscard]] bool IsActive() const;
+            [[nodiscard]] bool IsResizing() const noexcept;
+            [[nodiscard]] bool IsUIWindowVisible() const;
 
-            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-            // Public Getters
-            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-            [[nodiscard]] RenderEngine* GetRenderEngine() const noexcept;
+            [[nodiscard]] RenderEngine* GetVisualizationEngine() const noexcept;
+            [[nodiscard]] RenderEngine* GetUIEngine() const noexcept;
             [[nodiscard]] UIManager* GetUIManager() const noexcept;
             [[nodiscard]] MessageHandler* GetMessageHandler() const noexcept;
             [[nodiscard]] MainWindow* GetMainWindow() const noexcept;
+            [[nodiscard]] UIWindow* GetUIWindow() const noexcept;
             [[nodiscard]] HWND GetCurrentHwnd() const;
 
         private:
-            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-            // Private Implementation / Internal Helpers
-            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+            bool InitializeWindows();
+            bool InitializeGraphics();
+            bool InitializeUI();
 
-            [[nodiscard]] bool InitializeMainWindow();
-            [[nodiscard]] bool InitializeOverlayWindow();
+            [[nodiscard]] std::unique_ptr<MainWindow> CreateMainWindowInstance(
+                const wchar_t* title,
+                int width,
+                int height,
+                bool isOverlay
+            ) const;
 
-            void ActivateOverlayMode();
-            void DeactivateOverlayMode();
+            [[nodiscard]] std::unique_ptr<UIWindow> CreateUIWindowInstance() const;
 
-            void HideMainWindow() const;
-            void ShowMainWindow() const;
-            void HideOverlayWindow() const;
-            void PositionAndShowOverlay() const;
+            void SwitchActiveWindow(MainWindow* hide, MainWindow* show);
+            void ShowWindow(MainWindow* window) const;
+            void HideWindow(MainWindow* window) const;
+            void PositionOverlayWindow() const;
 
-            [[nodiscard]] bool RecreateGraphicsContext(HWND hwnd);
+            bool RecreateVisualizationContext(HWND hwnd);
+            bool RecreateUIContext(HWND hwnd);
             void NotifyRendererOfModeChange() const;
 
-            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-            // Member Variables
-            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+            bool ShouldSkipResize(int width, int height) const noexcept;
+            [[nodiscard]] bool ValidateDependencies() const noexcept;
 
+        private:
             HINSTANCE m_hInstance;
-            ControllerCore* m_controller; // Non-owning pointer to parent
+            ControllerCore* m_controller;
 
             bool m_isOverlay;
+            bool m_isResizing;
+            bool m_isUIResizing;
+
+            int m_lastWidth;
+            int m_lastHeight;
+            int m_lastUIWidth;
+            int m_lastUIHeight;
 
             std::unique_ptr<MainWindow> m_mainWnd;
             std::unique_ptr<MainWindow> m_overlayWnd;
             std::unique_ptr<RenderEngine> m_engine;
-            std::unique_ptr<UIManager> m_uiManager;
             std::unique_ptr<MessageHandler> m_messageHandler;
-        };
-    } // namespace Platform
-} // namespace Spectrum
 
-#endif // SPECTRUM_CPP_WINDOW_MANAGER_H
+            std::unique_ptr<UIWindow> m_uiWnd;
+            std::unique_ptr<RenderEngine> m_uiEngine;
+            std::unique_ptr<UIManager> m_uiManager;
+            std::unique_ptr<UIMessageHandler> m_uiMessageHandler;
+        };
+
+    }  // namespace Platform
+}  // namespace Spectrum
+
+#endif  // SPECTRUM_CPP_WINDOW_MANAGER_H

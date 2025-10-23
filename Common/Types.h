@@ -36,6 +36,23 @@ namespace Spectrum {
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
     // Core data structures
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    struct Point {
+        float x, y;
+
+        constexpr Point(
+            float x_ = 0.f,
+            float y_ = 0.f
+        ) noexcept : x(x_), y(y_) {
+        }
+
+        Point operator+(const Point& other) const noexcept {
+            return Point(x + other.x, y + other.y);
+        }
+        Point operator*(float scalar) const noexcept {
+            return Point(x * scalar, y * scalar);
+        }
+    };
+
     struct Color {
         float r, g, b, a;
 
@@ -90,22 +107,11 @@ namespace Spectrum {
 
         [[nodiscard]] float GetRight() const noexcept { return x + width; }
         [[nodiscard]] float GetBottom() const noexcept { return y + height; }
-    };
 
-    struct Point {
-        float x, y;
-
-        constexpr Point(
-            float x_ = 0.f,
-            float y_ = 0.f
-        ) noexcept : x(x_), y(y_) {
-        }
-
-        Point operator+(const Point& other) const noexcept {
-            return Point(x + other.x, y + other.y);
-        }
-        Point operator*(float scalar) const noexcept {
-            return Point(x * scalar, y * scalar);
+        [[nodiscard]] bool Contains(const Point& p) const noexcept
+        {
+            return p.x >= x && p.x <= (x + width) &&
+                p.y >= y && p.y <= (y + height);
         }
     };
 
@@ -129,7 +135,11 @@ namespace Spectrum {
     };
 
     enum class RenderQuality : uint8_t {
-        Low = 0, Medium, High, Count
+        Low = 0,
+        Medium,
+        High,
+        Ultra,
+        Count
     };
 
     enum class FFTWindowType : uint8_t {

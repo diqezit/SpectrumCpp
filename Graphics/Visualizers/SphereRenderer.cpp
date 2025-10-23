@@ -7,6 +7,7 @@
 // - Batch rendering groups spheres with similar alpha values
 // - Adaptive sphere count scales with quality and spectrum size
 // - Trigonometry pre-calculated once per configuration change
+// - Uses GeometryHelpers for all geometric operations
 //
 // Rendering pipeline:
 // 1. Configuration: update sphere count and radius if needed
@@ -16,20 +17,16 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Graphics/Visualizers/SphereRenderer.h"
-#include "Graphics/API/D2DHelpers.h"
-#include "Graphics/API/Structs/Paint.h"
-#include "Graphics/API/Brushes/GradientStop.h"
-#include "Common/MathUtils.h"
-#include "Common/ColorUtils.h"
+#include "Graphics/API/GraphicsHelpers.h"
 #include "Graphics/Base/RenderUtils.h"
-#include "Graphics/API/Canvas.h"
+#include "Graphics/Visualizers/Settings/QualityPresets.h"
 #include "Common/Types.h"
 #include <algorithm>
 #include <cmath>
 
 namespace Spectrum {
 
-    using namespace D2DHelpers;
+    using namespace Helpers::Geometry;
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Constants
@@ -37,19 +34,17 @@ namespace Spectrum {
 
     namespace {
 
-        // Visual parameters
         constexpr float kMinMagnitude = 0.01f;
         constexpr float kMaxIntensityMultiplier = 3.0f;
         constexpr float kMinAlpha = 0.1f;
         constexpr float kMinCircleSize = 2.0f;
         constexpr float kBaseRadius = 40.0f;
         constexpr float kBaseRadiusOverlay = 20.0f;
+        constexpr float kAlphaQuantization = 0.05f;
 
-        // Alpha grouping thresholds
         constexpr float kAlphaThreshold = 0.1f;
         constexpr int kMaxAlphaGroups = 5;
 
-        // Sphere count limits
         constexpr int kMinSphereCount = 8;
         constexpr int kMaxSphereCount = 64;
 
@@ -73,20 +68,8 @@ namespace Spectrum {
 
     void SphereRenderer::UpdateSettings()
     {
-        switch (m_quality) {
-        case RenderQuality::Low:
-            m_settings = { false, 0.15f };
-            break;
-        case RenderQuality::High:
-            m_settings = { true, 0.25f };
-            break;
-        case RenderQuality::Medium:
-        default:
-            m_settings = { true, 0.2f };
-            break;
-        }
+        m_settings = QualityPresets::Get<SphereRenderer>(m_quality);
 
-        // Force reconfiguration on next update
         m_sphereCount = 0;
     }
 
@@ -111,7 +94,7 @@ namespace Spectrum {
 
         const auto groups = GroupAlphas();
 
-        if (m_settings.useGradient) {
+        if (m_settings.useGlow) {
             RenderGradientSpheres(canvas, groups);
         }
         else {
@@ -144,7 +127,9 @@ namespace Spectrum {
         for (const auto& group : groups) {
             if (group.alpha < kMinAlpha) continue;
 
-            const Color centerColor = m_primaryColor.WithAlpha(group.alpha);
+            const float quantizedAlpha = QuantizeAlphaForRendering(group.alpha);
+
+            const Color centerColor = m_primaryColor.WithAlpha(quantizedAlpha);
             const Color edgeColor = m_primaryColor.WithAlpha(0.0f);
 
             const std::vector<GradientStop> stops = {
@@ -185,8 +170,7 @@ namespace Spectrum {
         const Point pos = GetSpherePosition(index);
         const float radius = size * 0.5f;
 
-        if (m_settings.useGradient) {
-            // Scale gradient to sphere size
+        if (m_settings.useGlow) {
             canvas.PushTransform();
             canvas.TranslateBy(pos.x, pos.y);
             canvas.ScaleAt({ 0.0f, 0.0f }, radius, radius);
@@ -208,7 +192,7 @@ namespace Spectrum {
             RenderUtils::GetMaxBarsForQuality(m_quality)
             );
 
-        size_t count = Utils::Clamp(
+        size_t count = Helpers::Math::Clamp(
             qualityBars,
             static_cast<size_t>(kMinSphereCount),
             static_cast<size_t>(kMaxSphereCount)
@@ -235,10 +219,10 @@ namespace Spectrum {
                 spectrum[i] * kMaxIntensityMultiplier
             );
 
-            m_currentAlphas[i] = Utils::Lerp(
+            m_currentAlphas[i] = Helpers::Math::Lerp(
                 m_currentAlphas[i],
                 target,
-                m_settings.responseSpeed
+                m_settings.rotationSpeed
             );
         }
     }
@@ -298,11 +282,14 @@ namespace Spectrum {
     Point SphereRenderer::GetSpherePosition(size_t index) const
     {
         const float radius = GetMaxRadius();
+        const Point center = GetOrbitCenter();
 
-        return {
-            m_width * 0.5f + m_cosValues[index] * radius,
-            m_height * 0.5f + m_sinValues[index] * radius
+        const Point offset = {
+            m_cosValues[index] * radius,
+            m_sinValues[index] * radius
         };
+
+        return Add(center, offset);
     }
 
     float SphereRenderer::GetSphereSize(size_t index) const
@@ -316,6 +303,16 @@ namespace Spectrum {
     float SphereRenderer::GetMaxRadius() const
     {
         return std::min(m_width, m_height) * 0.5f - m_sphereRadius;
+    }
+
+    Point SphereRenderer::GetOrbitCenter() const
+    {
+        return Helpers::Geometry::GetViewportCenter(m_width, m_height);
+    }
+
+    float SphereRenderer::QuantizeAlphaForRendering(float alpha) const noexcept
+    {
+        return std::round(alpha / kAlphaQuantization) * kAlphaQuantization;
     }
 
 } // namespace Spectrum

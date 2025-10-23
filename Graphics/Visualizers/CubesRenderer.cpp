@@ -2,29 +2,35 @@
 // Implements the CubesRenderer for 3D-style bar visualization.
 //
 // Implementation details:
-// - Pre-calculates all cube geometries before rendering
-// - Rendering order: shadows -> side faces -> top faces -> front faces
-// - Side faces darker than front (simulated lighting)
-// - Top faces lighter than front (simulated lighting)
-// - Uses D2DHelpers for sanitization and validation
+// - Each cube composed of three faces: front, top, and side
+// - Perspective effect achieved through offset calculations
+// - Face brightness varies to simulate 3D lighting
+// - Shadow rendered as single layer beneath all cubes
+// - Uses GeometryHelpers for all point and rect operations
 //
-// Performance optimizations:
-// - Pre-calculation pass filters out invisible cubes
-// - Batch rendering for front faces (when possible)
-// - Skip rendering faces below visibility threshold
+// Rendering pipeline:
+// 1. Collect visible cubes with geometry pre-calculated
+// 2. Render shadow layer (if enabled)
+// 3. Render side faces (back to front for proper layering)
+// 4. Render top faces
+// 5. Render front faces (highest priority, rendered last)
+//
+// Visual design:
+// - Top face: brightest (simulates overhead light)
+// - Front face: medium brightness (base color)
+// - Side face: darkest (simulates shadow/depth)
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Graphics/Visualizers/CubesRenderer.h"
-#include "Graphics/API/D2DHelpers.h"
-#include "Graphics/API/Structs/Paint.h"
-#include "Common/MathUtils.h"
-#include "Common/ColorUtils.h"
+#include "Graphics/API/GraphicsHelpers.h"
 #include "Graphics/Base/RenderUtils.h"
-#include "Graphics/API/Canvas.h"
+#include "Graphics/Visualizers/Settings/QualityPresets.h"
 
 namespace Spectrum {
 
     using namespace Helpers::Sanitize;
+    using namespace Helpers::Geometry;
+    using namespace Helpers::Math;
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Constants
@@ -64,18 +70,7 @@ namespace Spectrum {
 
     void CubesRenderer::UpdateSettings()
     {
-        switch (m_quality) {
-        case RenderQuality::Low:
-            m_settings = { false, true, false, 0.2f, 0.7f, 0.15f };
-            break;
-        case RenderQuality::High:
-            m_settings = { true, true, true, 0.3f, 0.5f, 0.35f };
-            break;
-        case RenderQuality::Medium:
-        default:
-            m_settings = { true, true, true, 0.25f, 0.6f, 0.25f };
-            break;
-        }
+        m_settings = QualityPresets::Get<CubesRenderer>(m_quality);
     }
 
     void CubesRenderer::DoRender(
@@ -109,7 +104,7 @@ namespace Spectrum {
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Cube Collection
+    // Geometry Calculation
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     void CubesRenderer::CollectVisibleCubes(
@@ -126,10 +121,6 @@ namespace Spectrum {
             cubes.push_back(CalculateCubeGeometry(i, magnitude, layout));
         }
     }
-
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Geometry Calculation
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     CubesRenderer::CubeGeometry CubesRenderer::CalculateCubeGeometry(
         size_t index,
@@ -182,6 +173,10 @@ namespace Spectrum {
         return barWidth * m_settings.perspective;
     }
 
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Face Point Generation
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
     std::vector<Point> CubesRenderer::GetSideFacePoints(
         const CubeGeometry& cube
     ) const
@@ -208,50 +203,50 @@ namespace Spectrum {
 
     Point CubesRenderer::CalculateSidePoint1(const CubeGeometry& cube) const
     {
-        return { cube.frontFace.GetRight(), cube.frontFace.y };
+        return GetTopRight(cube.frontFace);
     }
 
     Point CubesRenderer::CalculateSidePoint2(const CubeGeometry& cube) const
     {
         const Point p1 = CalculateSidePoint1(cube);
-        return { p1.x + cube.sideWidth, p1.y - cube.topHeight };
+        return Add(p1, { cube.sideWidth, -cube.topHeight });
     }
 
     Point CubesRenderer::CalculateSidePoint3(const CubeGeometry& cube) const
     {
         const Point p2 = CalculateSidePoint2(cube);
-        return { p2.x, p2.y + cube.frontFace.height };
+        return Add(p2, { 0.0f, cube.frontFace.height });
     }
 
     Point CubesRenderer::CalculateSidePoint4(const CubeGeometry& cube) const
     {
-        return { cube.frontFace.GetRight(), cube.frontFace.GetBottom() };
+        return GetBottomRight(cube.frontFace);
     }
 
     Point CubesRenderer::CalculateTopPoint1(const CubeGeometry& cube) const
     {
-        return { cube.frontFace.x, cube.frontFace.y };
+        return GetTopLeft(cube.frontFace);
     }
 
     Point CubesRenderer::CalculateTopPoint2(const CubeGeometry& cube) const
     {
-        return { cube.frontFace.GetRight(), cube.frontFace.y };
+        return GetTopRight(cube.frontFace);
     }
 
     Point CubesRenderer::CalculateTopPoint3(const CubeGeometry& cube) const
     {
         const Point p2 = CalculateTopPoint2(cube);
-        return { p2.x + cube.sideWidth, p2.y - cube.topHeight };
+        return Add(p2, { cube.sideWidth, -cube.topHeight });
     }
 
     Point CubesRenderer::CalculateTopPoint4(const CubeGeometry& cube) const
     {
         const Point p1 = CalculateTopPoint1(cube);
-        return { p1.x + cube.sideWidth, p1.y - cube.topHeight };
+        return Add(p1, { cube.sideWidth, -cube.topHeight });
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Face Rendering (SRP)
+    // Rendering Components (SRP)
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     void CubesRenderer::RenderCubes(
@@ -373,13 +368,13 @@ namespace Spectrum {
     Color CubesRenderer::CalculateSideColor(float magnitude) const
     {
         const Color baseColor = CalculateBaseColor(magnitude);
-        return Utils::AdjustBrightness(baseColor, m_settings.sideFaceBrightness);
+        return Helpers::Color::AdjustBrightness(baseColor, m_settings.sideFaceBrightness);
     }
 
     Color CubesRenderer::CalculateTopColor(float magnitude) const
     {
         const Color baseColor = CalculateBaseColor(magnitude);
-        return Utils::AdjustBrightness(baseColor, kTopBrightness);
+        return Helpers::Color::AdjustBrightness(baseColor, kTopBrightness);
     }
 
     Color CubesRenderer::CalculateFrontColor(float magnitude) const

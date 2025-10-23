@@ -6,8 +6,6 @@
 #ifndef SPECTRUM_CPP_COMMON_H
 #define SPECTRUM_CPP_COMMON_H
 
-#define WIN32_LEAN_AND_MEAN
-
 // Windows headers
 #include <windows.h>
 #include <windowsx.h>

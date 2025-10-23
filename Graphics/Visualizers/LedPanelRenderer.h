@@ -11,16 +11,19 @@
 // Key features:
 // - Dynamic grid sizing based on viewport and spectrum resolution
 // - Smooth value transitions with attack/decay rates
-// - Peak hold indicators (quality-dependent)
+// - Peak hold indicators (quality-dependent) using PeakTracker
 // - Gradient color mapping with optional external color blending
 //
 // Design notes:
-// - All rendering methods are const (state in m_smoothedValues, m_peakValues)
+// - All rendering methods are const (state in m_smoothedValues, m_peakTracker)
 // - Grid recreation on resize/quality change
 // - Batch rendering for performance (inactive LEDs in single call)
+// - Uses GeometryHelpers for all geometric calculations
+// - Uses PeakTracker component for peak management (DRY principle)
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Graphics/Base/BaseRenderer.h"
+#include "Graphics/Visualizers/Settings/QualityTraits.h"
 #include <vector>
 
 namespace Spectrum {
@@ -72,20 +75,14 @@ namespace Spectrum {
         // Settings & Data Structures
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        struct QualitySettings
-        {
-            bool usePeakHold;
-            int maxRows;
-            float smoothingMultiplier;
-        };
+        using Settings = Settings::LedPanelSettings;
 
         struct GridData
         {
             int rows = 0;
             int columns = 0;
             float cellSize = 0.0f;
-            float startX = 0.0f;
-            float startY = 0.0f;
+            Point gridStart = { 0.0f, 0.0f };
         };
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -115,11 +112,6 @@ namespace Spectrum {
         void UpdateValues(const SpectrumData& spectrum);
         void UpdateColumnValue(size_t index, float targetValue);
 
-        void UpdatePeakValues(float deltaTime);
-        void UpdatePeak(size_t index, float currentValue, float deltaTime);
-        void UpdatePeakHoldTimer(size_t index, float deltaTime);
-        void UpdatePeakDecay(size_t index);
-
         [[nodiscard]] float CalculateSmoothedValue(float current, float target) const;
         [[nodiscard]] float GetSmoothingRate(float current, float target) const;
         [[nodiscard]] size_t GetUpdateCount(const SpectrumData& spectrum) const;
@@ -143,8 +135,8 @@ namespace Spectrum {
         [[nodiscard]] int CalculateActiveLedCount(float value) const;
         [[nodiscard]] int CalculatePeakRow(float peakValue) const;
         [[nodiscard]] size_t GetLedIndex(int col, int row) const;
-        [[nodiscard]] float GetGridStartX(float gridWidth) const;
-        [[nodiscard]] float GetGridStartY(float gridHeight) const;
+        [[nodiscard]] Point GetGridCenter() const;
+        [[nodiscard]] Rect GetGridBounds() const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Color Calculation
@@ -177,19 +169,17 @@ namespace Spectrum {
         [[nodiscard]] bool IsRowIndexValid(int row) const;
         [[nodiscard]] bool IsLedIndexValid(size_t index) const;
         [[nodiscard]] bool ShouldRenderMinimumLed(float value, int activeLeds) const;
-        [[nodiscard]] bool IsPeakVisible(size_t index) const;
         [[nodiscard]] bool IsPeakRowValid(int row) const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Member Variables
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        QualitySettings m_settings;
+        Settings m_settings;
         GridData m_grid;
 
         std::vector<float> m_smoothedValues;
-        std::vector<float> m_peakValues;
-        std::vector<float> m_peakTimers;
+        PeakTracker m_peakTracker;
 
         std::vector<Point> m_allLedPositions;
         std::vector<Color> m_rowColors;

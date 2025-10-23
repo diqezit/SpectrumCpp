@@ -4,6 +4,7 @@
 #include "AudioCapture.h"
 #include "AudioCaptureEngine.h"
 #include "WASAPIHelper.h"
+#include "Graphics/API/GraphicsHelpers.h"
 #include <chrono>
 
 namespace Spectrum {
@@ -82,7 +83,7 @@ namespace Spectrum {
     bool AudioCapture::Implementation::InitializeWasapi() {
         Internal::WasapiInitializer initializer;
         initData = initializer.Initialize();
-        if (!initData) {
+        if (!Spectrum::Helpers::Validate::Pointer(initData.get(), "initData", "AudioCapture")) {
             isFaulted = true;
             return false;
         }
@@ -90,6 +91,7 @@ namespace Spectrum {
     }
 
     bool AudioCapture::Implementation::CreateAudioProcessor() {
+        VALIDATE_PTR_OR_RETURN_FALSE(initData.get(), "AudioCapture");
         auto* data = initData.get();
         int channels = data->waveFormat ? data->waveFormat->nChannels : 0;
         processor = std::make_unique<Internal::AudioPacketProcessor>(
@@ -102,6 +104,7 @@ namespace Spectrum {
     // Choose the most efficient capture strategy supported by the audio driver
     // Event-driven is preferred as it's more efficient than constant polling
     bool AudioCapture::Implementation::SelectCaptureEngine() {
+        VALIDATE_PTR_OR_RETURN_FALSE(initData.get(), "AudioCapture");
         auto* data = initData.get();
         if (data->useEventMode) {
             engine = std::make_unique<Internal::EventDrivenEngine>(data->samplesEvent);

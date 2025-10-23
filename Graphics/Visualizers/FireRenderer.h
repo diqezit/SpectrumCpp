@@ -14,6 +14,7 @@
 // - Optional smoothing (neighbor averaging)
 // - Quality-dependent pixel size and effects
 // - Fixed fire color palette (doesn't support primary color)
+// - Uses GeometryHelpers for all geometric calculations
 //
 // Design notes:
 // - Grid resolution depends on quality (pixel size)
@@ -23,6 +24,7 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Graphics/Base/BaseRenderer.h"
+#include "Graphics/Visualizers/Settings/QualityTraits.h"
 #include <vector>
 
 namespace Spectrum {
@@ -75,14 +77,7 @@ namespace Spectrum {
         // Settings
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        struct Settings
-        {
-            bool useSmoothing;
-            bool useWind;
-            float pixelSize;
-            float decay;
-            float heatMultiplier;
-        };
+        using Settings = Settings::FireSettings;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Initialization

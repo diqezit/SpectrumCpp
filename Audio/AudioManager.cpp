@@ -1,211 +1,365 @@
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// This file implements the AudioManager. It creates and manages audio
-// sources and responds to user input to change audio processing parameters,
-// acting as a facade for the entire audio subsystem.
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
 #include "AudioManager.h"
 #include "Common/EventBus.h"
-#include "Common/TemplateUtils.h"
-#include "Common/MathUtils.h"
-#include "Common/StringUtils.h"
+#include "Graphics/API/GraphicsHelpers.h"
 #include "Audio/Sources/RealtimeAudioSource.h"
 #include "Audio/Sources/AnimatedAudioSource.h"
 
 namespace Spectrum {
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-    // Lifecycle Management
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    using namespace Helpers::Utils;
+    using namespace Helpers::Math;
 
-    AudioManager::AudioManager(
-        EventBus* bus
-    ) :
-        m_currentSource(nullptr),
-        m_isCapturing(false),
-        m_isAnimating(false)
+    namespace {
+        constexpr float kMinAmplification = 0.1f;
+        constexpr float kMaxAmplification = 5.0f;
+        constexpr float kAmplificationStep = 0.1f;
+
+        constexpr float kMinSmoothing = 0.0f;
+        constexpr float kMaxSmoothing = 1.0f;
+
+        constexpr size_t kMinBarCount = 16;
+        constexpr size_t kMaxBarCount = 256;
+    }
+
+    AudioManager::AudioManager(EventBus* bus)
+        : m_currentSource(nullptr)
+        , m_isCapturing(false)
+        , m_isAnimating(false)
     {
+        LOG_INFO("AudioManager: Initializing...");
+
+        if (!bus) {
+            throw std::invalid_argument("AudioManager: EventBus cannot be null");
+        }
+
         SubscribeToEvents(bus);
+
+        LOG_INFO("AudioManager: Construction completed");
     }
 
-    AudioManager::~AudioManager() {
-        if (m_isCapturing && m_realtimeSource)
+    AudioManager::~AudioManager()
+    {
+        LOG_INFO("AudioManager: Shutting down...");
+
+        if (m_isCapturing && m_realtimeSource) {
+            LOG_INFO("AudioManager: Stopping realtime capture...");
+            m_isCapturing = false;
             m_realtimeSource->StopCapture();
+            LOG_INFO("AudioManager: Realtime capture stopped");
+        }
+
+        LOG_INFO("AudioManager: Destroyed");
     }
 
-    bool AudioManager::Initialize() {
-        if (!CreateAudioSources()) return false;
-        SetCurrentSource(m_realtimeSource.get());
+    bool AudioManager::Initialize()
+    {
+        LOG_INFO("AudioManager: Starting initialization...");
+
+        if (!CreateAudioSources()) {
+            LOG_ERROR("AudioManager: Failed to create audio sources");
+            return false;
+        }
+
+        m_currentSource = m_realtimeSource.get();
+
+        LOG_INFO("AudioManager: Initialization completed successfully");
         return true;
     }
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-    // Main Execution Loop
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-
-    void AudioManager::Update(float deltaTime) {
-        if (m_currentSource)
+    void AudioManager::Update(float deltaTime)
+    {
+        if (m_currentSource) {
             m_currentSource->Update(deltaTime);
+        }
     }
 
-    [[nodiscard]] SpectrumData AudioManager::GetSpectrum() {
-        if (m_currentSource)
-            return m_currentSource->GetSpectrum();
-        return {};
+    SpectrumData AudioManager::GetSpectrum()
+    {
+        return m_currentSource ? m_currentSource->GetSpectrum() : SpectrumData{};
     }
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-    // State Control
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    void AudioManager::ToggleCapture()
+    {
+        if (m_isAnimating) {
+            LOG_WARNING("AudioManager: Cannot toggle capture in animation mode");
+            return;
+        }
 
-    void AudioManager::ToggleCapture() {
-        if (m_isAnimating) return;
+        if (!m_realtimeSource) {
+            LOG_ERROR("AudioManager: Cannot toggle capture - realtime source is null");
+            return;
+        }
 
-        if (m_isCapturing)
-            StopRealtimeCapture();
-        else
-            StartRealtimeCapture();
+        m_isCapturing = !m_isCapturing;
+
+        LOG_INFO("AudioManager: " << (m_isCapturing ? "Starting" : "Stopping") << " realtime capture...");
+
+        if (m_isCapturing) {
+            m_realtimeSource->StartCapture();
+        }
+        else {
+            m_realtimeSource->StopCapture();
+        }
+
+        LOG_INFO("AudioManager: Capture " << (m_isCapturing ? "started" : "stopped"));
     }
 
-    void AudioManager::ToggleAnimation() {
+    void AudioManager::ToggleAnimation()
+    {
         m_isAnimating = !m_isAnimating;
-        if (m_isAnimating)
-            ActivateAnimatedMode();
-        else
-            DeactivateAnimatedMode();
+
+        if (m_isAnimating) {
+            LOG_INFO("AudioManager: Activating animation mode...");
+
+            if (m_isCapturing && m_realtimeSource) {
+                LOG_INFO("AudioManager: Stopping realtime capture...");
+                m_isCapturing = false;
+                m_realtimeSource->StopCapture();
+                LOG_INFO("AudioManager: Realtime capture stopped");
+            }
+
+            LOG_INFO("AudioManager: Switching to animated source");
+            m_currentSource = m_animatedSource.get();
+            LOG_INFO("AudioManager: Animation mode activated");
+        }
+        else {
+            LOG_INFO("AudioManager: Deactivating animation mode...");
+            LOG_INFO("AudioManager: Switching to realtime source");
+            m_currentSource = m_realtimeSource.get();
+            LOG_INFO("AudioManager: Animation mode deactivated");
+        }
+
+        LOG_INFO("AudioManager: Animation mode " << (m_isAnimating ? "ON" : "OFF"));
     }
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-    // Parameter Control (from UI or Hotkeys)
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    void AudioManager::ChangeAmplification(float delta)
+    {
+        const float newValue = Clamp(
+            m_audioConfig.amplification + delta,
+            kMinAmplification,
+            kMaxAmplification
+        );
 
-    void AudioManager::ChangeAmplification(float delta) {
-        float newValue = Utils::Clamp(m_audioConfig.amplification + delta, 0.1f, 5.0f);
-        SetAmplification(newValue);
+        if (newValue != m_audioConfig.amplification) {
+            SetAmplification(newValue);
+        }
     }
 
-    void AudioManager::ChangeFFTWindow(int direction) {
-        FFTWindowType newType = Utils::CycleEnum(m_audioConfig.windowType, direction);
-        ApplyFFTWindowChange(newType);
+    void AudioManager::ChangeFFTWindow(int direction)
+    {
+        const FFTWindowType newType = CycleEnum(m_audioConfig.windowType, direction);
+
+        m_audioConfig.windowType = newType;
+
+        if (m_realtimeSource) {
+            m_realtimeSource->SetFFTWindow(newType);
+        }
+
+        LOG_INFO("AudioManager: FFT Window = " << ToString(newType).data());
     }
 
-    void AudioManager::ChangeSpectrumScale(int direction) {
-        SpectrumScale newType = Utils::CycleEnum(m_audioConfig.scaleType, direction);
-        ApplySpectrumScaleChange(newType);
+    void AudioManager::ChangeSpectrumScale(int direction)
+    {
+        const SpectrumScale newType = CycleEnum(m_audioConfig.scaleType, direction);
+
+        m_audioConfig.scaleType = newType;
+
+        if (m_realtimeSource) {
+            m_realtimeSource->SetScaleType(newType);
+        }
+
+        LOG_INFO("AudioManager: Spectrum Scale = " << ToString(newType).data());
     }
 
-    void AudioManager::SetAmplification(float amp) {
-        ApplyAmplificationChange(amp);
+    void AudioManager::SetAmplification(float amp)
+    {
+        const float clampedValue = Clamp(amp, kMinAmplification, kMaxAmplification);
+
+        m_audioConfig.amplification = clampedValue;
+
+        if (m_realtimeSource) {
+            m_realtimeSource->SetAmplification(clampedValue);
+        }
+
+        LOG_INFO("AudioManager: Amplification = " << clampedValue);
     }
 
-    void AudioManager::SetSmoothing(float smoothing) {
-        m_audioConfig.smoothing = Utils::Saturate(smoothing);
-        if (m_realtimeSource) m_realtimeSource->SetSmoothing(m_audioConfig.smoothing);
-        if (m_animatedSource) m_animatedSource->SetSmoothing(m_audioConfig.smoothing);
+    void AudioManager::SetSmoothing(float smoothing)
+    {
+        const float clampedValue = Clamp(smoothing, kMinSmoothing, kMaxSmoothing);
+
+        m_audioConfig.smoothing = clampedValue;
+
+        if (m_realtimeSource) {
+            m_realtimeSource->SetSmoothing(clampedValue);
+        }
+
+        LOG_INFO("AudioManager: Smoothing = " << clampedValue);
     }
 
-    void AudioManager::SetBarCount(size_t count) {
-        size_t newCount = Utils::Clamp<size_t>(count, 16, 256);
-        ApplyBarCountChange(newCount);
+    void AudioManager::SetBarCount(size_t count)
+    {
+        const size_t clampedValue = Clamp(count, kMinBarCount, kMaxBarCount);
+
+        m_audioConfig.barCount = clampedValue;
+
+        if (m_realtimeSource) {
+            m_realtimeSource->SetBarCount(clampedValue);
+        }
+
+        LOG_INFO("AudioManager: Bar Count = " << clampedValue);
     }
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-    // Getters
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    void AudioManager::SetFFTWindowByName(const std::string& name)
+    {
+        const FFTWindowType newType = StringToFFTWindow(name);
+        m_audioConfig.windowType = newType;
 
-    [[nodiscard]] bool AudioManager::IsCapturing() const {
+        if (m_realtimeSource) {
+            m_realtimeSource->SetFFTWindow(newType);
+        }
+
+        LOG_INFO("AudioManager: FFT Window = " << ToString(newType).data());
+    }
+
+    void AudioManager::SetSpectrumScaleByName(const std::string& name)
+    {
+        const SpectrumScale newType = StringToSpectrumScale(name);
+        m_audioConfig.scaleType = newType;
+
+        if (m_realtimeSource) {
+            m_realtimeSource->SetScaleType(newType);
+        }
+
+        LOG_INFO("AudioManager: Spectrum Scale = " << ToString(newType).data());
+    }
+
+    bool AudioManager::IsCapturing() const noexcept
+    {
         return m_isCapturing;
     }
 
-    [[nodiscard]] bool AudioManager::IsAnimating() const {
+    bool AudioManager::IsAnimating() const noexcept
+    {
         return m_isAnimating;
     }
 
-    [[nodiscard]] float AudioManager::GetAmplification() const {
+    bool AudioManager::HasActiveSource() const noexcept
+    {
+        return m_currentSource != nullptr;
+    }
+
+    float AudioManager::GetAmplification() const noexcept
+    {
         return m_audioConfig.amplification;
     }
 
-    [[nodiscard]] float AudioManager::GetSmoothing() const {
+    float AudioManager::GetSmoothing() const noexcept
+    {
         return m_audioConfig.smoothing;
     }
 
-    [[nodiscard]] size_t AudioManager::GetBarCount() const {
+    size_t AudioManager::GetBarCount() const noexcept
+    {
         return m_audioConfig.barCount;
     }
 
-    [[nodiscard]] std::string_view AudioManager::GetSpectrumScaleName() const {
-        return Utils::ToString(m_audioConfig.scaleType);
+    std::string_view AudioManager::GetSpectrumScaleName() const noexcept
+    {
+        return ToString(m_audioConfig.scaleType);
     }
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-    // Private Implementation
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-
-    void AudioManager::SubscribeToEvents(EventBus* bus) {
-        bus->Subscribe(InputAction::ToggleCapture, [this]() { this->ToggleCapture(); });
-        bus->Subscribe(InputAction::ToggleAnimation, [this]() { this->ToggleAnimation(); });
-        bus->Subscribe(InputAction::CycleSpectrumScale, [this]() { this->ChangeSpectrumScale(1); });
-        bus->Subscribe(InputAction::IncreaseAmplification, [this]() { this->ChangeAmplification(0.1f); });
-        bus->Subscribe(InputAction::DecreaseAmplification, [this]() { this->ChangeAmplification(-0.1f); });
-        bus->Subscribe(InputAction::NextFFTWindow, [this]() { this->ChangeFFTWindow(1); });
-        bus->Subscribe(InputAction::PrevFFTWindow, [this]() { this->ChangeFFTWindow(-1); });
+    std::string_view AudioManager::GetFFTWindowName() const noexcept
+    {
+        return ToString(m_audioConfig.windowType);
     }
 
-    [[nodiscard]] bool AudioManager::CreateAudioSources() {
-        m_realtimeSource = std::make_unique<RealtimeAudioSource>(m_audioConfig);
-        m_animatedSource = std::make_unique<AnimatedAudioSource>(m_audioConfig);
-        return m_realtimeSource->Initialize() && m_animatedSource->Initialize();
+    std::vector<std::string> AudioManager::GetAvailableFFTWindows() const
+    {
+        return { "Hann", "Hamming", "Blackman", "Rectangular" };
     }
 
-    void AudioManager::SetCurrentSource(IAudioSource* source) {
-        m_currentSource = source;
+    std::vector<std::string> AudioManager::GetAvailableSpectrumScales() const
+    {
+        return { "Linear", "Logarithmic", "Mel" };
     }
 
-    void AudioManager::ActivateAnimatedMode() {
-        if (m_isCapturing) StopRealtimeCapture();
-        SetCurrentSource(m_animatedSource.get());
-        LOG_INFO("Animation mode ON.");
+    void AudioManager::SubscribeToEvents(EventBus* bus)
+    {
+        if (!bus) return;
+
+        LOG_INFO("AudioManager: Subscribing to events...");
+
+        try {
+            bus->Subscribe(InputAction::ToggleCapture, [this]() { ToggleCapture(); });
+            bus->Subscribe(InputAction::ToggleAnimation, [this]() { ToggleAnimation(); });
+            bus->Subscribe(InputAction::CycleSpectrumScale, [this]() { ChangeSpectrumScale(1); });
+            bus->Subscribe(InputAction::IncreaseAmplification, [this]() { ChangeAmplification(kAmplificationStep); });
+            bus->Subscribe(InputAction::DecreaseAmplification, [this]() { ChangeAmplification(-kAmplificationStep); });
+            bus->Subscribe(InputAction::NextFFTWindow, [this]() { ChangeFFTWindow(1); });
+            bus->Subscribe(InputAction::PrevFFTWindow, [this]() { ChangeFFTWindow(-1); });
+
+            LOG_INFO("AudioManager: Event subscription completed");
+        }
+        catch (const std::exception&) {
+            LOG_ERROR("AudioManager: Event subscription failed");
+        }
     }
 
-    void AudioManager::DeactivateAnimatedMode() {
-        SetCurrentSource(m_realtimeSource.get());
-        LOG_INFO("Animation mode OFF.");
+    bool AudioManager::CreateAudioSources()
+    {
+        LOG_INFO("AudioManager: Creating audio sources...");
+
+        if (!InitializeSource<RealtimeAudioSource>(m_realtimeSource, "RealtimeAudioSource")) {
+            return false;
+        }
+
+        if (!InitializeSource<AnimatedAudioSource>(m_animatedSource, "AnimatedAudioSource")) {
+            return false;
+        }
+
+        LOG_INFO("AudioManager: Audio sources created successfully");
+        return true;
     }
 
-    void AudioManager::StartRealtimeCapture() {
-        m_isCapturing = true;
-        m_realtimeSource->StartCapture();
+    template<typename TSource>
+    bool AudioManager::InitializeSource(
+        std::unique_ptr<IAudioSource>& source,
+        const char* sourceName
+    )
+    {
+        LOG_INFO("AudioManager: Initializing " << sourceName << "...");
+
+        source = std::make_unique<TSource>(m_audioConfig);
+        if (!source) {
+            LOG_ERROR("AudioManager: Failed to create " << sourceName << " instance");
+            return false;
+        }
+
+        if (!source->Initialize()) {
+            LOG_ERROR("AudioManager: " << sourceName << " initialization failed");
+            return false;
+        }
+
+        LOG_INFO("AudioManager: " << sourceName << " initialized");
+        return true;
     }
 
-    void AudioManager::StopRealtimeCapture() {
-        m_isCapturing = false;
-        m_realtimeSource->StopCapture();
+    FFTWindowType AudioManager::StringToFFTWindow(const std::string& name) const
+    {
+        if (name == "Hann") return FFTWindowType::Hann;
+        if (name == "Hamming") return FFTWindowType::Hamming;
+        if (name == "Blackman") return FFTWindowType::Blackman;
+        if (name == "Rectangular") return FFTWindowType::Rectangular;
+        return FFTWindowType::Hann;
     }
 
-    void AudioManager::ApplyAmplificationChange(float newValue) {
-        m_audioConfig.amplification = newValue;
-        if (m_realtimeSource) m_realtimeSource->SetAmplification(m_audioConfig.amplification);
-        // Animated source doesn't use amplification
-        LOG_INFO("Amplification Factor: " << m_audioConfig.amplification);
-    }
-
-    void AudioManager::ApplyBarCountChange(size_t newCount) {
-        m_audioConfig.barCount = newCount;
-        if (m_realtimeSource) m_realtimeSource->SetBarCount(m_audioConfig.barCount);
-        if (m_animatedSource) m_animatedSource->SetBarCount(m_audioConfig.barCount);
-        LOG_INFO("Bar Count: " << m_audioConfig.barCount);
-    }
-
-    void AudioManager::ApplyFFTWindowChange(FFTWindowType newType) {
-        m_audioConfig.windowType = newType;
-        if (m_realtimeSource) m_realtimeSource->SetFFTWindow(m_audioConfig.windowType);
-        LOG_INFO("FFT Window: " << Utils::ToString(m_audioConfig.windowType));
-    }
-
-    void AudioManager::ApplySpectrumScaleChange(SpectrumScale newType) {
-        m_audioConfig.scaleType = newType;
-        if (m_realtimeSource) m_realtimeSource->SetScaleType(m_audioConfig.scaleType);
-        LOG_INFO("Spectrum Scale: " << Utils::ToString(m_audioConfig.scaleType));
+    SpectrumScale AudioManager::StringToSpectrumScale(const std::string& name) const
+    {
+        if (name == "Linear") return SpectrumScale::Linear;
+        if (name == "Logarithmic") return SpectrumScale::Logarithmic;
+        if (name == "Mel") return SpectrumScale::Mel;
+        return SpectrumScale::Linear;
     }
 
 } // namespace Spectrum

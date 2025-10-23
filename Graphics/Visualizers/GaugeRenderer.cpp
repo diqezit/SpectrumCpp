@@ -7,6 +7,7 @@
 // - Peak lamp triggers at +3dB with hold time
 // - Scale divisions follow VU meter standards
 // - Quality settings control smoothing and visual effects
+// - Uses GeometryHelpers for all geometric operations
 //
 // Rendering pipeline:
 // 1. Background: bezel, ring, meter face with label
@@ -16,19 +17,15 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Graphics/Visualizers/GaugeRenderer.h"
-#include "Graphics/API/D2DHelpers.h"
-#include "Graphics/API/Structs/Paint.h"
-#include "Graphics/API/Structs/TextStyle.h"
-#include "Common/MathUtils.h"
-#include "Common/ColorUtils.h"
+#include "Graphics/API/GraphicsHelpers.h"
 #include "Graphics/Base/RenderUtils.h"
-#include "Graphics/API/Canvas.h"
+#include "Graphics/Visualizers/Settings/QualityPresets.h"
 #include <algorithm>
 #include <cmath>
 
 namespace Spectrum {
 
-    using namespace D2DHelpers;
+    using namespace Helpers::Geometry;
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Constants
@@ -85,13 +82,11 @@ namespace Spectrum {
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     GaugeRenderer::GaugeRenderer()
-        : m_currentDbValue(kDbMin)
-        , m_currentNeedleAngle(kAngleStart)
-        , m_peakHoldCounter(0)
-        , m_peakActive(false)
-        , m_smoothingFactorInc(0.2f)
-        , m_smoothingFactorDec(0.05f)
-        , m_riseSpeed(0.15f)
+        : BaseRenderer(),
+        m_currentDbValue(kDbMin),
+        m_currentNeedleAngle(kAngleStart),
+        m_peakHoldCounter(0),
+        m_peakActive(false)
     {
         m_aspectRatio = 2.0f;
         m_padding = 0.8f;
@@ -104,24 +99,7 @@ namespace Spectrum {
 
     void GaugeRenderer::UpdateSettings()
     {
-        switch (m_quality) {
-        case RenderQuality::Low:
-            m_smoothingFactorInc = 0.25f;
-            m_smoothingFactorDec = 0.06f;
-            m_riseSpeed = 0.12f;
-            break;
-        case RenderQuality::High:
-            m_smoothingFactorInc = 0.15f;
-            m_smoothingFactorDec = 0.04f;
-            m_riseSpeed = 0.20f;
-            break;
-        case RenderQuality::Medium:
-        default:
-            m_smoothingFactorInc = 0.20f;
-            m_smoothingFactorDec = 0.05f;
-            m_riseSpeed = 0.15f;
-            break;
-        }
+        m_settings = QualityPresets::Get<GaugeRenderer>(m_quality);
     }
 
     void GaugeRenderer::UpdateAnimation(
@@ -132,15 +110,15 @@ namespace Spectrum {
         const float targetDb = CalculateLoudness(spectrum);
 
         const float smoothing = (targetDb > m_currentDbValue)
-            ? m_smoothingFactorInc
-            : m_smoothingFactorDec;
+            ? m_settings.smoothingFactorInc
+            : m_settings.smoothingFactorDec;
 
         const float adjustedSmoothing = m_isOverlay ? smoothing * 0.5f : smoothing;
 
-        m_currentDbValue = Utils::Lerp(m_currentDbValue, targetDb, adjustedSmoothing);
+        m_currentDbValue = Helpers::Math::Lerp(m_currentDbValue, targetDb, adjustedSmoothing);
 
         const float targetAngle = DbToAngle(m_currentDbValue);
-        m_currentNeedleAngle = Utils::Lerp(m_currentNeedleAngle, targetAngle, m_riseSpeed);
+        m_currentNeedleAngle = Helpers::Math::Lerp(m_currentNeedleAngle, targetAngle, m_settings.riseSpeed);
 
         if (targetDb >= kDbPeakThreshold) {
             m_peakActive = true;
@@ -161,7 +139,7 @@ namespace Spectrum {
     {
         const Rect gaugeRect = CalculatePaddedRect();
 
-        if (gaugeRect.width <= 0.0f || gaugeRect.height <= 0.0f) return;
+        if (!IsValid(gaugeRect)) return;
 
         DrawBackground(canvas, gaugeRect);
         DrawScale(canvas, gaugeRect);
@@ -276,10 +254,10 @@ namespace Spectrum {
     {
         const Point textPos{
             faceRect.x + faceRect.width * 0.5f,
-            faceRect.GetBottom() - textSize * kVULabelOffsetRatio
+            GetBottom(faceRect) - textSize * kVULabelOffsetRatio
         };
 
-        const Rect textRect = CreateCenteredTextRect(
+        const Rect textRect = CreateCentered(
             textPos,
             textSize * 2.0f,
             textSize * 1.5f
@@ -295,22 +273,12 @@ namespace Spectrum {
 
     Rect GaugeRenderer::GetInnerRect(const Rect& rect) const
     {
-        return {
-            rect.x + kBezelPadding,
-            rect.y + kBezelPadding,
-            rect.width - kBezelPadding * 2.0f,
-            rect.height - kBezelPadding * 2.0f
-        };
+        return Deflate(rect, kBezelPadding);
     }
 
     Rect GaugeRenderer::GetFaceRect(const Rect& innerRect) const
     {
-        return {
-            innerRect.x + kInnerPadding,
-            innerRect.y + kInnerPadding,
-            innerRect.width - kInnerPadding * 2.0f,
-            innerRect.height - kInnerPadding * 2.0f
-        };
+        return Deflate(innerRect, kInnerPadding);
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -340,12 +308,13 @@ namespace Spectrum {
 
         if (label) {
             const float textOffset = radiusY * (m_isOverlay ? 0.1f : 0.12f);
-            const float rad = Utils::DegToRad(angle);
 
-            const Point labelPos{
-                center.x + (radiusX + textOffset) * std::cos(rad),
-                center.y + (radiusY + textOffset) * std::sin(rad)
-            };
+            const Point labelPos = PointOnEllipse(
+                center,
+                radiusX + textOffset,
+                radiusY + textOffset,
+                Helpers::Math::DegreesToRadians(angle)
+            );
 
             const float textSize = GetLabelTextSize({ 0, 0, radiusY, radiusY }, dbValue);
             const Color textColor = (dbValue >= 0.0f)
@@ -396,7 +365,7 @@ namespace Spectrum {
         const Color& color
     ) const
     {
-        const Rect labelRect = CreateCenteredTextRect(
+        const Rect labelRect = CreateCentered(
             labelPos,
             textSize * 3.0f,
             textSize * 1.5f
@@ -418,17 +387,21 @@ namespace Spectrum {
         float tickLength
     ) const
     {
-        const float rad = Utils::DegToRad(angle);
+        const float rad = Helpers::Math::DegreesToRadians(angle);
 
-        const Point start{
-            center.x + (radiusX - tickLength) * std::cos(rad),
-            center.y + (radiusY - tickLength) * std::sin(rad)
-        };
+        const Point start = PointOnEllipse(
+            center,
+            radiusX - tickLength,
+            radiusY - tickLength,
+            rad
+        );
 
-        const Point end{
-            center.x + radiusX * std::cos(rad),
-            center.y + radiusY * std::sin(rad)
-        };
+        const Point end = PointOnEllipse(
+            center,
+            radiusX,
+            radiusY,
+            rad
+        );
 
         return { start, end };
     }
@@ -510,10 +483,9 @@ namespace Spectrum {
         );
 
         if (m_quality != RenderQuality::Low) {
-            const Point highlightPos{
-                center.x - radius * 0.25f,
-                center.y - radius * 0.25f
-            };
+
+            const Point offset = { -radius * 0.25f, -radius * 0.25f };
+            const Point highlightPos = Add(center, offset);
 
             canvas.DrawCircle(
                 highlightPos,
@@ -570,12 +542,10 @@ namespace Spectrum {
         float lampRadius
     ) const
     {
-        const Point textPos{
-            lampPos.x,
-            lampPos.y + lampRadius + lampRadius * 0.5f
-        };
+        const Point textOffset = { 0.0f, lampRadius + lampRadius * 0.5f };
+        const Point textPos = Add(lampPos, textOffset);
 
-        const Rect textRect = CreateCenteredTextRect(
+        const Rect textRect = CreateCentered(
             textPos,
             lampRadius * 4.0f,
             lampRadius * 1.5f
@@ -594,10 +564,13 @@ namespace Spectrum {
         float lampRadius
     ) const
     {
-        return {
-            rect.GetRight() - lampRadius * kPeakLampPositionOffset,
-            rect.y + lampRadius * kPeakLampPositionOffset
+        const Point topRight = GetTopRight(rect);
+        const Point offset = {
+            -lampRadius * kPeakLampPositionOffset,
+            lampRadius * kPeakLampPositionOffset
         };
+
+        return Add(topRight, offset);
     }
 
     Color GaugeRenderer::GetPeakLampColor() const
@@ -630,31 +603,34 @@ namespace Spectrum {
         const float rms = std::sqrt(sum / spectrum.size());
         const float db = 20.0f * std::log10(std::max(rms, 1e-10f));
 
-        return Utils::Clamp(db, kDbMin, kDbMax);
+        return Helpers::Math::Clamp(db, kDbMin, kDbMax);
     }
 
     float GaugeRenderer::DbToAngle(float db) const
     {
-        const float normalized = (Utils::Clamp(db, kDbMin, kDbMax) - kDbMin) /
-            (kDbMax - kDbMin);
-        return kAngleStart + normalized * kAngleRange;
+        return Helpers::Math::Map(
+            Helpers::Math::Clamp(db, kDbMin, kDbMax),
+            kDbMin,
+            kDbMax,
+            kAngleStart,
+            kAngleEnd
+        );
     }
 
     Point GaugeRenderer::GetScaleCenter(const Rect& rect) const
     {
-        return {
-            rect.x + rect.width * 0.5f,
-            rect.y + rect.height * 0.5f + rect.height * 0.15f
-        };
+        const Point center = GetCenter(rect);
+        const Point offset = { 0.0f, rect.height * 0.15f };
+
+        return Add(center, offset);
     }
 
     Point GaugeRenderer::GetNeedleCenter(const Rect& rect) const
     {
-        return {
-            rect.x + rect.width * 0.5f,
-            rect.y + rect.height * 0.5f +
-                rect.height * (m_isOverlay ? 0.35f : 0.4f)
-        };
+        const Point center = GetCenter(rect);
+        const float yOffset = rect.height * (m_isOverlay ? 0.35f : 0.4f);
+
+        return Add(center, { 0.0f, yOffset });
     }
 
     float GaugeRenderer::GetTickLength(
@@ -665,20 +641,6 @@ namespace Spectrum {
         if (!isMajor) return m_isOverlay ? 0.05f : 0.06f;
         if (dbValue == 0.0f) return m_isOverlay ? 0.12f : 0.15f;
         return m_isOverlay ? 0.064f : 0.08f;
-    }
-
-    Rect GaugeRenderer::CreateCenteredTextRect(
-        const Point& center,
-        float width,
-        float height
-    ) const
-    {
-        return {
-            center.x - width * 0.5f,
-            center.y - height * 0.5f,
-            width,
-            height
-        };
     }
 
 } // namespace Spectrum

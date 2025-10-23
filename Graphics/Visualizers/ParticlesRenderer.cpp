@@ -1,36 +1,28 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// Implements the ParticlesRenderer for particle-based visualization.
+// Implements the ParticlesRenderer for particle-based visualization
 //
-// Implementation details:
-// - High-density particle spawning creates fountain-like effect
-// - Physics simulation with slow upward movement and gradual decay
-// - Low rise height keeps particles concentrated near bottom
-// - Batch rendering groups particles by size/alpha for performance
-// - Pre-calculated curves for smooth alpha transitions
-// - Velocity lookup table for consistent randomization
+// Optimized implementation with zero per-frame allocations:
+// - Reusable batch buffers cleared and repopulated each frame
+// - Pre-calculated lookup tables for smooth animations
+// - Direct array indexing instead of map allocations
+// - Particle reserve strategy to minimize vector growth
+// - Uses GeometryHelpers for all geometric operations
 //
-// Rendering pipeline:
-// 1. Update physics: position, life, size, alpha for all particles
-// 2. Cleanup: remove dead particles (life <= 0, out of bounds)
-// 3. Spawning: create new particles based on spectrum intensity
-// 4. Batching: group particles by visual properties
-// 5. Drawing: render batches with single draw call per group
+// Memory safety:
+// - All batches reused (no new/delete per frame)
+// - Lookup tables created once at initialization
+// - Particle vector grows to max then stabilizes
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Graphics/Visualizers/ParticlesRenderer.h"
-#include "Graphics/API/D2DHelpers.h"
-#include "Graphics/API/Structs/Paint.h"
-#include "Common/MathUtils.h"
-#include "Common/ColorUtils.h"
-#include "Graphics/Base/RenderUtils.h"
-#include "Graphics/API/Canvas.h"
+#include "Graphics/API/GraphicsHelpers.h"
+#include "Graphics/Visualizers/Settings/QualityPresets.h"
 #include <algorithm>
 #include <cmath>
-#include <map>
 
 namespace Spectrum {
 
-    using namespace D2DHelpers;
+    using namespace Helpers::Geometry;
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Constants
@@ -38,42 +30,31 @@ namespace Spectrum {
 
     namespace {
 
-        // Physics parameters (low values for minimal rise)
         constexpr float kParticleVelocityMin = 8.0f;
         constexpr float kParticleVelocityMax = 35.0f;
         constexpr float kParticleLife = 2.0f;
         constexpr float kParticleLifeDecay = 1.2f;
 
-        // Boundary limits
-        constexpr float kUpperBoundFactor = 0.5f;  // Half-screen height
+        constexpr float kUpperBoundFactor = 0.5f;
 
-        // Spawn thresholds (very low for maximum density)
         constexpr float kSpawnThresholdOverlay = 0.02f;
         constexpr float kSpawnThresholdNormal = 0.01f;
         constexpr float kSpawnProbability = 0.95f;
         constexpr float kMaxDensityFactor = 2.5f;
 
-        // Particle appearance
         constexpr float kParticleSizeOverlay = 2.5f;
         constexpr float kParticleSizeNormal = 3.0f;
         constexpr float kSizeDecayFactor = 0.992f;
         constexpr float kMinParticleSize = 0.3f;
 
-        // Alpha decay
         constexpr float kAlphaDecayExponent = 2.0f;
 
-        // Lookup table dimensions
         constexpr int kVelocityLookupSize = 1024;
         constexpr int kAlphaCurveSize = 101;
 
-        // Quality-based particle limits (ultra high density)
-        constexpr int kMaxParticlesLow = 5000;
-        constexpr int kMaxParticlesMedium = 10000;
-        constexpr int kMaxParticlesHigh = 15000;
-
-        // Batch grouping granularity
         constexpr int kSizeBuckets = 12;
         constexpr int kAlphaBuckets = 12;
+        constexpr int kTotalBatches = kSizeBuckets * kAlphaBuckets;
 
     } // anonymous namespace
 
@@ -89,10 +70,7 @@ namespace Spectrum {
         UpdateSettings();
     }
 
-    void ParticlesRenderer::OnActivate(
-        int width,
-        int height
-    )
+    void ParticlesRenderer::OnActivate(int width, int height)
     {
         BaseRenderer::OnActivate(width, height);
         m_particles.clear();
@@ -104,35 +82,10 @@ namespace Spectrum {
 
     void ParticlesRenderer::UpdateSettings()
     {
-        switch (m_quality) {
-        case RenderQuality::Low:
-            m_settings = {
-                kMaxParticlesLow,     // maxParticles
-                0.7f,                 // spawnRate
-                0.6f,                 // particleDetail
-                true                  // useBatchRendering
-            };
-            break;
-        case RenderQuality::High:
-            m_settings = {
-                kMaxParticlesHigh,    // maxParticles
-                1.0f,                 // spawnRate
-                1.0f,                 // particleDetail
-                true                  // useBatchRendering
-            };
-            break;
-        case RenderQuality::Medium:
-        default:
-            m_settings = {
-                kMaxParticlesMedium,  // maxParticles
-                0.85f,                // spawnRate
-                0.8f,                 // particleDetail
-                true                  // useBatchRendering
-            };
-            break;
-        }
+        m_settings = QualityPresets::Get<ParticlesRenderer>(m_quality);
 
         m_particles.clear();
+        m_particles.reserve(m_settings.maxParticles);
     }
 
     void ParticlesRenderer::UpdateAnimation(
@@ -154,13 +107,14 @@ namespace Spectrum {
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Initialization Components
+    // Initialization
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     void ParticlesRenderer::EnsureInitialized()
     {
         if (!IsInitialized()) {
             InitializeLookupTables();
+            InitializeBatchBuffers();
         }
     }
 
@@ -174,10 +128,12 @@ namespace Spectrum {
     {
         m_alphaCurve.resize(kAlphaCurveSize);
 
-        const float step = 1.0f / (kAlphaCurveSize - 1);
-
         for (int i = 0; i < kAlphaCurveSize; ++i) {
-            const float t = i * step;
+            const float t = Helpers::Math::Normalize(
+                static_cast<float>(i),
+                0.0f,
+                static_cast<float>(kAlphaCurveSize - 1)
+            );
             m_alphaCurve[i] = std::pow(t, kAlphaDecayExponent);
         }
     }
@@ -186,21 +142,34 @@ namespace Spectrum {
     {
         m_velocityLookup.resize(kVelocityLookupSize);
 
-        const float velocityRange = kParticleVelocityMax - kParticleVelocityMin;
-
         for (int i = 0; i < kVelocityLookupSize; ++i) {
-            const float t = static_cast<float>(i) / kVelocityLookupSize;
-            m_velocityLookup[i] = kParticleVelocityMin + velocityRange * t;
+            const float t = Helpers::Math::Normalize(
+                static_cast<float>(i),
+                0.0f,
+                static_cast<float>(kVelocityLookupSize)
+            );
+            m_velocityLookup[i] = Helpers::Math::Lerp(kParticleVelocityMin, kParticleVelocityMax, t);
+        }
+    }
+
+    void ParticlesRenderer::InitializeBatchBuffers()
+    {
+        m_batchBuffer.resize(kTotalBatches);
+
+        for (auto& batch : m_batchBuffer) {
+            batch.positions.reserve(128);
         }
     }
 
     bool ParticlesRenderer::IsInitialized() const
     {
-        return !m_alphaCurve.empty() && !m_velocityLookup.empty();
+        return !m_alphaCurve.empty() &&
+            !m_velocityLookup.empty() &&
+            !m_batchBuffer.empty();
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Main Update Components (SRP)
+    // Update Logic
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     void ParticlesRenderer::UpdateParticles(float deltaTime)
@@ -227,9 +196,10 @@ namespace Spectrum {
             if (!ShouldSpawnParticle(spectrum[i])) continue;
 
             const float intensity = spectrum[i] / threshold;
-            const float spawnChance = Utils::Clamp(intensity, 0.0f, 1.0f)
-                * kSpawnProbability
-                * m_settings.spawnRate;
+
+            const float spawnChance = Helpers::Math::Clamp(intensity, 0.0f, 1.0f) *
+                kSpawnProbability *
+                m_settings.particleSize;
 
             if (GetRandomNormalized() < spawnChance) {
                 SpawnParticleAt(i, spectrum[i], barWidth);
@@ -249,10 +219,6 @@ namespace Spectrum {
         );
     }
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Particle Lifecycle
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
     void ParticlesRenderer::UpdateSingleParticle(
         Particle& particle,
         float deltaTime
@@ -270,35 +236,31 @@ namespace Spectrum {
         float barWidth
     )
     {
-        const float x = CalculateParticleX(spectrumIndex, barWidth);
+        const Point spawnPos = CalculateSpawnPosition(spectrumIndex, barWidth);
         const float intensity = GetIntensityMultiplier(magnitude);
 
-        m_particles.push_back(CreateParticle(x, intensity));
+        m_particles.push_back(CreateParticle(spawnPos, intensity));
     }
 
     ParticlesRenderer::Particle ParticlesRenderer::CreateParticle(
-        float x,
+        const Point& spawnPos,
         float intensity
     ) const
     {
         Particle particle;
-        particle.x = x;
-        particle.y = GetSpawnY();
+        particle.position = spawnPos;
         particle.velocity = CalculateParticleVelocity(intensity);
         particle.size = CalculateParticleSize(intensity);
         particle.life = kParticleLife;
         particle.alpha = 1.0f;
-
         return particle;
     }
 
     bool ParticlesRenderer::IsParticleAlive(const Particle& particle) const
     {
-        if (particle.life <= 0.0f) return false;
-        if (!IsParticleInBounds(particle)) return false;
-        if (particle.size < kMinParticleSize) return false;
-
-        return true;
+        return particle.life > 0.0f &&
+            IsParticleInBounds(particle) &&
+            particle.size >= kMinParticleSize;
     }
 
     bool ParticlesRenderer::ShouldSpawnParticle(float magnitude) const
@@ -307,7 +269,7 @@ namespace Spectrum {
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Particle Physics
+    // Physics
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     void ParticlesRenderer::UpdateParticlePosition(
@@ -315,7 +277,8 @@ namespace Spectrum {
         float deltaTime
     ) const
     {
-        particle.y -= particle.velocity * deltaTime;
+        const Point velocity = { 0.0f, -particle.velocity * deltaTime };
+        particle.position = Add(particle.position, velocity);
     }
 
     void ParticlesRenderer::UpdateParticleLife(
@@ -333,7 +296,7 @@ namespace Spectrum {
 
     void ParticlesRenderer::UpdateParticleAlpha(Particle& particle) const
     {
-        const float lifeRatio = Utils::Clamp(
+        const float lifeRatio = Helpers::Math::Clamp(
             particle.life / kParticleLife,
             0.0f,
             1.0f
@@ -343,14 +306,14 @@ namespace Spectrum {
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Main Rendering Components (SRP)
+    // Rendering
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     void ParticlesRenderer::RenderAllParticles(Canvas& canvas) const
     {
         if (m_particles.empty()) return;
 
-        if (m_settings.useBatchRendering) {
+        if (m_settings.useTrails) {
             RenderParticlesBatched(canvas);
         }
         else {
@@ -360,9 +323,9 @@ namespace Spectrum {
 
     void ParticlesRenderer::RenderParticlesBatched(Canvas& canvas) const
     {
-        const auto batches = GroupParticlesIntoBatches();
+        PrepareParticleBatches();
 
-        for (const auto& batch : batches) {
+        for (const auto& batch : m_batchBuffer) {
             if (!batch.positions.empty()) {
                 canvas.DrawCircleBatch(
                     batch.positions,
@@ -388,53 +351,53 @@ namespace Spectrum {
     ) const
     {
         const Color color = CalculateParticleColor(particle);
-        const Point center = { particle.x, particle.y };
         const float radius = particle.size * 0.5f;
 
-        canvas.DrawCircle(center, radius, Paint::Fill(color));
+        canvas.DrawCircle(particle.position, radius, Paint::Fill(color));
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Batch Optimization
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    std::vector<ParticlesRenderer::ParticleBatch>
-        ParticlesRenderer::GroupParticlesIntoBatches() const
+    void ParticlesRenderer::PrepareParticleBatches() const
     {
-        std::map<int, ParticleBatch> batchMap;
+        ClearAllBatches();
 
         for (const auto& particle : m_particles) {
             if (!IsParticleVisible(particle)) continue;
 
-            const int sizeBucket = CalculateSizeBucket(particle.size);
-            const int alphaBucket = CalculateAlphaBucket(particle.alpha);
-            const int key = CalculateBatchKey(sizeBucket, alphaBucket);
-
-            auto& batch = batchMap[key];
+            const int batchIndex = CalculateBatchIndex(particle);
+            auto& batch = m_batchBuffer[batchIndex];
 
             if (batch.positions.empty()) {
                 batch.size = particle.size;
                 batch.color = CalculateParticleColor(particle);
             }
 
-            batch.positions.push_back({ particle.x, particle.y });
+            batch.positions.push_back(particle.position);
         }
+    }
 
-        std::vector<ParticleBatch> batches;
-        batches.reserve(batchMap.size());
-
-        for (auto& [key, batch] : batchMap) {
-            batches.push_back(std::move(batch));
+    void ParticlesRenderer::ClearAllBatches() const
+    {
+        for (auto& batch : m_batchBuffer) {
+            batch.Clear();
         }
+    }
 
-        return batches;
+    int ParticlesRenderer::CalculateBatchIndex(const Particle& particle) const
+    {
+        const int sizeBucket = CalculateSizeBucket(particle.size);
+        const int alphaBucket = CalculateAlphaBucket(particle.alpha);
+        return sizeBucket * kAlphaBuckets + alphaBucket;
     }
 
     int ParticlesRenderer::CalculateSizeBucket(float size) const
     {
         const float normalizedSize = size / (GetBaseParticleSize() * kMaxDensityFactor);
 
-        return Utils::Clamp(
+        return Helpers::Math::Clamp(
             static_cast<int>(normalizedSize * kSizeBuckets),
             0,
             kSizeBuckets - 1
@@ -443,26 +406,18 @@ namespace Spectrum {
 
     int ParticlesRenderer::CalculateAlphaBucket(float alpha) const
     {
-        return Utils::Clamp(
+        return Helpers::Math::Clamp(
             static_cast<int>(alpha * kAlphaBuckets),
             0,
             kAlphaBuckets - 1
         );
     }
 
-    int ParticlesRenderer::CalculateBatchKey(
-        int sizeBucket,
-        int alphaBucket
-    ) const
-    {
-        return sizeBucket * kAlphaBuckets + alphaBucket;
-    }
-
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Calculation Helpers
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    float ParticlesRenderer::CalculateParticleX(
+    Point ParticlesRenderer::CalculateSpawnPosition(
         size_t spectrumIndex,
         float barWidth
     ) const
@@ -470,13 +425,17 @@ namespace Spectrum {
         const float baseX = spectrumIndex * barWidth;
         const float randomOffset = GetRandomNormalized() * barWidth;
 
-        return baseX + randomOffset;
+        const Point spawnBase = GetSpawnPosition();
+        const Point offset = { baseX + randomOffset, 0.0f };
+
+        return Add(spawnBase, offset);
     }
 
     float ParticlesRenderer::CalculateParticleVelocity(float intensity) const
     {
         const float baseVelocity = GetRandomVelocity();
-        const float clampedIntensity = Utils::Clamp(
+
+        const float clampedIntensity = Helpers::Math::Clamp(
             intensity,
             1.0f,
             kMaxDensityFactor
@@ -488,13 +447,14 @@ namespace Spectrum {
     float ParticlesRenderer::CalculateParticleSize(float intensity) const
     {
         const float baseSize = GetBaseParticleSize();
-        const float clampedIntensity = Utils::Clamp(
+
+        const float clampedIntensity = Helpers::Math::Clamp(
             intensity,
             1.0f,
             kMaxDensityFactor
         );
 
-        return baseSize * clampedIntensity * m_settings.particleDetail;
+        return baseSize * clampedIntensity * m_settings.trailLength;
     }
 
     Color ParticlesRenderer::CalculateParticleColor(const Particle& particle) const
@@ -506,25 +466,37 @@ namespace Spectrum {
     // Geometry Helpers
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    float ParticlesRenderer::GetSpawnY() const
+    Point ParticlesRenderer::GetSpawnPosition() const
     {
-        return static_cast<float>(m_height);
+        const Rect bounds = CreateViewportBounds(m_width, m_height);
+        return GetBottomLeft(bounds);
     }
 
-    float ParticlesRenderer::GetUpperBound() const
+    Point ParticlesRenderer::GetUpperBoundPosition() const
     {
-        return static_cast<float>(m_height) * kUpperBoundFactor;
+        const float upperY = static_cast<float>(m_height) * kUpperBoundFactor;
+        return { 0.0f, upperY };
     }
 
     float ParticlesRenderer::GetBarWidth(const SpectrumData& spectrum) const
     {
         if (spectrum.empty()) return 0.0f;
-
         return static_cast<float>(m_width) / spectrum.size();
     }
 
+    Rect ParticlesRenderer::GetParticleBounds() const
+    {
+        const Point upperBound = GetUpperBoundPosition();
+        const Point spawnPos = GetSpawnPosition();
+
+        return CreateFromPoints(
+            { 0.0f, upperBound.y },
+            { static_cast<float>(m_width), spawnPos.y }
+        );
+    }
+
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Alpha & Velocity Helpers
+    // Lookup Tables
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     float ParticlesRenderer::GetAlphaFromCurve(float lifeRatio) const
@@ -532,36 +504,33 @@ namespace Spectrum {
         if (lifeRatio <= 0.0f) return 0.0f;
         if (lifeRatio >= 1.0f) return 1.0f;
 
-        if (m_alphaCurve.empty()) {
-            return CalculateAlphaFallback(lifeRatio);
-        }
+        const float indexFloat = Helpers::Math::Map(
+            lifeRatio,
+            0.0f,
+            1.0f,
+            0.0f,
+            static_cast<float>(kAlphaCurveSize - 1)
+        );
 
-        const int index = static_cast<int>(lifeRatio * (kAlphaCurveSize - 1));
-        const int clampedIndex = Utils::Clamp(index, 0, kAlphaCurveSize - 1);
+        const int clampedIndex = Helpers::Math::Clamp(
+            static_cast<int>(indexFloat),
+            0,
+            kAlphaCurveSize - 1
+        );
 
         return m_alphaCurve[clampedIndex];
     }
 
-    float ParticlesRenderer::CalculateAlphaFallback(float lifeRatio) const
-    {
-        return std::pow(lifeRatio, kAlphaDecayExponent);
-    }
-
     float ParticlesRenderer::GetRandomVelocity() const
     {
-        if (m_velocityLookup.empty()) {
-            return kParticleVelocityMin;
-        }
-
         const int index = static_cast<int>(
             GetRandomNormalized() * (kVelocityLookupSize - 1)
             );
-
         return m_velocityLookup[index];
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Configuration Helpers
+    // Configuration
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     float ParticlesRenderer::GetSpawnThreshold() const
@@ -576,12 +545,11 @@ namespace Spectrum {
 
     float ParticlesRenderer::GetIntensityMultiplier(float magnitude) const
     {
-        const float threshold = GetSpawnThreshold();
-        return magnitude / threshold;
+        return magnitude / GetSpawnThreshold();
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Validation Helpers
+    // Validation
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     bool ParticlesRenderer::CanSpawnParticles() const
@@ -596,11 +564,12 @@ namespace Spectrum {
 
     bool ParticlesRenderer::IsParticleInBounds(const Particle& particle) const
     {
-        return particle.y >= GetUpperBound() && particle.y <= GetSpawnY();
+        const Rect bounds = GetParticleBounds();
+        return Contains(bounds, particle.position);
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Random Number Generation
+    // Random Generation
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     float ParticlesRenderer::GetRandomNormalized() const

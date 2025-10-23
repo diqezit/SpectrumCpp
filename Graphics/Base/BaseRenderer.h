@@ -13,15 +13,20 @@
 // - Viewport and aspect ratio calculations
 // - Frame timing with overflow protection
 // - Common rendering pipeline (Update -> Render)
+// - Helper for PeakTracker configuration creation
 //
 // Design notes:
 // - All public methods are virtual (IRenderer interface)
 // - Protected virtual methods for customization by derived classes
 // - m_time is mutable and protected for animation state access
 // - Template Method pattern: Render() calls UpdateAnimation() -> DoRender()
+// - CreatePeakConfig() provides consistent peak configuration
+// - BaseRenderer does NOT contain PeakTracker as member (opt-in by children)
+// - Uses unified validation system (Graphics/API/Helpers/Core/Validation.h)
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Graphics/IRenderer.h"
+#include "Graphics/Base/PeakTracker.h"
 #include "Common/Common.h"
 
 namespace Spectrum {
@@ -91,6 +96,16 @@ namespace Spectrum {
         [[nodiscard]] int GetHeight() const noexcept { return m_height; }
         [[nodiscard]] RenderQuality GetQuality() const noexcept { return m_quality; }
         [[nodiscard]] bool IsOverlay() const noexcept { return m_isOverlay; }
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Peak Tracker Helper (DRY Principle)
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] static PeakTracker::Config CreatePeakConfig(
+            float holdTime,
+            float decayRate = 0.95f,
+            float minVisible = 0.01f
+        );
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Protected Member Variables

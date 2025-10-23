@@ -2,13 +2,10 @@
 #define SPECTRUM_CPP_COLOR_WHEEL_RENDERER_H
 
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// This file defines the ColorWheelRenderer, a static utility class for
-// drawing the visual elements of the ColorPicker.
+// Color wheel rendering utilities
 //
-// Responsibilities:
-// - Drawing the pre-generated color wheel bitmap
-// - Rendering the animated border on hover
-// - Drawing the color preview swatch
+// Direct bitmap rendering without intermediate abstractions
+// Border and preview drawing inlined for minimal overhead
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Common/Common.h"

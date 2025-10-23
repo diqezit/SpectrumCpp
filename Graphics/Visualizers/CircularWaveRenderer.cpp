@@ -2,31 +2,38 @@
 // Implements the CircularWaveRenderer for concentric ring visualizations.
 //
 // Implementation details:
-// - Rotation speed modulated by audio intensity
-// - Sine wave offset creates fluid, organic motion
-// - Glow rendered behind rings (back-to-front order)
-// - Rings fade out as they move away from center
-// - Uses D2DHelpers constants and utilities
+// - Rings positioned at regular intervals from center
+// - Wave effect achieved through sine-based radius modulation
+// - Rotation angle increases with audio intensity
+// - Stroke width scales with magnitude for visual impact
+// - Alpha decreases with distance for depth perception
+// - Uses GeometryHelpers for all geometric operations
 //
-// Rendering order:
-// 1. Iterate rings from back to front (correct alpha blending)
-// 2. Skip invisible rings (magnitude < threshold)
-// 3. Render glow (if enabled and magnitude > threshold)
-// 4. Render main ring
+// Rendering pipeline:
+// 1. Calculate effective ring count from spectrum size
+// 2. Render rings back-to-front (largest to smallest)
+// 3. For each ring:
+//    a. Calculate magnitude from spectrum range
+//    b. Apply wave offset to radius
+//    c. Render glow layer (if enabled and magnitude high)
+//    d. Render ring shape with calculated stroke
+//
+// Visual design:
+// - Inner rings: brighter, thicker strokes
+// - Outer rings: dimmer, thinner strokes
+// - Wave creates pulsing motion
+// - Rotation creates hypnotic spiral effect
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Graphics/Visualizers/CircularWaveRenderer.h"
-#include "Graphics/API/D2DHelpers.h"
-#include "Graphics/API/Structs/Paint.h"
-#include "Common/MathUtils.h"
-#include "Common/ColorUtils.h"
+#include "Graphics/API/GraphicsHelpers.h"
 #include "Graphics/Base/RenderUtils.h"
-#include "Graphics/API/Canvas.h"
+#include "Graphics/Visualizers/Settings/QualityPresets.h"
 #include <cmath>
 
 namespace Spectrum {
 
-    using namespace D2DHelpers;
+    using namespace Helpers::Geometry;
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Constants
@@ -36,7 +43,6 @@ namespace Spectrum {
 
         constexpr float kCenterRadius = 30.0f;
         constexpr float kMaxRadiusFactor = 0.45f;
-        constexpr float kViewportCenterFactor = 0.5f;
 
         constexpr float kMinStroke = 1.5f;
         constexpr float kStrokeClampFactor = 6.0f;
@@ -63,8 +69,9 @@ namespace Spectrum {
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     CircularWaveRenderer::CircularWaveRenderer()
-        : m_angle(0.0f)
-        , m_waveTime(0.0f)
+        : BaseRenderer(),
+        m_angle(0.0f),
+        m_waveTime(0.0f)
     {
         m_primaryColor = Color::FromRGB(0, 150, 255);
         UpdateSettings();
@@ -76,34 +83,7 @@ namespace Spectrum {
 
     void CircularWaveRenderer::UpdateSettings()
     {
-        if (m_isOverlay) {
-            switch (m_quality) {
-            case RenderQuality::Low:
-                m_settings = { false, 4.0f, 12, 0.4f, 1.5f };
-                break;
-            case RenderQuality::High:
-                m_settings = { true, 6.0f, 20, 0.4f, 1.5f };
-                break;
-            case RenderQuality::Medium:
-            default:
-                m_settings = { true, 5.0f, 16, 0.4f, 1.5f };
-                break;
-            }
-        }
-        else {
-            switch (m_quality) {
-            case RenderQuality::Low:
-                m_settings = { false, 6.0f, 16, 0.5f, 2.0f };
-                break;
-            case RenderQuality::High:
-                m_settings = { true, 8.0f, 32, 0.5f, 2.0f };
-                break;
-            case RenderQuality::Medium:
-            default:
-                m_settings = { true, 7.0f, 24, 0.5f, 2.0f };
-                break;
-            }
-        }
+        m_settings = QualityPresets::Get<CircularWaveRenderer>(m_quality, m_isOverlay);
     }
 
     void CircularWaveRenderer::UpdateAnimation(
@@ -146,7 +126,7 @@ namespace Spectrum {
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Single Ring Rendering (SRP)
+    // Rendering Components (SRP)
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     void CircularWaveRenderer::RenderRing(
@@ -220,8 +200,8 @@ namespace Spectrum {
 
         m_angle += rotationSpeed * deltaTime;
 
-        if (m_angle > kTwoPi) {
-            m_angle -= kTwoPi;
+        if (m_angle > TWO_PI) {
+            m_angle -= TWO_PI;
         }
     }
 
@@ -236,15 +216,12 @@ namespace Spectrum {
 
     Point CircularWaveRenderer::GetViewportCenter() const
     {
-        return {
-            m_width * kViewportCenterFactor,
-            m_height * kViewportCenterFactor
-        };
+        return Helpers::Geometry::GetViewportCenter(m_width, m_height);
     }
 
     float CircularWaveRenderer::GetMaxRadius() const
     {
-        return std::min(m_width, m_height) * kMaxRadiusFactor;
+        return Helpers::Geometry::GetMaxRadiusInViewport(m_width, m_height) * kMaxRadiusFactor;
     }
 
     float CircularWaveRenderer::CalculateRingStep(
@@ -279,7 +256,7 @@ namespace Spectrum {
 
     float CircularWaveRenderer::CalculateStrokeWidth(float magnitude) const
     {
-        return Utils::Clamp(
+        return Helpers::Math::Clamp(
             kMinStroke + magnitude * kStrokeClampFactor,
             kMinStroke,
             m_settings.maxStroke
@@ -306,7 +283,7 @@ namespace Spectrum {
         float distanceFactor
     ) const
     {
-        const float alpha = Utils::Saturate(
+        const float alpha = Helpers::Math::Saturate(
             magnitude * kAlphaMultiplier * distanceFactor
         );
 
@@ -321,7 +298,7 @@ namespace Spectrum {
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Data Extraction
+    // Data Processing
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     int CircularWaveRenderer::GetEffectiveRingCount(const SpectrumData& spectrum) const

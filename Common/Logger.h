@@ -23,4 +23,8 @@
 #define LOG_INFO(msg) (std::cout << "INFO: " << msg << std::endl)
 #endif
 
+#ifndef LOG_CRITICAL
+#define LOG_CRITICAL(msg) (std::cerr << "CRITICAL: " << msg << std::endl)
+#endif
+
 #endif // SPECTRUM_CPP_LOGGER_H

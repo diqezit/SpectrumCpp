@@ -5,9 +5,10 @@
 // - Grid dimensions calculated from viewport and spectrum size
 // - LED positions cached in m_allLedRects for batch rendering
 // - Attack/decay smoothing creates realistic LED response behavior
-// - Peak tracking uses hold timer followed by exponential decay
+// - Peak tracking managed by PeakTracker component (DRY principle)
 // - Row colors pre-calculated from gradient for rendering efficiency
 // - Batch rendering minimizes draw calls by grouping similar colors
+// - Uses GeometryHelpers for all geometric operations
 //
 // Rendering pipeline:
 // 1. Background: render all inactive LEDs in single batch
@@ -16,18 +17,17 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Graphics/Visualizers/MatrixLedRenderer.h"
-#include "Graphics/API/D2DHelpers.h"
-#include "Graphics/API/Structs/Paint.h"
-#include "Common/MathUtils.h"
-#include "Common/ColorUtils.h"
+#include "Graphics/API/GraphicsHelpers.h"
 #include "Graphics/Base/RenderUtils.h"
-#include "Graphics/API/Canvas.h"
+#include "Graphics/Visualizers/Settings/QualityPresets.h"
 #include <algorithm>
 #include <cmath>
 
 namespace Spectrum {
 
-    using namespace D2DHelpers;
+    using namespace Helpers::Sanitize;
+    using namespace Helpers::Geometry;
+    using namespace Helpers::Math;
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Constants
@@ -59,20 +59,20 @@ namespace Spectrum {
 
         // Spectrum gradient (green to red)
         const std::vector<Color> kSpectrumGradient = {
-            {0, 200, 100},   // Dark green
-            {0, 255, 0},     // Green
-            {128, 255, 0},   // Yellow-green
-            {255, 255, 0},   // Yellow
-            {255, 200, 0},   // Orange-yellow
-            {255, 128, 0},   // Orange
-            {255, 64, 0},    // Red-orange
-            {255, 0, 0},     // Red
-            {200, 0, 50}     // Dark red
+            Color::FromRGB(0, 200, 100),
+            Color::FromRGB(0, 255, 0),
+            Color::FromRGB(128, 255, 0),
+            Color::FromRGB(255, 255, 0),
+            Color::FromRGB(255, 200, 0),
+            Color::FromRGB(255, 128, 0),
+            Color::FromRGB(255, 64, 0),
+            Color::FromRGB(255, 0, 0),
+            Color::FromRGB(200, 0, 50)
         };
 
         // Fixed colors
-        const Color kInactiveColor = { 80, 80, 80 };
-        const Color kPeakColor = { 255, 255, 255, 200 };
+        const Color kInactiveColor = Color::FromRGB(80, 80, 80);
+        const Color kPeakColor = Color(1.0f, 1.0f, 1.0f, 200.0f / 255.0f);
 
     } // anonymous namespace
 
@@ -81,6 +81,7 @@ namespace Spectrum {
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     MatrixLedRenderer::MatrixLedRenderer()
+        : m_peakTracker(0, CreatePeakConfig(kPeakHoldTime, kPeakDecayRate, 0.01f))
     {
         UpdateSettings();
     }
@@ -91,8 +92,6 @@ namespace Spectrum {
     )
     {
         BaseRenderer::OnActivate(width, height);
-
-        // Force grid recreation
         m_grid.columns = 0;
     }
 
@@ -102,60 +101,7 @@ namespace Spectrum {
 
     void MatrixLedRenderer::UpdateSettings()
     {
-        if (m_isOverlay) {
-            switch (m_quality) {
-            case RenderQuality::Low:
-                m_settings = {
-                    false,  // usePeakHold
-                    16,     // maxRows
-                    1.0f    // smoothingMultiplier
-                };
-                break;
-            case RenderQuality::High:
-                m_settings = {
-                    true,   // usePeakHold
-                    32,     // maxRows
-                    0.8f    // smoothingMultiplier
-                };
-                break;
-            case RenderQuality::Medium:
-            default:
-                m_settings = {
-                    true,   // usePeakHold
-                    24,     // maxRows
-                    0.9f    // smoothingMultiplier
-                };
-                break;
-            }
-        }
-        else {
-            switch (m_quality) {
-            case RenderQuality::Low:
-                m_settings = {
-                    false,  // usePeakHold
-                    16,     // maxRows
-                    1.0f    // smoothingMultiplier
-                };
-                break;
-            case RenderQuality::High:
-                m_settings = {
-                    true,   // usePeakHold
-                    32,     // maxRows
-                    0.8f    // smoothingMultiplier
-                };
-                break;
-            case RenderQuality::Medium:
-            default:
-                m_settings = {
-                    true,   // usePeakHold
-                    24,     // maxRows
-                    0.9f    // smoothingMultiplier
-                };
-                break;
-            }
-        }
-
-        // Force grid recreation
+        m_settings = QualityPresets::Get<MatrixLedRenderer>(m_quality, m_isOverlay);
         m_grid.columns = 0;
     }
 
@@ -170,8 +116,8 @@ namespace Spectrum {
 
         UpdateSmoothedValues(spectrum);
 
-        if (m_settings.usePeakHold) {
-            UpdatePeakTracking(deltaTime);
+        if (m_settings.enableGlow) {
+            m_peakTracker.Update(m_smoothedValues, deltaTime);
         }
     }
 
@@ -185,7 +131,7 @@ namespace Spectrum {
         RenderInactiveLeds(canvas);
         RenderActiveLeds(canvas);
 
-        if (m_settings.usePeakHold) {
+        if (m_settings.enableGlow) {
             RenderPeakIndicators(canvas);
         }
     }
@@ -206,12 +152,9 @@ namespace Spectrum {
     {
         m_grid = gridData;
 
-        // Resize state arrays
         m_smoothedValues.assign(m_grid.columns, 0.0f);
-        m_peakValues.assign(m_grid.columns, 0.0f);
-        m_peakTimers.assign(m_grid.columns, 0.0f);
+        m_peakTracker.Resize(m_grid.columns);
 
-        // Cache geometry and colors
         CacheLedPositions();
         PrecomputeRowColors();
     }
@@ -228,10 +171,14 @@ namespace Spectrum {
 
         for (int col = 0; col < m_grid.columns; ++col) {
             for (int row = 0; row < m_grid.rows; ++row) {
-                const float x = m_grid.startX + col * m_grid.cellSize + margin;
-                const float y = m_grid.startY + (m_grid.rows - 1 - row) * m_grid.cellSize + margin;
+                const Point cellOffset = {
+                    col * m_grid.cellSize + margin,
+                    (m_grid.rows - 1 - row) * m_grid.cellSize + margin
+                };
 
-                m_allLedRects.push_back({ x, y, ledSize, ledSize });
+                const Point ledPos = Add(m_grid.gridStart, cellOffset);
+
+                m_allLedRects.push_back({ ledPos.x, ledPos.y, ledSize, ledSize });
             }
         }
     }
@@ -242,7 +189,7 @@ namespace Spectrum {
 
         for (int i = 0; i < m_grid.rows; ++i) {
             const float t = (m_grid.rows > 1)
-                ? static_cast<float>(i) / (m_grid.rows - 1)
+                ? Helpers::Math::Normalize(static_cast<float>(i), 0.0f, static_cast<float>(m_grid.rows - 1))
                 : 0.0f;
 
             m_rowColors[i] = InterpolateGradient(t);
@@ -270,34 +217,34 @@ namespace Spectrum {
             RenderUtils::GetMaxBarsForQuality(m_quality)
         );
 
-        // Calculate column count
-        data.columns = std::min({
-            maxAllowedCols,
-            static_cast<int>(requiredColumns),
-            static_cast<int>(availableWidth / ledSize)
-            });
-        data.columns = std::max(kMinGridSize, data.columns);
-
-        // Calculate row count
-        data.rows = std::min(
-            m_settings.maxRows,
-            static_cast<int>(availableHeight / ledSize)
+        data.columns = Helpers::Math::Clamp(
+            std::min(
+                static_cast<int>(requiredColumns),
+                static_cast<int>(availableWidth / ledSize)
+            ),
+            kMinGridSize,
+            maxAllowedCols
         );
-        data.rows = std::max(kMinGridSize, data.rows);
 
-        // Calculate cell size
+        data.rows = Helpers::Math::Clamp(
+            static_cast<int>(availableHeight / ledSize),
+            kMinGridSize,
+            m_settings.ledDensity
+        );
+
         data.cellSize = std::min(
             availableWidth / data.columns,
             availableHeight / data.rows
         );
 
-        // Calculate grid position (centered)
         const float gridWidth = data.columns * data.cellSize;
         const float gridHeight = data.rows * data.cellSize;
 
-        data.startX = (m_width - gridWidth) * 0.5f;
-        data.startY = (m_height - gridHeight) * 0.5f;
+        const Point viewportCenter = GetViewportCenter(m_width, m_height);
+        const Point gridSize = { gridWidth, gridHeight };
+        const Point halfGridSize = Multiply(gridSize, 0.5f);
 
+        data.gridStart = Subtract(viewportCenter, halfGridSize);
         data.isOverlay = m_isOverlay;
 
         return data;
@@ -313,6 +260,31 @@ namespace Spectrum {
             m_grid.rows != newGrid.rows ||
             std::abs(m_grid.cellSize - newGrid.cellSize) > 0.1f ||
             m_grid.isOverlay != newGrid.isOverlay;
+    }
+
+    Point MatrixLedRenderer::CalculateLedCenter(int column, int row) const
+    {
+        const float cellHalf = m_grid.cellSize * 0.5f;
+
+        const Point cellOffset = {
+            column * m_grid.cellSize + cellHalf,
+            (m_grid.rows - 1 - row) * m_grid.cellSize + cellHalf
+        };
+
+        return Add(m_grid.gridStart, cellOffset);
+    }
+
+    Rect MatrixLedRenderer::GetGridBounds() const
+    {
+        const float gridWidth = m_grid.columns * m_grid.cellSize;
+        const float gridHeight = m_grid.rows * m_grid.cellSize;
+
+        return {
+            m_grid.gridStart.x,
+            m_grid.gridStart.y,
+            gridWidth,
+            gridHeight
+        };
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -331,42 +303,16 @@ namespace Spectrum {
         }
     }
 
-    void MatrixLedRenderer::UpdatePeakTracking(float deltaTime)
-    {
-        for (int i = 0; i < m_grid.columns; ++i) {
-            UpdateSinglePeak(i, deltaTime);
-        }
-    }
-
     void MatrixLedRenderer::UpdateSingleValue(size_t index, float target)
     {
         const float current = m_smoothedValues[index];
 
-        const float attackRate = kAttackRate * m_settings.smoothingMultiplier;
-        const float decayRate = 1.0f - (kDecayRate * m_settings.smoothingMultiplier);
+        const float attackRate = kAttackRate * m_settings.blurAmount;
+        const float decayRate = 1.0f - (kDecayRate * m_settings.blurAmount);
 
         const float rate = (current < target) ? attackRate : decayRate;
 
-        m_smoothedValues[index] = Utils::Lerp(current, target, rate);
-    }
-
-    void MatrixLedRenderer::UpdateSinglePeak(size_t index, float deltaTime)
-    {
-        const float currentValue = m_smoothedValues[index];
-
-        if (currentValue > m_peakValues[index]) {
-            // New peak detected
-            m_peakValues[index] = currentValue;
-            m_peakTimers[index] = kPeakHoldTime;
-        }
-        else if (m_peakTimers[index] > 0.0f) {
-            // Hold phase
-            m_peakTimers[index] -= deltaTime;
-        }
-        else {
-            // Decay phase
-            m_peakValues[index] *= kPeakDecayRate;
-        }
+        m_smoothedValues[index] = Helpers::Math::Lerp(current, target, rate);
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -442,7 +388,7 @@ namespace Spectrum {
 
                 const Color ledColor = CalculateLedColor(
                     row,
-                    Utils::Saturate(ledBrightness)
+                    Saturate(ledBrightness)
                 );
 
                 batches[ledColor].push_back(GetLedRect(col, row));
@@ -457,9 +403,9 @@ namespace Spectrum {
         std::vector<Rect> peakRects;
 
         for (int col = 0; col < m_grid.columns; ++col) {
-            if (!IsPeakVisible(col)) continue;
+            if (!m_peakTracker.IsPeakVisible(col)) continue;
 
-            const int peakRow = GetPeakLedRow(m_peakValues[col]);
+            const int peakRow = GetPeakLedRow(m_peakTracker.GetPeak(col));
 
             if (IsRowValid(peakRow)) {
                 peakRects.push_back(GetLedRect(col, peakRow));
@@ -486,14 +432,13 @@ namespace Spectrum {
     Point MatrixLedRenderer::GetLedPosition(int column, int row) const
     {
         const Rect rect = GetLedRect(column, row);
-        return { rect.x, rect.y };
+        return GetTopLeft(rect);
     }
 
     int MatrixLedRenderer::GetActiveLedCount(float value) const
     {
         int count = static_cast<int>(value * m_grid.rows);
 
-        // Show at least one LED if value is above threshold
         if (count == 0 && value > kMinValueThreshold) {
             count = 1;
         }
@@ -516,7 +461,7 @@ namespace Spectrum {
 
         if (HasExternalColor()) {
             const float t = (m_rowColors.size() > 1)
-                ? static_cast<float>(row) / (m_rowColors.size() - 1)
+                ? Helpers::Math::Normalize(static_cast<float>(row), 0.0f, static_cast<float>(m_rowColors.size() - 1))
                 : 0.0f;
 
             baseColor = ApplyExternalColorBlend(baseColor, t);
@@ -528,12 +473,11 @@ namespace Spectrum {
 
     Color MatrixLedRenderer::GetRowBaseColor(int row) const
     {
-        const int rowIndex = std::min(
+        const int rowIndex = Helpers::Math::Clamp(
             row,
+            0,
             static_cast<int>(m_rowColors.size()) - 1
         );
-
-        if (rowIndex < 0) return {};
 
         return m_rowColors[rowIndex];
     }
@@ -543,7 +487,7 @@ namespace Spectrum {
         float t
     ) const
     {
-        auto blend = [](float ext, float grad, float intensity) {
+        auto blend = [&](float ext, float grad, float intensity) {
             return ext * kExternalColorBlend +
                 grad * (1.0f - kExternalColorBlend) * intensity;
             };
@@ -595,7 +539,7 @@ namespace Spectrum {
             return kSpectrumGradient.back();
         }
 
-        return Utils::InterpolateColor(
+        return Helpers::Color::InterpolateColor(
             kSpectrumGradient[index],
             kSpectrumGradient[index + 1],
             fraction
@@ -608,7 +552,7 @@ namespace Spectrum {
 
     float MatrixLedRenderer::CalculateLedBrightness(float value) const
     {
-        return Utils::Lerp(kMinActiveBrightness, 1.0f, value);
+        return Helpers::Math::Lerp(kMinActiveBrightness, 1.0f, value);
     }
 
     float MatrixLedRenderer::CalculateTopLedBrightness(float brightness) const
@@ -633,11 +577,6 @@ namespace Spectrum {
     bool MatrixLedRenderer::IsRowValid(int row) const
     {
         return row >= 0 && row < m_grid.rows;
-    }
-
-    bool MatrixLedRenderer::IsPeakVisible(int column) const
-    {
-        return IsColumnValid(column) && m_peakTimers[column] > 0.0f;
     }
 
 } // namespace Spectrum

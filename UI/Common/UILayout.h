@@ -1,135 +1,96 @@
 #ifndef SPECTRUM_CPP_UI_LAYOUT_H
 #define SPECTRUM_CPP_UI_LAYOUT_H
 
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// Defines centralized UI layout constants and metrics.
-// 
-// This namespace serves as the single source of truth for all UI dimensions,
-// spacing, and styling constants. It ensures visual consistency across the
-// application and simplifies global UI adjustments.
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+#include "Common/Types.h"
 
-#include "Common/Common.h"
+namespace Spectrum::UILayout {
 
-namespace Spectrum
-{
-    namespace UILayout
+    constexpr float kPadding = 16.0f;
+    constexpr float kSpacing = 8.0f;
+    constexpr float kLargeSpacing = 16.0f;
+
+    constexpr float kToggleButtonWidth = 24.0f;
+    constexpr float kToggleButtonHeight = 48.0f;
+
+    inline Color kPanelBackgroundColor = Color(0.05f, 0.05f, 0.10f, 0.95f);
+    inline Color kPanelBorderColor = Color(0.3f, 0.3f, 0.4f, 0.8f);
+    inline Color kSeparatorColor = Color(0.3f, 0.3f, 0.4f, 0.5f);
+
+    namespace VisualProperties
     {
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // General Metrics & Spacing
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        constexpr float kPanelCornerRadius = 8.0f;
+        constexpr float kDefaultBorderWidth = 1.0f;
+    }
 
-        constexpr float kPadding = 15.0f;
-        constexpr float kGroupSpacing = 20.0f;
-        constexpr float kWidgetSpacing = 12.0f;
+    namespace Animation
+    {
+        constexpr float kSpeed = 8.0f;
+        constexpr float kFastSpeed = 12.0f;
+    }
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Control Panel Metrics
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    namespace ControlPanel
+    {
+        constexpr float kWidth = 200.0f;
+        constexpr float kTitleHeight = 40.0f;
+        constexpr float kButtonHeight = 32.0f;
 
-        constexpr float kControlPanelWidth = 220.0f;
-        constexpr float kNavWidgetHeight = 35.0f;
-        constexpr float kNavButtonWidth = 40.0f;
-        constexpr size_t kNavControlCount = 3;
-        constexpr float kStandaloneButtonHeight = 30.0f;
-        constexpr size_t kActionButtonCount = 3;
-        constexpr float kControlPanelHeight =
-            kPadding +
-            (kNavControlCount * kNavWidgetHeight) +
-            ((kNavControlCount - 1) * kWidgetSpacing) +
-            kGroupSpacing +
-            (kActionButtonCount * kStandaloneButtonHeight) +
-            ((kActionButtonCount - 1) * kWidgetSpacing) +
-            kPadding;
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Audio Settings Panel Metrics
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-        constexpr float kAudioPanelWidth = 340.0f;
-        constexpr float kAudioPanelTitleHeight = 50.0f;
-        constexpr float kCloseButtonSize = 25.0f;
-        constexpr float kCloseButtonPadding = 10.0f;
-        constexpr float kSliderHeight = 15.0f;
-        constexpr float kSliderLabelYOffset = -18.0f;
-        constexpr float kSliderLabelSpacing = 20.0f;
-        constexpr size_t kSliderCount = 3;
-        constexpr float kAudioPanelHeight =
-            kPadding +
-            kAudioPanelTitleHeight +
-            (kSliderCount * (kSliderLabelSpacing + kSliderHeight)) +
-            ((kSliderCount - 1) * kGroupSpacing) +
-            kPadding;
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Animation & Styling Constants
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-        constexpr float kAnimationSpeed = 8.0f;
-        constexpr float kToggleButtonWidth = 20.0f;
-        constexpr float kToggleButtonHeight = 40.0f;
-        constexpr Color kSeparatorColor = { 1.0f, 1.0f, 1.0f, 0.1f };
-        constexpr Color kPanelBackgroundColor = { 0.1f, 0.1f, 0.12f, 0.95f };
-        constexpr Color kPanelBorderColor = { 1.0f, 1.0f, 1.0f, 0.1f };
-        constexpr Color kToggleButtonColor = { 0.1f, 0.1f, 0.1f, 0.7f };
-        constexpr Color kToggleButtonHoverColor = { 0.3f, 0.3f, 0.3f, 0.7f };
-        constexpr Color kToggleButtonBorderColor = { 1.0f, 1.0f, 1.0f, 0.1f };
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Control Panel Layout Helper Functions
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-        constexpr float GetNavControlY(size_t index) noexcept
+        constexpr float GetPanelHeight()
         {
-            return kPadding + index * (kNavWidgetHeight + kWidgetSpacing);
+            return kTitleHeight + (kButtonHeight + kSpacing) * 3 + kPadding * 2;
         }
 
-        constexpr float GetSeparatorY() noexcept
+        constexpr float GetSeparatorY()
         {
-            return kPadding +
-                (kNavControlCount * kNavWidgetHeight) +
-                ((kNavControlCount - 1) * kWidgetSpacing) +
-                (kGroupSpacing / 2.0f);
+            return kPadding + kTitleHeight;
         }
+    }
 
-        constexpr float GetActionButtonY(size_t index) noexcept
+    namespace AudioSettingsPanel
+    {
+        constexpr float kWidth = 400.0f;
+        constexpr float kTitleHeight = 60.0f;
+        constexpr float kSliderHeight = 40.0f;
+        constexpr float kButtonHeight = 36.0f;
+        constexpr float kLabelYOffset = -20.0f;
+
+        constexpr float GetPanelHeight()
         {
-            return kPadding +
-                (kNavControlCount * kNavWidgetHeight) +
-                ((kNavControlCount - 1) * kWidgetSpacing) +
-                kGroupSpacing +
-                index * (kStandaloneButtonHeight + kWidgetSpacing);
+            return kTitleHeight + (kSliderHeight + kSpacing * 3) * 3 + kButtonHeight + kPadding * 3;
         }
+    }
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Audio Settings Panel Layout Helper Functions
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    inline Rect CalculateCenteredRect(
+        float windowWidth,
+        float windowHeight,
+        float rectWidth,
+        float rectHeight
+    )
+    {
+        return Rect{
+            (windowWidth - rectWidth) * 0.5f,
+            (windowHeight - rectHeight) * 0.5f,
+            rectWidth,
+            rectHeight
+        };
+    }
 
-        constexpr float GetSliderYOffset(size_t index) noexcept
-        {
-            return kPadding +
-                kAudioPanelTitleHeight +
-                kSliderLabelSpacing +
-                index * (kSliderLabelSpacing + kSliderHeight + kGroupSpacing);
-        }
+    inline Point CalculateTopRightPosition(
+        float windowWidth,
+        float objectWidth,
+        float objectHeight
+    )
+    {
+        return Point{
+            windowWidth - objectWidth - kPadding,
+            kPadding
+        };
+    }
 
-        constexpr float GetSliderWidth() noexcept
-        {
-            return kAudioPanelWidth - 2 * kPadding;
-        }
+    inline Point CalculateTopLeftPosition()
+    {
+        return Point{ kPadding, kPadding };
+    }
 
-        constexpr float GetCloseButtonXOffset() noexcept
-        {
-            return kCloseButtonSize + kCloseButtonPadding;
-        }
-
-        constexpr float GetCloseButtonYOffset() noexcept
-        {
-            return kCloseButtonPadding;
-        }
-
-    } // namespace UILayout
-
-} // namespace Spectrum
+} // namespace Spectrum::UILayout
 
 #endif // SPECTRUM_CPP_UI_LAYOUT_H

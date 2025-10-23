@@ -8,9 +8,22 @@
 // This class handles the creation, switching, and configuration of
 // renderers, acting as a central authority for visualization style and
 // quality settings.
+//
+// Error handling:
+// - Uses centralized validation system (Graphics/API/Helpers/Core/Validation.h)
+// - Provides detailed logging for debugging
+// - Gracefully handles missing or invalid renderers
+// - Ensures application stability during renderer switches
+// - Guarantees transactional state changes (ACID-like behavior)
+//
+// Validation strategy:
+// - All pointer validation via unified Validation.h helpers
+// - Domain-specific validation (dimensions) kept local
+// - Consistent error logging format across application
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Common/Common.h"
+#include <Common/Logger.h>
 #include <map>
 #include <memory>
 #include <string_view>
@@ -21,7 +34,7 @@ namespace Spectrum
     class IRenderer;
 
     namespace Platform {
-        class WindowManager; // Corrected namespace
+        class WindowManager;
     }
 
     class RendererManager final
@@ -66,27 +79,115 @@ namespace Spectrum
         [[nodiscard]] std::string_view GetCurrentRendererName() const noexcept;
         [[nodiscard]] std::string_view GetQualityName() const noexcept;
 
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // State Queries
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] bool IsRendererActive() const noexcept;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Diagnostics
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] size_t GetRendererCount() const noexcept;
+        [[nodiscard]] bool IsRendererAvailable(RenderStyle style) const noexcept;
+
     private:
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Private Implementation / Internal Helpers
+        // Internal State Management
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        struct RendererState {
+            IRenderer* renderer = nullptr;
+            RenderStyle style = RenderStyle::Bars;
+            bool isActive = false;
+
+            void Clear() noexcept {
+                renderer = nullptr;
+                style = RenderStyle::Bars;
+                isActive = false;
+            }
+        };
+
+        struct ActivationContext {
+            int width = 0;
+            int height = 0;
+            IRenderer* renderer = nullptr;
+            RenderStyle style = RenderStyle::Bars;
+        };
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Initialization
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void SubscribeToEvents(EventBus* bus);
-        void CreateRenderers();
-        void ActivateInitialRenderer();
-        void DeactivateCurrentRenderer();
-        void ActivateNewRenderer(RenderStyle style);
+        bool CreateRenderers();
+        bool ActivateInitialRenderer();
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Renderer Lifecycle - High Level
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        bool SwitchRenderer(RenderStyle newStyle);
+        void DeactivateCurrentRenderer() noexcept;
+        bool ActivateNewRenderer(RenderStyle style);
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Renderer Lifecycle - Low Level (Transactional)
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        bool PrepareActivationContext(RenderStyle style, ActivationContext& outContext) const;
+        bool TryActivateRenderer(ActivationContext& context) const noexcept;
+        void CommitRendererState(const ActivationContext& context) noexcept;
+        bool AttemptRendererRecovery(RenderStyle fallbackStyle);
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Quality Management
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         void SetQuality(RenderQuality quality);
+        bool ApplyQualityToRenderer(IRenderer* renderer, RenderQuality quality) noexcept;
+        void ApplyQualityToAllRenderers(RenderQuality quality);
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Resize Handling
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        bool HandleRendererResize(int width, int height);
+        bool RecoverFromResizeFailure();
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Domain-Specific Validation (kept local - not pointer validation)
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] bool ValidateDimensions(int width, int height) const noexcept;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Renderer Lookup
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] IRenderer* FindRenderer(RenderStyle style) const noexcept;
+        [[nodiscard]] bool GetEngineDimensions(int& outWidth, int& outHeight) const noexcept;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Logging Helpers
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        void LogRendererSwitch(RenderStyle from, RenderStyle to) const;
+        void LogQualityChange(RenderQuality quality) const;
+        void LogRendererCreation() const;
+        void LogActivationSuccess(const ActivationContext& context) const;
+        void LogActivationFailure(RenderStyle style, const char* reason) const;
+        void LogDeactivation(IRenderer* renderer) const noexcept;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Member Variables
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         std::map<RenderStyle, std::unique_ptr<IRenderer>> m_renderers;
-        IRenderer* m_currentRenderer;
-        RenderStyle m_currentStyle;
+        RendererState m_currentState;
         RenderQuality m_currentQuality;
-        Platform::WindowManager* m_windowManager; // Corrected type
+        Platform::WindowManager* m_windowManager;
     };
 
 } // namespace Spectrum

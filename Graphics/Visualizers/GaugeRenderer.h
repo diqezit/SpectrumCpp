@@ -13,6 +13,7 @@
 // - Asymmetric needle response (fast attack, slow decay)
 // - Peak lamp with hold time (matches hardware meters)
 // - Vintage aesthetic with gradients and shadows
+// - Uses GeometryHelpers for all geometric calculations
 //
 // Design notes:
 // - All rendering methods are const (state in m_currentDbValue, etc.)
@@ -21,6 +22,7 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Graphics/Base/BaseRenderer.h"
+#include "Graphics/Visualizers/Settings/QualityTraits.h"
 #include <utility>
 #include <vector>
 
@@ -67,6 +69,12 @@ namespace Spectrum {
         ) override;
 
     private:
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Settings
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        using Settings = Settings::GaugeSettings;
+
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Main Drawing Components (SRP)
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -225,24 +233,16 @@ namespace Spectrum {
             bool isMajor
         ) const;
 
-        [[nodiscard]] Rect CreateCenteredTextRect(
-            const Point& center,
-            float width,
-            float height
-        ) const;
-
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Member Variables
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        Settings m_settings;
 
         float m_currentDbValue;
         float m_currentNeedleAngle;
         int m_peakHoldCounter;
         bool m_peakActive;
-
-        float m_smoothingFactorInc;
-        float m_smoothingFactorDec;
-        float m_riseSpeed;
     };
 
 } // namespace Spectrum

@@ -17,7 +17,7 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "RenderUtils.h"
-#include "Graphics/API/D2DHelpers.h"
+#include "Graphics/API/GraphicsHelpers.h"
 #include <numeric>
 #include <algorithm>
 

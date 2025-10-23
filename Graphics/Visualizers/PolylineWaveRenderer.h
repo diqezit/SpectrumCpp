@@ -2,33 +2,26 @@
 #define SPECTRUM_CPP_POLYLINE_WAVE_RENDERER_H
 
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// Defines the PolylineWaveRenderer for sunburst/starburst visualization.
+// Defines the PolylineWaveRenderer for enhanced sunburst visualization
 //
-// This renderer displays spectrum data as radial bars emanating from a
-// central point, creating a dynamic sunburst pattern that pulses with
-// the audio intensity.
+// Dynamic sunburst pattern with advanced visual effects:
+// - Gradient bars with color transitions from center to edge
+// - Pulsating inner core responding to audio intensity
+// - Multi-layer rendering with depth and glow effects
+// - Dynamic highlights on intensity peaks
+// - Smooth color interpolation for visual appeal
+// - Uses GeometryHelpers for all geometric calculations
 //
-// Key features:
-// - Bars radiate outward from center in circular arrangement
-// - Bar length modulated by frequency magnitude
-// - Multi-layer rendering with glow and highlight effects
-// - Dynamic bar width calculation based on count
-// - Pre-calculated directional vectors for performance
-//
-// Design notes:
-// - All rendering methods are const (state in m_barDirections)
-// - Quality settings control visual effects and performance
-// - Layered rendering ensures proper alpha blending
-// - Bar directions cached to avoid repeated trigonometry
+// Performance optimized with pre-calculated directions and minimal allocations
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Graphics/Base/BaseRenderer.h"
+#include "Graphics/Visualizers/Settings/QualityTraits.h"
 #include <vector>
 
 namespace Spectrum {
 
     class Canvas;
-    class Paint;  // Forward declaration added
 
     class PolylineWaveRenderer final : public BaseRenderer
     {
@@ -57,6 +50,11 @@ namespace Spectrum {
 
         void UpdateSettings() override;
 
+        void UpdateAnimation(
+            const SpectrumData& spectrum,
+            float deltaTime
+        ) override;
+
         void DoRender(
             Canvas& canvas,
             const SpectrumData& spectrum
@@ -64,63 +62,85 @@ namespace Spectrum {
 
     private:
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Data Structures
+        // Settings
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        struct QualitySettings
-        {
-            bool useGlow;
-            bool useHighlight;
-            float glowIntensity;
-            float innerCircleAlpha;
-            float barSpacingRatio;
-        };
+        using Settings = Settings::PolylineWaveSettings;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Main Rendering Components (SRP)
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-        void RenderInnerCircle(
-            Canvas& canvas,
-            const Point& center,
-            float radius
-        ) const;
-
-        void RenderGlowLayer(
-            Canvas& canvas,
-            const SpectrumData& spectrum,
-            const Point& center,
-            float radius,
-            float barWidth
-        ) const;
-
-        void RenderMainBars(
-            Canvas& canvas,
-            const SpectrumData& spectrum,
-            const Point& center,
-            float radius,
-            float barWidth
-        ) const;
-
-        void RenderHighlightLayer(
-            Canvas& canvas,
-            const SpectrumData& spectrum,
-            const Point& center,
-            float radius,
-            float barWidth
-        ) const;
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Configuration Management
+        // Configuration
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void EnsureBarDirections(size_t barCount);
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Animation
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        void UpdateCoreRadius(const SpectrumData& spectrum, float deltaTime);
+        [[nodiscard]] float CalculateAverageIntensity(const SpectrumData& spectrum) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Rendering Layers
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        void RenderOuterGlow(
+            Canvas& canvas,
+            const SpectrumData& spectrum,
+            const Point& center,
+            float baseRadius,
+            float barWidth
+        ) const;
+
+        void RenderPulsingCore(
+            Canvas& canvas,
+            const Point& center,
+            float baseRadius
+        ) const;
+
+        void RenderGradientBars(
+            Canvas& canvas,
+            const SpectrumData& spectrum,
+            const Point& center,
+            float baseRadius,
+            float barWidth
+        ) const;
+
+        void RenderSolidBars(
+            Canvas& canvas,
+            const SpectrumData& spectrum,
+            const Point& center,
+            float baseRadius,
+            float barWidth
+        ) const;
+
+        void RenderDynamicHighlights(
+            Canvas& canvas,
+            const SpectrumData& spectrum,
+            const Point& center,
+            float baseRadius,
+            float barWidth
+        ) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Individual Bar Rendering
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        void RenderGradientBar(
+            Canvas& canvas,
+            const Point& center,
+            const Point& direction,
+            float baseRadius,
+            float barLength,
+            float barWidth,
+            float magnitude
+        ) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Calculation Helpers
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        [[nodiscard]] float CalculateRadius() const;
+        [[nodiscard]] float CalculateBaseRadius() const;
 
         [[nodiscard]] float CalculateBarWidth(
             size_t barCount,
@@ -132,12 +152,30 @@ namespace Spectrum {
             float radius
         ) const;
 
+        [[nodiscard]] Color CalculateBarColorAtPosition(
+            float normalizedPosition,
+            float magnitude
+        ) const;
+
+        [[nodiscard]] Color GetAccentColor() const;
+        [[nodiscard]] Point GetViewportCenter() const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Validation
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] bool ShouldRenderBar(float magnitude) const;
+        [[nodiscard]] bool ShouldRenderGlow(float magnitude) const;
+        [[nodiscard]] bool ShouldRenderHighlight(float magnitude) const;
+
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Member Variables
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        QualitySettings m_settings;
+        Settings m_settings;
         std::vector<Point> m_barDirections;
+        float m_currentCoreRadius;
+        float m_targetCoreRadius;
     };
 
 } // namespace Spectrum

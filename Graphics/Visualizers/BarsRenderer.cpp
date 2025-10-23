@@ -2,35 +2,45 @@
 // Implements the BarsRenderer for classic vertical bar visualization.
 //
 // Implementation details:
-// - Quality settings control shadows, highlights, and corner radius
-// - Color brightness varies with magnitude for visual feedback
-// - Highlights rendered as small white rectangles at bar tops
-// - Uses D2DHelpers for sanitization and constants
+// - Each bar height calculated from magnitude
+// - Optional shadow rendered before main bar
+// - Optional highlight rendered after main bar
+// - Rounded corners controlled by quality setting
+// - Brightness increases with magnitude for visual impact
+// - Uses GeometryHelpers for all geometric operations
 //
 // Rendering pipeline:
-// 1. Calculate bar layout based on viewport width
-// 2. For each bar: calculate height from magnitude
-// 3. Render with effects (optional shadow)
-// 4. Render highlight (quality-dependent)
+// 1. Calculate bar layout (spacing and width)
+// 2. For each visible bar:
+//    a. Calculate bar color from magnitude
+//    b. Render shadow layer (if enabled)
+//    c. Render main bar shape
+//    d. Render highlight overlay (if enabled)
+//
+// Visual design:
+// - Bars grow from bottom to top
+// - Highlight appears on top 20% of bar
+// - Shadow offset slightly to bottom-right
+// - Color brightness range: 70% to 130%
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Graphics/Visualizers/BarsRenderer.h"
-#include "Graphics/API/D2DHelpers.h"
-#include "Graphics/API/Structs/Paint.h"
-#include "Common/MathUtils.h"
-#include "Common/ColorUtils.h"
+#include "Graphics/API/GraphicsHelpers.h"
 #include "Graphics/Base/RenderUtils.h"
-#include "Graphics/API/Canvas.h"
+#include "Graphics/Visualizers/Settings/QualityPresets.h"
 
 namespace Spectrum {
 
     using namespace Helpers::Sanitize;
+    using namespace Helpers::Geometry;
+    using namespace Helpers::Math;
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Constants
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     namespace {
+
         constexpr float kHeightScale = 0.9f;
         constexpr float kMinVisibleHeight = 1.0f;
 
@@ -48,6 +58,7 @@ namespace Spectrum {
         constexpr float kBrightnessRange = 0.6f;
 
         constexpr float kSpacingDivisor = 2.0f;
+
     } // anonymous namespace
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -66,18 +77,7 @@ namespace Spectrum {
 
     void BarsRenderer::UpdateSettings()
     {
-        switch (m_quality) {
-        case RenderQuality::Low:
-            m_settings = { 1.0f, 0.0f, false, false };
-            break;
-        case RenderQuality::High:
-            m_settings = { 2.0f, 5.0f, true, true };
-            break;
-        case RenderQuality::Medium:
-        default:
-            m_settings = { 2.0f, 3.0f, false, true };
-            break;
-        }
+        m_settings = QualityPresets::Get<BarsRenderer>(m_quality);
     }
 
     void BarsRenderer::DoRender(
@@ -111,7 +111,7 @@ namespace Spectrum {
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Single Bar Rendering (SRP)
+    // Rendering Components (SRP)
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     void BarsRenderer::RenderBar(
@@ -205,12 +205,15 @@ namespace Spectrum {
 
     Rect BarsRenderer::CalculateHighlightRect(const Rect& barRect) const
     {
-        return {
-            barRect.x + kHighlightMargin,
-            barRect.y + kHighlightMargin,
-            barRect.width - kHighlightMargin * 2.0f,
-            std::min(kHighlightMaxHeight, barRect.height * kHighlightHeightRatio)
-        };
+        return Deflate(
+            {
+                barRect.x,
+                barRect.y,
+                barRect.width,
+                std::min(kHighlightMaxHeight, barRect.height * kHighlightHeightRatio)
+            },
+            -kHighlightMargin
+        );
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -219,7 +222,7 @@ namespace Spectrum {
 
     Color BarsRenderer::CalculateBarColor(float magnitude) const
     {
-        return Utils::AdjustBrightness(
+        return Helpers::Color::AdjustBrightness(
             m_primaryColor,
             kBrightnessMin + kBrightnessRange * magnitude
         );
@@ -241,7 +244,7 @@ namespace Spectrum {
 
     bool BarsRenderer::IsHighlightVisible(const Rect& rect) const
     {
-        return rect.width > 0.0f && rect.height > 0.0f;
+        return IsValid(rect);
     }
 
 } // namespace Spectrum
