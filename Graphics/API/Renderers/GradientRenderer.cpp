@@ -11,10 +11,10 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "GradientRenderer.h"
-#include "D2DHelpers.h"
-#include "ColorUtils.h"
-#include "Core/ResourceCache.h"
-#include "Core/GeometryBuilder.h"
+#include "Graphics/API/D2DHelpers.h"
+#include "Common/ColorUtils.h"
+#include "Graphics/API/Core/ResourceCache.h"
+#include "Graphics/API/Core/GeometryBuilder.h"
 #include <sstream>
 #include <iomanip>
 

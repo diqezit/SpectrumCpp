@@ -9,7 +9,7 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "MainWindow.h"
-#include "Resource.h"
+#include "Resources/Resource.h"
 #include "MessageHandler.h"
 #include "Win32Utils.h"
 

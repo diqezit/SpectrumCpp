@@ -8,7 +8,7 @@
 #define SPECTRUM_CPP_ANIMATEDAUDIOSOURCE_H
 
 #include "IAudioSource.h"
-#include "SpectrumPostProcessor.h"
+#include "Audio/Processing/SpectrumPostProcessor.h"
 
 namespace Spectrum {
 

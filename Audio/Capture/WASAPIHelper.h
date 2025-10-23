@@ -1,7 +1,7 @@
 #ifndef SPECTRUM_CPP_WASAPI_HELPER_H
 #define SPECTRUM_CPP_WASAPI_HELPER_H
 
-#include "Common.h"
+#include "Common/Common.h"
 
 namespace Spectrum {
     namespace WASAPI {

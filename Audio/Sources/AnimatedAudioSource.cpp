@@ -5,8 +5,8 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "AnimatedAudioSource.h"
-#include "Random.h"
-#include "MathUtils.h"
+#include "Common/Random.h"
+#include "Common/MathUtils.h"
 
 namespace Spectrum {
 

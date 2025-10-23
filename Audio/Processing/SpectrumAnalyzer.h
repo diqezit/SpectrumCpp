@@ -4,8 +4,8 @@
 #ifndef SPECTRUM_CPP_SPECTRUM_ANALYZER_H
 #define SPECTRUM_CPP_SPECTRUM_ANALYZER_H
 
-#include "Common.h"
-#include "AudioCapture.h"
+#include "Common/Common.h"
+#include "Audio/Capture/AudioCapture.h"
 #include "AudioBuffer.h"
 #include "FFTProcessor.h"
 #include "FrequencyMapper.h"

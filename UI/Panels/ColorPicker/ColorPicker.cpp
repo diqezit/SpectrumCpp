@@ -3,17 +3,20 @@
 // visual way to select colors from an HSV spectrum.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "ColorPicker.h"
-#include "Canvas.h"
-#include "RenderEngine.h"
-#include "ColorWheelGenerator.h"
-#include "ColorWheelRenderer.h"
-#include "MathUtils.h"
-#include "ColorUtils.h"
+#include "UI/Panels/ColorPicker/ColorPicker.h"
+#include "UI/Panels/ColorPicker/ColorWheelGenerator.h"
+#include "UI/Panels/ColorPicker/ColorWheelRenderer.h"
+#include "Graphics/API/Canvas.h"
+#include "Graphics/API/Core/RenderEngine.h"
+#include "Common/MathUtils.h"
+#include "Common/ColorUtils.h"
 
 namespace Spectrum {
 
-    ColorPicker::ColorPicker(const Point& position, float radius) :
+    ColorPicker::ColorPicker(
+        const Point& position,
+        float radius
+    ) :
         m_bounds(position.x, position.y, radius * 2.0f, radius * 2.0f),
         m_isVisible(true),
         m_isMouseOver(false),
@@ -94,7 +97,12 @@ namespace Spectrum {
         );
 
         const float animatedAlpha = m_hoverAnimationProgress * alpha;
-        ColorWheelRenderer::DrawBorder(canvas, m_bounds, m_isMouseOver, animatedAlpha);
+        ColorWheelRenderer::DrawBorder(
+            canvas,
+            m_bounds,
+            m_isMouseOver,
+            animatedAlpha
+        );
 
         if (m_isMouseOver && m_hoverAnimationProgress > 0.01f) {
             ColorWheelRenderer::DrawHoverPreview(
@@ -138,7 +146,10 @@ namespace Spectrum {
         return (dx * dx + dy * dy) <= (radius * radius);
     }
 
-    Color ColorPicker::CalculateColorFromPosition(int x, int y) const {
+    Color ColorPicker::CalculateColorFromPosition(
+        int x,
+        int y
+    ) const {
         const Point center = GetCenter();
         const float radius = m_bounds.width * 0.5f;
         const float dx = static_cast<float>(x) - center.x;

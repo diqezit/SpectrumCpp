@@ -7,7 +7,7 @@
 #ifndef SPECTRUM_CPP_COLOR_PICKER_H
 #define SPECTRUM_CPP_COLOR_PICKER_H
 
-#include "Common.h"
+#include "Common/Common.h"
 #include <functional>
 
 namespace Spectrum {
@@ -18,7 +18,10 @@ namespace Spectrum {
     public:
         using ColorSelectedCallback = std::function<void(const Color&)>;
 
-        ColorPicker(const Point& position, float radius);
+        ColorPicker(
+            const Point& position,
+            float radius
+        );
         ~ColorPicker() = default;
 
         bool Initialize(Canvas& canvas);

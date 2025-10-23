@@ -5,7 +5,7 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "SpectrumPostProcessor.h"
-#include "MathUtils.h"
+#include "Common/MathUtils.h"
 
 namespace Spectrum {
 

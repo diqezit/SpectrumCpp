@@ -29,8 +29,8 @@
 #ifndef SPECTRUM_CPP_TRANSFORM_MANAGER_H
 #define SPECTRUM_CPP_TRANSFORM_MANAGER_H
 
-#include "Common.h"
-#include "Core/IRenderComponent.h"
+#include "Common/Common.h"
+#include "Graphics/API/Core/IRenderComponent.h"
 #include <stack>
 
 namespace Spectrum {

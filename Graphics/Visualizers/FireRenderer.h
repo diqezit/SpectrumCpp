@@ -22,7 +22,7 @@
 // - Uses separate read/write buffers for propagation
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "BaseRenderer.h"
+#include "Graphics/Base/BaseRenderer.h"
 #include <vector>
 
 namespace Spectrum {
@@ -91,6 +91,11 @@ namespace Spectrum {
         void InitializeGrid();
         void CreateFirePalette();
 
+        [[nodiscard]] bool CanInitializeGrid() const;
+        [[nodiscard]] int CalculateGridWidth() const;
+        [[nodiscard]] int CalculateGridHeight() const;
+        [[nodiscard]] size_t CalculateGridSize() const;
+
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Fire Simulation
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -99,23 +104,40 @@ namespace Spectrum {
         void InjectHeat(const SpectrumData& spectrum);
         void PropagateFire();
 
-        [[nodiscard]] static float GetSourcePixelValue(
-            const std::vector<float>& readGrid,
+        void InjectHeatAtPosition(
             int x,
-            int y,
-            int gridWidth,
-            bool useWind,
-            float time
+            int bottomY,
+            float normalizedValue
         );
 
-        [[nodiscard]] static float ApplySmoothing(
+        void PropagateCell(
             const std::vector<float>& readGrid,
-            float currentValue,
             int x,
-            int y,
-            int gridWidth,
-            bool useSmoothing
+            int y
         );
+
+        [[nodiscard]] float GetCellValue(
+            const std::vector<float>& grid,
+            int x,
+            int y
+        ) const;
+
+        [[nodiscard]] int CalculateWindOffset(
+            int x,
+            float time
+        ) const;
+
+        [[nodiscard]] float CalculateSmoothedValue(
+            const std::vector<float>& readGrid,
+            float centerValue,
+            int x,
+            int srcY
+        ) const;
+
+        [[nodiscard]] int MapSpectrumIndexToGridX(
+            size_t spectrumIndex,
+            size_t spectrumSize
+        ) const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Rendering
@@ -127,11 +149,49 @@ namespace Spectrum {
             int y
         ) const;
 
+        void RenderPixelRect(
+            Canvas& canvas,
+            const Rect& pixelRect,
+            const Color& color
+        ) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Geometry Calculation
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] Rect CalculatePixelRect(
+            int x,
+            int y
+        ) const;
+
+        [[nodiscard]] size_t GetGridIndex(
+            int x,
+            int y
+        ) const;
+
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Color Calculation
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         [[nodiscard]] Color GetColorFromPalette(float intensity) const;
+        [[nodiscard]] Color ApplyAlphaAdjustment(Color color, float intensity) const;
+
+        [[nodiscard]] Color InterpolatePaletteColors(
+            size_t index1,
+            size_t index2,
+            float t
+        ) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Validation Helpers
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] bool IsGridValid() const;
+        [[nodiscard]] bool IsGridIndexValid(size_t index) const;
+        [[nodiscard]] bool IsPixelVisible(float intensity) const;
+        [[nodiscard]] bool IsColorVisible(const Color& color) const;
+        [[nodiscard]] bool IsBottomRowValid(int bottomY) const;
+        [[nodiscard]] bool IsXInBounds(int x) const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Member Variables

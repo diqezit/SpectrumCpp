@@ -19,8 +19,8 @@
 // - Non-owning pointers to dependencies (lifetime managed externally)
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "Common.h"
-#include "Core/IRenderComponent.h"
+#include "Common/Common.h"
+#include "Graphics/Api/Core/IRenderComponent.h"
 #include <vector>
 
 namespace Spectrum {

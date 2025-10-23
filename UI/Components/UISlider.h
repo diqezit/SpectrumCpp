@@ -13,13 +13,12 @@
 // - Optimized callback invocation with change threshold
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "Common.h"
+#include "Common/Common.h"
 #include <functional>
 
 namespace Spectrum {
 
-    // Forward declaration to avoid including the full Canvas header
-    class Canvas;
+    class Canvas; // Forward declaration
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Public Structures
@@ -32,6 +31,7 @@ namespace Spectrum {
 
     struct SliderStyle {
         Color trackColor{ 0.1f, 0.1f, 0.1f, 0.8f };
+        Color fillColor{ 0.2f, 0.4f, 0.8f, 1.0f };
         Color thumbColor{ 0.8f, 0.8f, 0.8f, 1.0f };
         Color thumbHoverColor{ 1.0f, 1.0f, 1.0f, 1.0f };
         Color thumbBorderColor{ 0.1f, 0.1f, 0.1f, 0.5f };

@@ -16,8 +16,8 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "BaseRenderer.h"
-#include "../API/D2DHelpers.h"
-#include "../API/Canvas.h"
+#include "Graphics/API/D2DHelpers.h"
+#include "Graphics/API/Canvas.h"
 
 namespace Spectrum {
 

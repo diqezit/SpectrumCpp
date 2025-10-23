@@ -20,7 +20,7 @@
 // - Non-owning pointer to ID2D1Factory (lifetime managed externally)
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "Common.h"
+#include "Common/Common.h"
 #include <vector>
 
 namespace Spectrum {
@@ -83,6 +83,13 @@ namespace Spectrum {
             float outerRadius,
             float innerRadius,
             int points
+        );
+
+        [[nodiscard]] static std::vector<Point> GenerateRegularPolygonVertices(
+            const Point& center,
+            float radius,
+            int sides,
+            float rotation
         );
 
         [[nodiscard]] static std::vector<Point> GenerateWaveformPoints(

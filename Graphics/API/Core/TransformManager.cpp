@@ -11,8 +11,8 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "TransformManager.h"
-#include "../API/D2DHelpers.h"
-#include "Logger.h"
+#include "Graphics/API/D2DHelpers.h"
+#include "Common/Logger.h"
 
 namespace Spectrum {
 

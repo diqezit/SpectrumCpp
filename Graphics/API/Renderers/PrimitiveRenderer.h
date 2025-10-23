@@ -1,4 +1,3 @@
-// PrimitiveRenderer.h
 #ifndef SPECTRUM_CPP_PRIMITIVE_RENDERER_H
 #define SPECTRUM_CPP_PRIMITIVE_RENDERER_H
 
@@ -7,7 +6,8 @@
 // of methods for drawing basic 2D shapes with Direct2D. It serves as the
 // foundational drawing component for all visualizers.
 //
-// Key responsibilities:
+// Key features:
+// - Paint-first API for all drawing operations
 // - Basic shape rendering (rectangles, circles, lines, arcs)
 // - Complex shapes (polygons, stars, sectors, rings)
 // - Batch rendering for performance optimization
@@ -16,17 +16,19 @@
 // Design notes:
 // - All render methods are const (stateless rendering)
 // - Delegates geometry creation to GeometryBuilder
-// - Supports both filled and stroked rendering modes
 // - Non-owning pointers to dependencies (lifetime managed externally)
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "Common.h"
-#include "Core/IRenderComponent.h"
+#include "Common/Common.h"
+#include "Graphics/API/Core/IRenderComponent.h"
 #include <vector>
+#include <unordered_map>
 
 namespace Spectrum {
 
     class GeometryBuilder;
+    class ResourceCache;
+    class Paint; // Forward declaration
 
     class PrimitiveRenderer final : public IRenderComponent
     {
@@ -35,95 +37,77 @@ namespace Spectrum {
         // Lifecycle Management
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        PrimitiveRenderer(GeometryBuilder* geometryBuilder);
+        explicit PrimitiveRenderer(
+            GeometryBuilder* geometryBuilder,
+            ResourceCache* resourceCache
+        );
 
         PrimitiveRenderer(const PrimitiveRenderer&) = delete;
         PrimitiveRenderer& operator=(const PrimitiveRenderer&) = delete;
 
-        // IRenderComponent implementation
-        void OnRenderTargetChanged(ID2D1RenderTarget* renderTarget) override;
+        void OnRenderTargetChanged(
+            ID2D1RenderTarget* renderTarget
+        ) override;
+
         void OnDeviceLost() override;
 
-        void SetSolidBrush(ID2D1SolidColorBrush* brush);
-
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Basic Shape Rendering
+        // Paint-based API
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void DrawRectangle(
             const Rect& rect,
-            const Color& color,
-            bool filled = true,
-            float strokeWidth = 1.0f
+            const Paint& paint
         ) const;
 
         void DrawRoundedRectangle(
             const Rect& rect,
             float radius,
-            const Color& color,
-            bool filled = true,
-            float strokeWidth = 1.0f
+            const Paint& paint
         ) const;
 
         void DrawCircle(
             const Point& center,
             float radius,
-            const Color& color,
-            bool filled = true,
-            float strokeWidth = 1.0f
+            const Paint& paint
         ) const;
 
         void DrawEllipse(
             const Point& center,
             float radiusX,
             float radiusY,
-            const Color& color,
-            bool filled = true,
-            float strokeWidth = 1.0f
+            const Paint& paint
         ) const;
 
         void DrawLine(
             const Point& start,
             const Point& end,
-            const Color& color,
-            float strokeWidth = 1.0f
+            const Paint& paint
         ) const;
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Path and Polygon Rendering
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void DrawPolyline(
             const std::vector<Point>& points,
-            const Color& color,
-            float strokeWidth = 1.0f
+            const Paint& paint
         ) const;
 
         void DrawPolygon(
             const std::vector<Point>& points,
-            const Color& color,
-            bool filled = true,
-            float strokeWidth = 1.0f
+            const Paint& paint
         ) const;
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Arc and Sector Rendering
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void DrawArc(
             const Point& center,
             float radius,
             float startAngle,
             float sweepAngle,
-            const Color& color,
-            float strokeWidth = 1.0f
+            const Paint& paint
         ) const;
 
         void DrawRing(
             const Point& center,
             float innerRadius,
             float outerRadius,
-            const Color& color
+            const Paint& paint
         ) const;
 
         void DrawSector(
@@ -131,22 +115,15 @@ namespace Spectrum {
             float radius,
             float startAngle,
             float sweepAngle,
-            const Color& color,
-            bool filled = true
+            const Paint& paint
         ) const;
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Complex Shape Rendering
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void DrawRegularPolygon(
             const Point& center,
             float radius,
             int sides,
             float rotation,
-            const Color& color,
-            bool filled = true,
-            float strokeWidth = 1.0f
+            const Paint& paint
         ) const;
 
         void DrawStar(
@@ -154,49 +131,37 @@ namespace Spectrum {
             float outerRadius,
             float innerRadius,
             int points,
-            const Color& color,
-            bool filled = true
+            const Paint& paint
         ) const;
 
         void DrawGrid(
             const Rect& bounds,
             int rows,
             int cols,
-            const Color& color,
-            float strokeWidth = 1.0f
+            const Paint& paint
         ) const;
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Batch Rendering
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void DrawCircleBatch(
             const std::vector<Point>& centers,
             float radius,
-            const Color& color,
-            bool filled = true
+            const Paint& paint
         ) const;
 
         void DrawRectangleBatch(
             const std::vector<Rect>& rects,
-            const Color& color,
-            bool filled = true
+            const Paint& paint
         ) const;
 
     private:
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Private Implementation
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-        void SetBrushColor(const Color& color) const;
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Member Variables
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        void ApplyPaintToStrokeStyle(
+            const Paint& paint,
+            wrl::ComPtr<ID2D1StrokeStyle>& strokeStyle
+        ) const;
 
         ID2D1RenderTarget* m_renderTarget;
-        ID2D1SolidColorBrush* m_brush;
         GeometryBuilder* m_geometryBuilder;
+        ResourceCache* m_resourceCache;
+        mutable std::unordered_map<uint64_t, wrl::ComPtr<ID2D1StrokeStyle>> m_strokeStyleCache;
     };
 
 } // namespace Spectrum

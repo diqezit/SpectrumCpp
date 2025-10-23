@@ -1,4 +1,3 @@
-// TextRenderer.h
 #ifndef SPECTRUM_CPP_TEXT_RENDERER_H
 #define SPECTRUM_CPP_TEXT_RENDERER_H
 
@@ -8,28 +7,24 @@
 // layout and rendering with various styles.
 //
 // Key responsibilities:
-// - Basic text rendering with alignment and font size control
-// - Text with outline effect (simulated via multi-pass rendering)
-// - Rotated text rendering with proper pivot handling
-// - IDWriteTextFormat caching for performance optimization
+// - Text rendering based on a comprehensive TextStyle object.
+// - Caching of DirectWrite text formats for performance.
+// - Handling of text alignment, rotation, and outline effects.
 //
 // Design notes:
-// - All render methods are const (stateless rendering)
-// - Caches IDWriteTextFormat objects by {fontSize, alignment} key
-// - Uses RAII ScopedTransform for rotation operations
-// - Non-owning pointers to D2D/DWrite resources (lifetime managed externally)
-//
-// Performance optimizations:
-// - TextFormat caching reduces DirectWrite object creation overhead
-// - Layout rect calculation minimizes GetMetrics() calls
+// - All public methods now accept a `const TextStyle&`.
+// - Complex layout calculations are encapsulated within the renderer.
+// - Non-owning pointers to D2D/DWrite resources (lifetime managed externally).
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "Common.h"
-#include "Core/IRenderComponent.h"
+#include "Common/Common.h"
+#include "Graphics/API/Core/IRenderComponent.h"
 #include <string>
 #include <unordered_map>
 
 namespace Spectrum {
+
+    struct TextStyle; // Forward declaration
 
     class TextRenderer final : public IRenderComponent
     {
@@ -38,16 +33,19 @@ namespace Spectrum {
         // Lifecycle Management
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        TextRenderer(IDWriteFactory* writeFactory);
+        explicit TextRenderer(
+            IDWriteFactory* writeFactory
+        );
 
         TextRenderer(const TextRenderer&) = delete;
         TextRenderer& operator=(const TextRenderer&) = delete;
 
         // IRenderComponent implementation
-        void OnRenderTargetChanged(ID2D1RenderTarget* renderTarget) override;
-        void OnDeviceLost() override;
+        void OnRenderTargetChanged(
+            ID2D1RenderTarget* renderTarget
+        ) override;
 
-        void SetSolidBrush(ID2D1SolidColorBrush* brush);
+        void OnDeviceLost() override;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Text Rendering
@@ -55,56 +53,34 @@ namespace Spectrum {
 
         void DrawText(
             const std::wstring& text,
-            const Point& position,
-            const Color& color,
-            float fontSize = 12.0f,
-            DWRITE_TEXT_ALIGNMENT alignment = DWRITE_TEXT_ALIGNMENT_LEADING
+            const Rect& layoutRect,
+            const TextStyle& style
         ) const;
 
-        void DrawTextWithOutline(
+        void DrawText(
             const std::wstring& text,
             const Point& position,
-            const Color& fillColor,
-            const Color& outlineColor,
-            float fontSize = 12.0f,
-            float outlineWidth = 1.0f
-        ) const;
-
-        void DrawTextRotated(
-            const std::wstring& text,
-            const Point& position,
-            float angleDegrees,
-            const Color& color,
-            float fontSize = 12.0f
+            const TextStyle& style
         ) const;
 
     private:
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Private Implementation
+        // Private Implementation / Internal Helpers
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        [[nodiscard]] wrl::ComPtr<IDWriteTextFormat> CreateTextFormat(
-            float fontSize,
-            DWRITE_TEXT_ALIGNMENT alignment
+        [[nodiscard]] wrl::ComPtr<IDWriteTextFormat> GetOrCreateTextFormat(
+            const TextStyle& style
         ) const;
 
-        [[nodiscard]] wrl::ComPtr<IDWriteTextLayout> CreateTextLayout(
+        void DrawTextInternal(
             const std::wstring& text,
-            IDWriteTextFormat* format
+            const Rect& layoutRect,
+            const TextStyle& style
         ) const;
 
-        [[nodiscard]] D2D1_RECT_F CalculateLayoutRect(
-            const Point& position,
-            DWRITE_TEXT_ALIGNMENT alignment,
-            IDWriteTextLayout* layout
+        [[nodiscard]] size_t GenerateFormatKey(
+            const TextStyle& style
         ) const;
-
-        void SetBrushColor(const Color& color) const;
-
-        [[nodiscard]] uint64_t GenerateFormatKey(
-            float fontSize,
-            DWRITE_TEXT_ALIGNMENT alignment
-        ) const noexcept;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Member Variables
@@ -112,9 +88,7 @@ namespace Spectrum {
 
         ID2D1RenderTarget* m_renderTarget;
         IDWriteFactory* m_writeFactory;
-        ID2D1SolidColorBrush* m_brush;
-
-        mutable std::unordered_map<uint64_t, wrl::ComPtr<IDWriteTextFormat>> m_formatCache;
+        mutable std::unordered_map<size_t, wrl::ComPtr<IDWriteTextFormat>> m_formatCache;
     };
 
 } // namespace Spectrum

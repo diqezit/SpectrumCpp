@@ -1,4 +1,3 @@
-// LedPanelRenderer.cpp
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // Implements the LedPanelRenderer for LED matrix visualization.
 //
@@ -15,11 +14,14 @@
 // 3. Render peak indicators (quality-dependent, outline style)
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "LedPanelRenderer.h"
-#include "D2DHelpers.h"
-#include "MathUtils.h"
-#include "ColorUtils.h"
-#include "Canvas.h"
+#include "Graphics/Visualizers/LedPanelRenderer.h"
+#include "Graphics/API/D2DHelpers.h"
+#include "Graphics/API/Structs/Paint.h"
+#include "Common/MathUtils.h"
+#include "Common/ColorUtils.h"
+#include "Graphics/Base/RenderUtils.h"
+#include "Graphics/API/Canvas.h"
+#include <algorithm>
 
 namespace Spectrum {
 
@@ -33,21 +35,28 @@ namespace Spectrum {
 
         constexpr float kLedRadius = 6.0f;
         constexpr float kLedMargin = 3.0f;
+        constexpr float kLedDiameter = kLedRadius * 2.0f;
+
         constexpr float kInactiveAlpha = 0.08f;
         constexpr float kMinActiveBrightness = 0.4f;
+        constexpr float kTopLedBrightnessBoost = 1.2f;
+
         constexpr float kDecayRate = 0.85f;
         constexpr float kAttackRate = 0.4f;
+
         constexpr float kPeakHoldTime = 0.5f;
-        constexpr float kOverlayPaddingFactor = 0.95f;
+        constexpr float kPeakDecayRate = 0.95f;
         constexpr float kPeakStrokeWidth = 2.0f;
         constexpr float kPeakRadiusOffset = 2.0f;
-        constexpr float kPeakDecayRate = 0.95f;
+
+        constexpr float kOverlayPaddingFactor = 0.95f;
         constexpr float kMinValueThreshold = 0.05f;
-        constexpr float kTopLedBrightnessBoost = 1.2f;
         constexpr float kExternalColorBlend = 0.7f;
 
         constexpr int kMinGridSize = 10;
         constexpr int kMaxColumns = 64;
+
+        constexpr float kCenterOffset = 0.5f;
 
         const std::vector<Color> kSpectrumGradient = {
             Color::FromRGB(0, 200, 100),
@@ -61,8 +70,8 @@ namespace Spectrum {
             Color::FromRGB(200, 0, 50)
         };
 
-        const Color kInactiveColor = Color::FromRGB(80, 80, 80);
-        const Color kPeakColor = Color(1.0f, 1.0f, 1.0f, 200.0f / 255.0f);
+        const Color kInactiveColorBase = Color::FromRGB(80, 80, 80);
+        const Color kPeakColorBase = Color(1.0f, 1.0f, 1.0f, 200.0f / 255.0f);
 
     } // anonymous namespace
 
@@ -75,7 +84,10 @@ namespace Spectrum {
         UpdateSettings();
     }
 
-    void LedPanelRenderer::OnActivate(int width, int height)
+    void LedPanelRenderer::OnActivate(
+        int width,
+        int height
+    )
     {
         BaseRenderer::OnActivate(width, height);
         m_grid.columns = 0;
@@ -126,7 +138,7 @@ namespace Spectrum {
     {
         UpdateGrid(spectrum.size());
 
-        if (m_grid.columns == 0) return;
+        if (!IsGridValid()) return;
 
         UpdateValues(spectrum);
 
@@ -140,7 +152,7 @@ namespace Spectrum {
         const SpectrumData& /*spectrum*/
     )
     {
-        if (m_grid.columns == 0) return;
+        if (!IsGridValid()) return;
 
         RenderInactiveLeds(canvas);
         RenderActiveLeds(canvas);
@@ -156,47 +168,11 @@ namespace Spectrum {
 
     void LedPanelRenderer::UpdateGrid(size_t requiredColumns)
     {
-        if (m_grid.columns > 0 &&
-            static_cast<size_t>(m_grid.columns) >= requiredColumns) {
-            return;
-        }
+        if (!ShouldRecreateGrid(requiredColumns)) return;
 
-        if (m_width <= 0 || m_height <= 0 || requiredColumns == 0) return;
+        if (!CanUpdateGrid(requiredColumns)) return;
 
-        const float ledSize = kLedRadius * 2.0f + kLedMargin;
-        const float availableWidth = m_isOverlay
-            ? m_width * kOverlayPaddingFactor
-            : static_cast<float>(m_width);
-        const float availableHeight = m_isOverlay
-            ? m_height * kOverlayPaddingFactor
-            : static_cast<float>(m_height);
-
-        int cols = std::min({
-            kMaxColumns,
-            static_cast<int>(requiredColumns),
-            static_cast<int>(availableWidth / ledSize)
-            });
-        cols = std::max(kMinGridSize, cols);
-
-        int rows = std::min(
-            m_settings.maxRows,
-            static_cast<int>(availableHeight / ledSize)
-        );
-        rows = std::max(kMinGridSize, rows);
-
-        const float cellSize = std::min(
-            availableWidth / cols,
-            availableHeight / rows
-        );
-        const float gridWidth = cols * cellSize;
-        const float gridHeight = rows * cellSize;
-
-        GridData newGrid;
-        newGrid.rows = rows;
-        newGrid.columns = cols;
-        newGrid.cellSize = cellSize;
-        newGrid.startX = (m_width - gridWidth) * 0.5f;
-        newGrid.startY = (m_height - gridHeight) * 0.5f;
+        const GridData newGrid = CalculateGridData(requiredColumns);
 
         CreateGrid(newGrid);
     }
@@ -215,22 +191,14 @@ namespace Spectrum {
 
     void LedPanelRenderer::CacheLedPositions()
     {
-        m_allLedPositions.clear();
-        m_allLedPositions.reserve(
-            static_cast<size_t>(m_grid.columns) * m_grid.rows
-        );
+        const size_t totalLeds = CalculateTotalLedCount();
 
-        const float halfCell = m_grid.cellSize * 0.5f;
+        m_allLedPositions.clear();
+        m_allLedPositions.reserve(totalLeds);
 
         for (int col = 0; col < m_grid.columns; ++col) {
-            const float x = m_grid.startX + col * m_grid.cellSize + halfCell;
-
             for (int row = 0; row < m_grid.rows; ++row) {
-                const float y = m_grid.startY
-                    + (m_grid.rows - 1 - row) * m_grid.cellSize
-                    + halfCell;
-
-                m_allLedPositions.push_back({ x, y });
+                m_allLedPositions.push_back(CalculateLedPosition(col, row));
             }
         }
     }
@@ -248,41 +216,197 @@ namespace Spectrum {
         }
     }
 
+    LedPanelRenderer::GridData LedPanelRenderer::CalculateGridData(size_t requiredColumns) const
+    {
+        const float ledSize = GetLedSize();
+        const float availableWidth = GetAvailableWidth();
+        const float availableHeight = GetAvailableHeight();
+
+        const int cols = CalculateGridColumns(requiredColumns, availableWidth, ledSize);
+        const int rows = CalculateGridRows(availableHeight, ledSize);
+
+        const float cellSize = CalculateCellSize(cols, rows, availableWidth, availableHeight);
+        const float gridWidth = cols * cellSize;
+        const float gridHeight = rows * cellSize;
+
+        GridData grid;
+        grid.rows = rows;
+        grid.columns = cols;
+        grid.cellSize = cellSize;
+        grid.startX = GetGridStartX(gridWidth);
+        grid.startY = GetGridStartY(gridHeight);
+
+        return grid;
+    }
+
+    int LedPanelRenderer::CalculateGridColumns(
+        size_t requiredColumns,
+        float availableWidth,
+        float ledSize
+    ) const
+    {
+        int cols = std::min({
+            kMaxColumns,
+            static_cast<int>(requiredColumns),
+            static_cast<int>(availableWidth / ledSize)
+            });
+
+        return std::max(kMinGridSize, cols);
+    }
+
+    int LedPanelRenderer::CalculateGridRows(
+        float availableHeight,
+        float ledSize
+    ) const
+    {
+        int rows = std::min(
+            m_settings.maxRows,
+            static_cast<int>(availableHeight / ledSize)
+        );
+
+        return std::max(kMinGridSize, rows);
+    }
+
+    float LedPanelRenderer::CalculateCellSize(
+        int cols,
+        int rows,
+        float availableWidth,
+        float availableHeight
+    ) const
+    {
+        return std::min(
+            availableWidth / cols,
+            availableHeight / rows
+        );
+    }
+
+    float LedPanelRenderer::GetAvailableWidth() const
+    {
+        return m_isOverlay
+            ? m_width * kOverlayPaddingFactor
+            : static_cast<float>(m_width);
+    }
+
+    float LedPanelRenderer::GetAvailableHeight() const
+    {
+        return m_isOverlay
+            ? m_height * kOverlayPaddingFactor
+            : static_cast<float>(m_height);
+    }
+
+    float LedPanelRenderer::GetLedSize() const
+    {
+        return kLedDiameter + kLedMargin;
+    }
+
+    Point LedPanelRenderer::CalculateLedPosition(
+        int col,
+        int row
+    ) const
+    {
+        const float halfCell = m_grid.cellSize * kCenterOffset;
+
+        const float x = m_grid.startX + col * m_grid.cellSize + halfCell;
+        const float y = m_grid.startY
+            + (m_grid.rows - 1 - row) * m_grid.cellSize
+            + halfCell;
+
+        return { x, y };
+    }
+
+    size_t LedPanelRenderer::CalculateTotalLedCount() const
+    {
+        return static_cast<size_t>(m_grid.columns) * m_grid.rows;
+    }
+
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Animation Updates
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     void LedPanelRenderer::UpdateValues(const SpectrumData& spectrum)
     {
-        const size_t count = std::min(
-            static_cast<size_t>(m_grid.columns),
-            spectrum.size()
-        );
+        const size_t count = GetUpdateCount(spectrum);
 
         for (size_t i = 0; i < count; ++i) {
-            const float current = m_smoothedValues[i];
-            const float target = spectrum[i];
-            const float baseRate = (current < target) ? kAttackRate : (1.0f - kDecayRate);
-            const float rate = baseRate * m_settings.smoothingMultiplier;
-
-            m_smoothedValues[i] = Utils::Lerp(current, target, rate);
+            UpdateColumnValue(i, spectrum[i]);
         }
+    }
+
+    void LedPanelRenderer::UpdateColumnValue(
+        size_t index,
+        float targetValue
+    )
+    {
+        if (!IsColumnIndexValid(index)) return;
+
+        const float current = m_smoothedValues[index];
+        m_smoothedValues[index] = CalculateSmoothedValue(current, targetValue);
     }
 
     void LedPanelRenderer::UpdatePeakValues(float deltaTime)
     {
         for (int i = 0; i < m_grid.columns; ++i) {
-            if (m_smoothedValues[i] >= m_peakValues[i]) {
-                m_peakValues[i] = m_smoothedValues[i];
-                m_peakTimers[i] = kPeakHoldTime;
-            }
-            else if (m_peakTimers[i] > 0.0f) {
-                m_peakTimers[i] -= deltaTime;
-            }
-            else {
-                m_peakValues[i] *= kPeakDecayRate;
-            }
+            UpdatePeak(i, m_smoothedValues[i], deltaTime);
         }
+    }
+
+    void LedPanelRenderer::UpdatePeak(
+        size_t index,
+        float currentValue,
+        float deltaTime
+    )
+    {
+        if (!IsColumnIndexValid(index)) return;
+
+        if (currentValue >= m_peakValues[index]) {
+            m_peakValues[index] = currentValue;
+            m_peakTimers[index] = kPeakHoldTime;
+        }
+        else if (m_peakTimers[index] > 0.0f) {
+            UpdatePeakHoldTimer(index, deltaTime);
+        }
+        else {
+            UpdatePeakDecay(index);
+        }
+    }
+
+    void LedPanelRenderer::UpdatePeakHoldTimer(
+        size_t index,
+        float deltaTime
+    )
+    {
+        m_peakTimers[index] -= deltaTime;
+    }
+
+    void LedPanelRenderer::UpdatePeakDecay(size_t index)
+    {
+        m_peakValues[index] *= kPeakDecayRate;
+    }
+
+    float LedPanelRenderer::CalculateSmoothedValue(
+        float current,
+        float target
+    ) const
+    {
+        const float rate = GetSmoothingRate(current, target);
+        return Utils::Lerp(current, target, rate);
+    }
+
+    float LedPanelRenderer::GetSmoothingRate(
+        float current,
+        float target
+    ) const
+    {
+        const float baseRate = (current < target) ? kAttackRate : (1.0f - kDecayRate);
+        return baseRate * m_settings.smoothingMultiplier;
+    }
+
+    size_t LedPanelRenderer::GetUpdateCount(const SpectrumData& spectrum) const
+    {
+        return std::min(
+            static_cast<size_t>(m_grid.columns),
+            spectrum.size()
+        );
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -291,88 +415,188 @@ namespace Spectrum {
 
     void LedPanelRenderer::RenderInactiveLeds(Canvas& canvas) const
     {
-        Color color = kInactiveColor;
-        color.a = kInactiveAlpha;
+        const Color inactiveColor = GetInactiveColor();
+        const Paint paint = Paint::Fill(inactiveColor);
 
-        if (m_isOverlay) {
-            color.a *= kOverlayPaddingFactor;
-        }
-
-        const Paint paint{ color, true };
         canvas.DrawCircleBatch(m_allLedPositions, kLedRadius, paint);
     }
 
     void LedPanelRenderer::RenderActiveLeds(Canvas& canvas) const
     {
         for (int col = 0; col < m_grid.columns; ++col) {
-            const float value = m_smoothedValues[col];
-            int activeLeds = static_cast<int>(value * m_grid.rows);
-
-            if (activeLeds == 0 && value > kMinValueThreshold) {
-                activeLeds = 1;
-            }
-
-            const float brightness = Utils::Lerp(kMinActiveBrightness, 1.0f, value);
-
-            for (int row = 0; row < activeLeds; ++row) {
-                const bool isTopLed = (row == activeLeds - 1);
-                const float ledBrightness = isTopLed
-                    ? brightness * kTopLedBrightnessBoost
-                    : brightness;
-
-                const Color ledColor = GetLedColor(row, Utils::Saturate(ledBrightness));
-                const size_t ledIndex = static_cast<size_t>(col) * m_grid.rows + row;
-
-                const Paint paint{ ledColor, true };
-                canvas.DrawCircle(m_allLedPositions[ledIndex], kLedRadius, paint);
-            }
+            RenderColumnLeds(canvas, col);
         }
     }
 
     void LedPanelRenderer::RenderPeakLeds(Canvas& canvas) const
     {
         for (int col = 0; col < m_grid.columns; ++col) {
-            if (m_peakTimers[col] <= 0.0f) continue;
+            if (!IsPeakVisible(col)) continue;
 
-            const int peakRow = static_cast<int>(m_peakValues[col] * m_grid.rows) - 1;
+            const int peakRow = CalculatePeakRow(m_peakValues[col]);
 
-            if (peakRow >= 0 && peakRow < m_grid.rows) {
-                const size_t ledIndex = static_cast<size_t>(col) 
-                    * static_cast<size_t>(m_grid.rows) 
-                    + static_cast<size_t>(peakRow);
-
-                const Paint paint{ kPeakColor, kPeakStrokeWidth, false };
-                canvas.DrawCircle(
-                    m_allLedPositions[ledIndex],
-                    kLedRadius + kPeakRadiusOffset,
-                    paint
-                );
+            if (IsPeakRowValid(peakRow)) {
+                RenderPeakLed(canvas, col, peakRow);
             }
         }
+    }
+
+    void LedPanelRenderer::RenderColumnLeds(
+        Canvas& canvas,
+        int col
+    ) const
+    {
+        const float value = m_smoothedValues[col];
+        int activeLeds = CalculateActiveLedCount(value);
+
+        if (ShouldRenderMinimumLed(value, activeLeds)) {
+            activeLeds = 1;
+        }
+
+        const float brightness = CalculateBrightness(value);
+
+        for (int row = 0; row < activeLeds; ++row) {
+            const bool isTopLed = (row == activeLeds - 1);
+            const float ledBrightness = CalculateLedBrightness(brightness, isTopLed);
+
+            const Color ledColor = GetLedColor(row, Utils::Saturate(ledBrightness));
+            const size_t ledIndex = GetLedIndex(col, row);
+
+            RenderSingleLed(canvas, ledIndex, ledColor);
+        }
+    }
+
+    void LedPanelRenderer::RenderSingleLed(
+        Canvas& canvas,
+        size_t ledIndex,
+        const Color& color
+    ) const
+    {
+        if (!IsLedIndexValid(ledIndex)) return;
+
+        const Paint paint = Paint::Fill(color);
+        canvas.DrawCircle(m_allLedPositions[ledIndex], kLedRadius, paint);
+    }
+
+    void LedPanelRenderer::RenderPeakLed(
+        Canvas& canvas,
+        int col,
+        int peakRow
+    ) const
+    {
+        const size_t ledIndex = GetLedIndex(col, peakRow);
+
+        if (!IsLedIndexValid(ledIndex)) return;
+
+        const Color peakColor = GetPeakColor();
+        const Paint paint = Paint::Stroke(peakColor, kPeakStrokeWidth);
+
+        canvas.DrawCircle(
+            m_allLedPositions[ledIndex],
+            kLedRadius + kPeakRadiusOffset,
+            paint
+        );
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Geometry Calculation
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    int LedPanelRenderer::CalculateActiveLedCount(float value) const
+    {
+        return static_cast<int>(value * m_grid.rows);
+    }
+
+    int LedPanelRenderer::CalculatePeakRow(float peakValue) const
+    {
+        return static_cast<int>(peakValue * m_grid.rows) - 1;
+    }
+
+    size_t LedPanelRenderer::GetLedIndex(
+        int col,
+        int row
+    ) const
+    {
+        return static_cast<size_t>(col) * m_grid.rows + row;
+    }
+
+    float LedPanelRenderer::GetGridStartX(float gridWidth) const
+    {
+        return (m_width - gridWidth) * kCenterOffset;
+    }
+
+    float LedPanelRenderer::GetGridStartY(float gridHeight) const
+    {
+        return (m_height - gridHeight) * kCenterOffset;
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Color Calculation
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    Color LedPanelRenderer::GetLedColor(int row, float brightness) const
+    Color LedPanelRenderer::GetLedColor(
+        int row,
+        float brightness
+    ) const
     {
-        const int rowIndex = std::min(row, static_cast<int>(m_rowColors.size()) - 1);
-
-        if (rowIndex < 0) return {};
-
-        Color baseColor = m_rowColors[rowIndex];
+        Color baseColor = GetRowBaseColor(row);
 
         if (HasExternalColor()) {
-            const float t = (m_rowColors.size() > 1)
-                ? static_cast<float>(row) / (m_rowColors.size() - 1)
-                : 0.0f;
-
+            const float t = GetColorBlendRatio(row);
             baseColor = BlendWithExternalColor(baseColor, t);
         }
 
-        baseColor.a = brightness;
-        return baseColor;
+        return ApplyBrightness(baseColor, brightness);
+    }
+
+    Color LedPanelRenderer::GetRowBaseColor(int row) const
+    {
+        const int rowIndex = std::min(row, static_cast<int>(m_rowColors.size()) - 1);
+
+        if (!IsRowIndexValid(rowIndex)) return {};
+
+        return m_rowColors[rowIndex];
+    }
+
+    Color LedPanelRenderer::ApplyBrightness(
+        Color color,
+        float brightness
+    ) const
+    {
+        color.a = brightness;
+        return color;
+    }
+
+    Color LedPanelRenderer::GetInactiveColor() const
+    {
+        Color color = kInactiveColorBase;
+        color.a = kInactiveAlpha;
+
+        if (m_isOverlay) {
+            color.a *= kOverlayPaddingFactor;
+        }
+
+        return color;
+    }
+
+    Color LedPanelRenderer::GetPeakColor() const
+    {
+        return kPeakColorBase;
+    }
+
+    float LedPanelRenderer::CalculateBrightness(float value) const
+    {
+        return Utils::Lerp(kMinActiveBrightness, 1.0f, value);
+    }
+
+    float LedPanelRenderer::CalculateLedBrightness(
+        float baseBrightness,
+        bool isTopLed
+    ) const
+    {
+        return isTopLed
+            ? baseBrightness * kTopLedBrightnessBoost
+            : baseBrightness;
     }
 
     bool LedPanelRenderer::HasExternalColor() const
@@ -382,7 +606,10 @@ namespace Spectrum {
             m_primaryColor.b != 1.0f);
     }
 
-    Color LedPanelRenderer::BlendWithExternalColor(Color baseColor, float t) const
+    Color LedPanelRenderer::BlendWithExternalColor(
+        Color baseColor,
+        float t
+    ) const
     {
         const auto blend = [](float ext, float grad, float t_) {
             return ext * kExternalColorBlend +
@@ -394,6 +621,13 @@ namespace Spectrum {
             blend(m_primaryColor.g, baseColor.g, t),
             blend(m_primaryColor.b, baseColor.b, t)
         );
+    }
+
+    float LedPanelRenderer::GetColorBlendRatio(int row) const
+    {
+        return (m_rowColors.size() > 1)
+            ? static_cast<float>(row) / (m_rowColors.size() - 1)
+            : 0.0f;
     }
 
     Color LedPanelRenderer::InterpolateGradient(float t)
@@ -411,6 +645,63 @@ namespace Spectrum {
             kSpectrumGradient[index + 1],
             fraction
         );
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Validation Helpers
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    bool LedPanelRenderer::IsGridValid() const
+    {
+        return m_grid.columns > 0 && m_grid.rows > 0;
+    }
+
+    bool LedPanelRenderer::CanUpdateGrid(size_t requiredColumns) const
+    {
+        return IsValidViewportSize() && requiredColumns > 0;
+    }
+
+    bool LedPanelRenderer::ShouldRecreateGrid(size_t requiredColumns) const
+    {
+        return !(IsGridValid() && static_cast<size_t>(m_grid.columns) >= requiredColumns);
+    }
+
+    bool LedPanelRenderer::IsValidViewportSize() const
+    {
+        return m_width > 0 && m_height > 0;
+    }
+
+    bool LedPanelRenderer::IsColumnIndexValid(size_t index) const
+    {
+        return index < m_smoothedValues.size();
+    }
+
+    bool LedPanelRenderer::IsRowIndexValid(int row) const
+    {
+        return row >= 0 && row < static_cast<int>(m_rowColors.size());
+    }
+
+    bool LedPanelRenderer::IsLedIndexValid(size_t index) const
+    {
+        return index < m_allLedPositions.size();
+    }
+
+    bool LedPanelRenderer::ShouldRenderMinimumLed(
+        float value,
+        int activeLeds
+    ) const
+    {
+        return activeLeds == 0 && value > kMinValueThreshold;
+    }
+
+    bool LedPanelRenderer::IsPeakVisible(size_t index) const
+    {
+        return IsColumnIndexValid(index) && m_peakTimers[index] > 0.0f;
+    }
+
+    bool LedPanelRenderer::IsPeakRowValid(int row) const
+    {
+        return row >= 0 && row < m_grid.rows;
     }
 
 } // namespace Spectrum

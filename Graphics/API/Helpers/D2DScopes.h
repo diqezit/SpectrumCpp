@@ -1,7 +1,7 @@
 ﻿#ifndef SPECTRUM_CPP_GRAPHICS_API_HELPERS_D2D_SCOPES_H
 #define SPECTRUM_CPP_GRAPHICS_API_HELPERS_D2D_SCOPES_H
 
-#include "Types.h"
+#include "Common/Types.h"
 #include "TypeConversion.h"
 #include "Sanitization.h"
 #include <d2d1.h>

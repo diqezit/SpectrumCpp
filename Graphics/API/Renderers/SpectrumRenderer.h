@@ -1,4 +1,3 @@
-// SpectrumRenderer.h
 #ifndef SPECTRUM_CPP_SPECTRUM_RENDERER_H
 #define SPECTRUM_CPP_SPECTRUM_RENDERER_H
 
@@ -16,19 +15,19 @@
 // Design notes:
 // - All render methods are const (stateless rendering)
 // - Delegates primitive drawing to PrimitiveRenderer
-// - Delegates gradient drawing to GradientRenderer
+// - Delegates gradient drawing to ResourceCache via PrimitiveRenderer
 // - Uses GeometryBuilder for waveform point generation
 // - Non-owning pointers to dependencies (lifetime managed externally)
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "Common.h"
-#include "SpectrumTypes.h"
+#include "Common/Common.h"
+#include "Common/SpectrumTypes.h"
 
 namespace Spectrum {
 
     class PrimitiveRenderer;
-    class GradientRenderer;
     class GeometryBuilder;
+    class Paint;
 
     class SpectrumRenderer final
     {
@@ -39,7 +38,6 @@ namespace Spectrum {
 
         SpectrumRenderer(
             PrimitiveRenderer* primitiveRenderer,
-            GradientRenderer* gradientRenderer,
             GeometryBuilder* geometryBuilder
         );
 
@@ -60,8 +58,7 @@ namespace Spectrum {
         void DrawWaveform(
             const SpectrumData& spectrum,
             const Rect& bounds,
-            const Color& color,
-            float strokeWidth = 2.0f,
+            const Paint& paint,
             bool mirror = false
         ) const;
 
@@ -81,7 +78,6 @@ namespace Spectrum {
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         PrimitiveRenderer* m_primitiveRenderer;
-        GradientRenderer* m_gradientRenderer;
         GeometryBuilder* m_geometryBuilder;
     };
 

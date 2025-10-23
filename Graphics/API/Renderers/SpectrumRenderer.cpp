@@ -1,4 +1,3 @@
-// SpectrumRenderer.cpp
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // Implements the SpectrumRenderer class. This file contains high-level
 // logic for drawing spectrum data, delegating primitive and gradient
@@ -11,11 +10,12 @@
 // - Uses D2DHelpers for validation and sanitization
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "SpectrumRenderer.h"
-#include "D2DHelpers.h"
-#include "PrimitiveRenderer.h"
-#include "GradientRenderer.h"
-#include "Core/GeometryBuilder.h"
+#include "Graphics/API/Renderers/SpectrumRenderer.h"
+#include "Graphics/API/D2DHelpers.h"
+#include "Graphics/API/Renderers/PrimitiveRenderer.h"
+#include "Graphics/API/Core/GeometryBuilder.h"
+#include "Graphics/API/Structs/Paint.h"
+#include "Graphics/API/Brushes/GradientStop.h"
 
 namespace Spectrum {
 
@@ -28,11 +28,9 @@ namespace Spectrum {
 
     SpectrumRenderer::SpectrumRenderer(
         PrimitiveRenderer* primitiveRenderer,
-        GradientRenderer* gradientRenderer,
         GeometryBuilder* geometryBuilder
     )
         : m_primitiveRenderer(primitiveRenderer)
-        , m_gradientRenderer(gradientRenderer)
         , m_geometryBuilder(geometryBuilder)
     {
     }
@@ -80,18 +78,20 @@ namespace Spectrum {
     void SpectrumRenderer::DrawWaveform(
         const SpectrumData& spectrum,
         const Rect& bounds,
-        const Color& color,
-        float strokeWidth,
+        const Paint& paint,
         bool mirror
     ) const
     {
         if (!m_geometryBuilder || !m_primitiveRenderer) return;
-        if (!PointArray(std::vector<Point>(spectrum.size()), 2)) return;
+        if (spectrum.size() < 2) return;
 
         auto points = m_geometryBuilder->GenerateWaveformPoints(spectrum, bounds);
         if (points.empty()) return;
 
-        m_primitiveRenderer->DrawPolyline(points, color, strokeWidth);
+        m_primitiveRenderer->DrawPolyline(
+            points,
+            paint
+        );
 
         if (!mirror) return;
 
@@ -101,10 +101,10 @@ namespace Spectrum {
             point.y = 2.0f * midline - point.y;
         }
 
-        Color mirrorColor = color;
-        mirrorColor.a *= 0.6f;
-
-        m_primitiveRenderer->DrawPolyline(points, mirrorColor, strokeWidth);
+        m_primitiveRenderer->DrawPolyline(
+            points,
+            paint.WithAlpha(paint.GetAlpha() * 0.6f)
+        );
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -117,23 +117,39 @@ namespace Spectrum {
         const Color& color
     ) const
     {
-        if (style.useGradient && GradientStops(style.gradientStops) && m_gradientRenderer) {
-            m_gradientRenderer->DrawVerticalGradientBar(
-                barRect,
-                style.gradientStops,
-                style.cornerRadius
-            );
+        if (!m_primitiveRenderer) {
             return;
         }
 
-        if (!m_primitiveRenderer) return;
+        if (style.useGradient && !style.gradientStops.empty()) {
+            std::vector<GradientStop> stops;
+            stops.reserve(style.gradientStops.size());
+            for (const auto& d2dStop : style.gradientStops) {
+                stops.push_back({
+                    d2dStop.position,
+                    Color(d2dStop.color.r, d2dStop.color.g, d2dStop.color.b, d2dStop.color.a)
+                    });
+            }
 
-        m_primitiveRenderer->DrawRoundedRectangle(
-            barRect,
-            style.cornerRadius,
-            color,
-            true
-        );
+            Paint gradPaint = Paint::LinearGradient(
+                { barRect.x, barRect.y },
+                { barRect.x, barRect.GetBottom() },
+                stops
+            );
+
+            m_primitiveRenderer->DrawRoundedRectangle(
+                barRect,
+                style.cornerRadius,
+                gradPaint
+            );
+        }
+        else {
+            m_primitiveRenderer->DrawRoundedRectangle(
+                barRect,
+                style.cornerRadius,
+                Paint::Fill(color)
+            );
+        }
     }
 
 } // namespace Spectrum

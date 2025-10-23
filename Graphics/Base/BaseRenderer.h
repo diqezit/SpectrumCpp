@@ -21,8 +21,8 @@
 // - Template Method pattern: Render() calls UpdateAnimation() -> DoRender()
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "IRenderer.h"
-#include "Common.h"
+#include "Graphics/IRenderer.h"
+#include "Common/Common.h"
 
 namespace Spectrum {
 

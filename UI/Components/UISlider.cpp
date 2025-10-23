@@ -10,9 +10,11 @@
 // - Frame-rate independent animations via deltaTime
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "UISlider.h"
-#include "MathUtils.h"
-#include "Canvas.h"
+#include "UI/Components/UISlider.h"
+#include "Common/MathUtils.h"
+#include "Common/ColorUtils.h"
+#include "Graphics/API/Canvas.h"
+#include "Graphics/API/Structs/Paint.h"
 #include <cmath>
 
 namespace Spectrum {
@@ -53,7 +55,10 @@ namespace Spectrum {
     // Main Execution Loop
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    void UISlider::Update(const MouseInputState& mouseState, float deltaTime)
+    void UISlider::Update(
+        const MouseInputState& mouseState,
+        float deltaTime
+    )
     {
         ProcessInput(mouseState);
         UpdateAnimations(deltaTime);
@@ -62,8 +67,9 @@ namespace Spectrum {
 
     void UISlider::Draw(Canvas& canvas) const
     {
-        if (m_hoverAnimationProgress > 0.0f)
+        if (m_hoverAnimationProgress > 0.0f) {
             DrawGlow(canvas);
+        }
 
         DrawTrack(canvas);
         DrawThumb(canvas);
@@ -162,8 +168,9 @@ namespace Spectrum {
     {
         m_isHovered = HitTest(mouseState.position);
 
-        if (m_isDragging)
+        if (m_isDragging) {
             return;
+        }
 
         if (m_isHovered && mouseState.isLeftButtonDown) {
             m_isDragging = true;
@@ -219,10 +226,14 @@ namespace Spectrum {
 
     [[nodiscard]] float UISlider::SnapToStep(float normalizedValue) const noexcept
     {
-        if (m_step <= 0.0f) return normalizedValue;
+        if (m_step <= 0.0f) {
+            return normalizedValue;
+        }
 
         const float totalRange = m_max - m_min;
-        if (totalRange <= 0.0f) return normalizedValue;
+        if (totalRange <= 0.0f) {
+            return normalizedValue;
+        }
 
         const float value = Utils::Lerp(m_min, m_max, normalizedValue);
         const float numSteps = std::round((value - m_min) / m_step);
@@ -270,7 +281,11 @@ namespace Spectrum {
         const Color glowColor = GetCurrentGlowColor();
         const float glowRadius = m_style.thumbCornerRadius + 2.0f;
 
-        canvas.DrawRoundedRectangle(glowRect, glowRadius, Paint{ glowColor, 2.0f, false });
+        canvas.DrawRoundedRectangle(
+            glowRect,
+            glowRadius,
+            Paint::Stroke(glowColor, 2.0f)
+        );
     }
 
     void UISlider::DrawTrack(Canvas& canvas) const
@@ -282,11 +297,22 @@ namespace Spectrum {
             m_style.trackHeight
         };
 
+        Rect fillRect = trackRect;
+        fillRect.width *= m_visualValueNormalized;
+
         canvas.DrawRoundedRectangle(
             trackRect,
             m_style.trackCornerRadius,
-            { m_style.trackColor, true }
+            Paint::Fill(m_style.trackColor)
         );
+
+        if (fillRect.width > 0.0f) {
+            canvas.DrawRoundedRectangle(
+                fillRect,
+                m_style.trackCornerRadius,
+                Paint::Fill(m_style.fillColor)
+            );
+        }
     }
 
     void UISlider::DrawThumb(Canvas& canvas) const
@@ -297,24 +323,23 @@ namespace Spectrum {
         canvas.DrawRoundedRectangle(
             thumbRect,
             m_style.thumbCornerRadius,
-            Paint{ thumbColor, m_style.thumbBorderThickness, true }
+            Paint::Fill(thumbColor)
         );
 
         canvas.DrawRoundedRectangle(
             thumbRect,
             m_style.thumbCornerRadius,
-            Paint{ m_style.thumbBorderColor, m_style.thumbBorderThickness, false }
+            Paint::Stroke(m_style.thumbBorderColor, m_style.thumbBorderThickness)
         );
     }
 
     [[nodiscard]] Color UISlider::GetCurrentThumbColor() const noexcept
     {
-        return Color{
-            Utils::Lerp(m_style.thumbColor.r, m_style.thumbHoverColor.r, m_hoverAnimationProgress),
-            Utils::Lerp(m_style.thumbColor.g, m_style.thumbHoverColor.g, m_hoverAnimationProgress),
-            Utils::Lerp(m_style.thumbColor.b, m_style.thumbHoverColor.b, m_hoverAnimationProgress),
-            Utils::Lerp(m_style.thumbColor.a, m_style.thumbHoverColor.a, m_hoverAnimationProgress)
-        };
+        return Utils::InterpolateColor(
+            m_style.thumbColor,
+            m_style.thumbHoverColor,
+            m_hoverAnimationProgress
+        );
     }
 
     [[nodiscard]] Color UISlider::GetCurrentGlowColor() const noexcept

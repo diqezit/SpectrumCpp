@@ -1,4 +1,3 @@
-// BarsRenderer.cpp
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // Implements the BarsRenderer for classic vertical bar visualization.
 //
@@ -15,12 +14,13 @@
 // 4. Render highlight (quality-dependent)
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "BarsRenderer.h"
-#include "../API/D2DHelpers.h"
-#include "MathUtils.h"
-#include "ColorUtils.h"
-#include "../Base/RenderUtils.h"
-#include "../API/Canvas.h"
+#include "Graphics/Visualizers/BarsRenderer.h"
+#include "Graphics/API/D2DHelpers.h"
+#include "Graphics/API/Structs/Paint.h"
+#include "Common/MathUtils.h"
+#include "Common/ColorUtils.h"
+#include "Graphics/Base/RenderUtils.h"
+#include "Graphics/API/Canvas.h"
 
 namespace Spectrum {
 
@@ -33,15 +33,21 @@ namespace Spectrum {
     namespace {
         constexpr float kHeightScale = 0.9f;
         constexpr float kMinVisibleHeight = 1.0f;
+
         constexpr float kShadowOffsetX = 2.0f;
         constexpr float kShadowOffsetY = 2.0f;
+        constexpr float kShadowBlurRadius = 0.0f;
         constexpr float kShadowAlpha = 0.3f;
+
         constexpr float kHighlightMargin = 2.0f;
         constexpr float kHighlightMaxHeight = 10.0f;
         constexpr float kHighlightHeightRatio = 0.2f;
         constexpr float kHighlightAlpha = 0.2f;
+
         constexpr float kBrightnessMin = 0.7f;
         constexpr float kBrightnessRange = 0.6f;
+
+        constexpr float kSpacingDivisor = 2.0f;
     } // anonymous namespace
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -90,16 +96,15 @@ namespace Spectrum {
 
         for (size_t i = 0; i < barCount; ++i) {
             const float magnitude = NormalizedFloat(spectrum[i]);
-            const float height = RenderUtils::MagnitudeToHeight(magnitude, m_height, kHeightScale);
+            const float height = RenderUtils::MagnitudeToHeight(
+                magnitude,
+                m_height,
+                kHeightScale
+            );
 
-            if (height < kMinVisibleHeight) continue;
+            if (!IsBarVisible(height)) continue;
 
-            const Rect rect{
-                i * layout.totalBarWidth + layout.spacing * 0.5f,
-                static_cast<float>(m_height) - height,
-                layout.barWidth,
-                height
-            };
+            const Rect rect = CalculateBarRect(i, height, layout);
 
             RenderBar(canvas, rect, magnitude);
         }
@@ -116,7 +121,6 @@ namespace Spectrum {
     ) const
     {
         const Color barColor = CalculateBarColor(magnitude);
-
         RenderBarWithEffects(canvas, rect, barColor);
         RenderHighlight(canvas, rect, magnitude);
     }
@@ -135,9 +139,10 @@ namespace Spectrum {
             canvas.DrawWithShadow(
                 drawCall,
                 { kShadowOffsetX, kShadowOffsetY },
-                0.0f,
+                kShadowBlurRadius,
                 Color(0.0f, 0.0f, 0.0f, kShadowAlpha)
             );
+            drawCall();
         }
         else {
             drawCall();
@@ -150,10 +155,14 @@ namespace Spectrum {
         const Color& color
     ) const
     {
-        const Paint paint{ color, true };
+        const Paint paint = Paint::Fill(color);
 
         if (m_settings.cornerRadius > 0.0f) {
-            canvas.DrawRoundedRectangle(rect, m_settings.cornerRadius, paint);
+            canvas.DrawRoundedRectangle(
+                rect,
+                m_settings.cornerRadius,
+                paint
+            );
         }
         else {
             canvas.DrawRectangle(rect, paint);
@@ -168,21 +177,44 @@ namespace Spectrum {
     {
         if (!m_settings.useHighlight) return;
 
-        const Rect highlightRect{
-            rect.x + kHighlightMargin,
-            rect.y + kHighlightMargin,
-            rect.width - kHighlightMargin * 2.0f,
-            std::min(kHighlightMaxHeight, rect.height * kHighlightHeightRatio)
-        };
+        const Rect highlightRect = CalculateHighlightRect(rect);
 
-        if (highlightRect.width <= 0.0f || highlightRect.height <= 0.0f) return;
+        if (!IsHighlightVisible(highlightRect)) return;
 
-        const Paint paint{ Color(1.0f, 1.0f, 1.0f, kHighlightAlpha * magnitude), true };
-        canvas.DrawRectangle(highlightRect, paint);
+        const Color highlightColor = CalculateHighlightColor(magnitude);
+        canvas.DrawRectangle(highlightRect, Paint::Fill(highlightColor));
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Calculation Helpers
+    // Geometry Calculation
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    Rect BarsRenderer::CalculateBarRect(
+        size_t index,
+        float height,
+        const RenderUtils::BarLayout& layout
+    ) const
+    {
+        return {
+            index * layout.totalBarWidth + layout.spacing / kSpacingDivisor,
+            static_cast<float>(m_height) - height,
+            layout.barWidth,
+            height
+        };
+    }
+
+    Rect BarsRenderer::CalculateHighlightRect(const Rect& barRect) const
+    {
+        return {
+            barRect.x + kHighlightMargin,
+            barRect.y + kHighlightMargin,
+            barRect.width - kHighlightMargin * 2.0f,
+            std::min(kHighlightMaxHeight, barRect.height * kHighlightHeightRatio)
+        };
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Color Calculation
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     Color BarsRenderer::CalculateBarColor(float magnitude) const
@@ -191,6 +223,25 @@ namespace Spectrum {
             m_primaryColor,
             kBrightnessMin + kBrightnessRange * magnitude
         );
+    }
+
+    Color BarsRenderer::CalculateHighlightColor(float magnitude) const
+    {
+        return Color(1.0f, 1.0f, 1.0f, kHighlightAlpha * magnitude);
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Validation Helpers
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    bool BarsRenderer::IsBarVisible(float height) const
+    {
+        return height >= kMinVisibleHeight;
+    }
+
+    bool BarsRenderer::IsHighlightVisible(const Rect& rect) const
+    {
+        return rect.width > 0.0f && rect.height > 0.0f;
     }
 
 } // namespace Spectrum

@@ -11,7 +11,7 @@
 #ifndef SPECTRUM_CPP_MESSAGE_HANDLER_H
 #define SPECTRUM_CPP_MESSAGE_HANDLER_H
 
-#include "Common.h"
+#include "Common/Common.h"
 
 namespace Spectrum {
     class ControllerCore;

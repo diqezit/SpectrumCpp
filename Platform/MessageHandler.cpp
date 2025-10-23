@@ -9,11 +9,11 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "MessageHandler.h"
-#include "ControllerCore.h"
-#include "EventBus.h"
+#include "App/ControllerCore.h"
+#include "Common/EventBus.h"
 #include "WindowManager.h"
 #include "Win32Utils.h"
-#include "UIManager.h"
+#include "UI/Core/UIManager.h"
 #include <stdexcept>
 
 namespace Spectrum::Platform {

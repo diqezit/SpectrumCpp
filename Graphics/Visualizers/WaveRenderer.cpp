@@ -1,4 +1,3 @@
-// WaveRenderer.cpp
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // Implements the WaveRenderer for smooth waveform visualization.
 //
@@ -14,9 +13,13 @@
 // 3. Draw reflection (if enabled)
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "WaveRenderer.h"
-#include "D2DHelpers.h"
-#include "Canvas.h"
+#include "Graphics/Visualizers/WaveRenderer.h"
+#include "Graphics/API/D2DHelpers.h"
+#include "Graphics/API/Structs/Paint.h"
+#include "Common/MathUtils.h"
+#include "Common/ColorUtils.h"
+#include "Graphics/Base/RenderUtils.h"
+#include "Graphics/API/Canvas.h"
 
 namespace Spectrum {
 
@@ -27,8 +30,10 @@ namespace Spectrum {
     namespace {
 
         constexpr int kGlowLayerCount = 4;
+
         constexpr float kGlowAlphaBase = 0.3f;
         constexpr float kGlowWidthIncrement = 2.0f;
+
         constexpr float kReflectionAlpha = 0.4f;
         constexpr float kReflectionGlowAlpha = 0.5f;
 
@@ -69,72 +74,191 @@ namespace Spectrum {
         const SpectrumData& spectrum
     )
     {
-        const Rect bounds{
-            0.0f,
-            0.0f,
-            static_cast<float>(m_width),
-            static_cast<float>(m_height)
-        };
+        if (!IsSpectrumValid(spectrum)) return;
 
-        if (m_settings.useGlow) {
-            DrawGlowEffect(canvas, spectrum, bounds);
-        }
+        const Rect bounds = GetRenderBounds();
 
-        DrawMainWaveform(canvas, spectrum, bounds);
+        RenderAllLayers(canvas, spectrum, bounds);
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Rendering Layers (SRP)
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    void WaveRenderer::DrawGlowEffect(
+    void WaveRenderer::RenderAllLayers(
         Canvas& canvas,
         const SpectrumData& spectrum,
         const Rect& bounds
     ) const
     {
-        for (int i = 1; i <= kGlowLayerCount; ++i) {
-            Color glowColor = m_primaryColor;
-            glowColor.a *= kGlowAlphaBase / i;
+        if (ShouldRenderGlow()) {
+            RenderGlowEffect(canvas, spectrum, bounds);
+        }
 
-            const float glowWidth = m_settings.lineWidth + i * kGlowWidthIncrement;
+        RenderMainWaveform(canvas, spectrum, bounds);
+    }
 
-            DrawGlowLayer(canvas, spectrum, bounds, glowColor, glowWidth);
+    void WaveRenderer::RenderGlowEffect(
+        Canvas& canvas,
+        const SpectrumData& spectrum,
+        const Rect& bounds
+    ) const
+    {
+        const int layerCount = GetGlowLayerCount();
+
+        for (int i = 1; i <= layerCount; ++i) {
+            RenderGlowLayer(canvas, spectrum, bounds, i);
         }
     }
 
-    void WaveRenderer::DrawGlowLayer(
+    void WaveRenderer::RenderGlowLayer(
         Canvas& canvas,
         const SpectrumData& spectrum,
         const Rect& bounds,
-        const Color& glowColor,
-        float glowWidth
+        int layerIndex
     ) const
     {
-        canvas.DrawWaveform(spectrum, bounds, glowColor, glowWidth, false);
+        const Color glowColor = CalculateGlowColor(layerIndex);
+        const float glowWidth = CalculateGlowWidth(layerIndex);
 
-        if (m_settings.useReflection) {
-            Color reflectionGlowColor = glowColor;
-            reflectionGlowColor.a *= kReflectionGlowAlpha;
+        RenderWaveform(canvas, spectrum, bounds, glowColor, glowWidth, false);
 
-            canvas.DrawWaveform(spectrum, bounds, reflectionGlowColor, glowWidth, true);
+        if (ShouldRenderReflection()) {
+            const Color reflectionGlowColor = CalculateReflectionColor(glowColor);
+            RenderWaveform(canvas, spectrum, bounds, reflectionGlowColor, glowWidth, true);
         }
     }
 
-    void WaveRenderer::DrawMainWaveform(
+    void WaveRenderer::RenderMainWaveform(
         Canvas& canvas,
         const SpectrumData& spectrum,
         const Rect& bounds
     ) const
     {
-        canvas.DrawWaveform(spectrum, bounds, m_primaryColor, m_settings.lineWidth, false);
+        RenderWaveform(
+            canvas,
+            spectrum,
+            bounds,
+            m_primaryColor,
+            m_settings.lineWidth,
+            false
+        );
 
-        if (m_settings.useReflection) {
-            Color reflectionColor = m_primaryColor;
-            reflectionColor.a *= kReflectionAlpha;
-
-            canvas.DrawWaveform(spectrum, bounds, reflectionColor, m_settings.lineWidth, true);
+        if (ShouldRenderReflection()) {
+            RenderReflection(canvas, spectrum, bounds, m_primaryColor, m_settings.lineWidth);
         }
+    }
+
+    void WaveRenderer::RenderWaveform(
+        Canvas& canvas,
+        const SpectrumData& spectrum,
+        const Rect& bounds,
+        const Color& color,
+        float width,
+        bool reflected
+    ) const
+    {
+        canvas.DrawWaveform(
+            spectrum,
+            bounds,
+            Paint::Stroke(color, width),
+            reflected
+        );
+    }
+
+    void WaveRenderer::RenderReflection(
+        Canvas& canvas,
+        const SpectrumData& spectrum,
+        const Rect& bounds,
+        const Color& baseColor,
+        float width
+    ) const
+    {
+        const Color reflectionColor = CalculateReflectionColor(baseColor);
+
+        RenderWaveform(canvas, spectrum, bounds, reflectionColor, width, true);
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Geometry Calculation
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    Rect WaveRenderer::GetRenderBounds() const
+    {
+        return {
+            0.0f,
+            0.0f,
+            static_cast<float>(m_width),
+            static_cast<float>(m_height)
+        };
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Color Calculation
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    Color WaveRenderer::CalculateGlowColor(int layerIndex) const
+    {
+        Color glowColor = m_primaryColor;
+        glowColor.a *= CalculateGlowAlpha(layerIndex);
+
+        return glowColor;
+    }
+
+    Color WaveRenderer::CalculateReflectionColor(const Color& baseColor) const
+    {
+        Color reflectionColor = baseColor;
+        reflectionColor.a *= GetGlowReflectionAlpha();
+
+        return reflectionColor;
+    }
+
+    float WaveRenderer::CalculateGlowAlpha(int layerIndex) const
+    {
+        return kGlowAlphaBase / layerIndex;
+    }
+
+    float WaveRenderer::CalculateGlowWidth(int layerIndex) const
+    {
+        return m_settings.lineWidth + layerIndex * kGlowWidthIncrement;
+    }
+
+    float WaveRenderer::GetReflectionAlpha() const
+    {
+        return kReflectionAlpha;
+    }
+
+    float WaveRenderer::GetGlowReflectionAlpha() const
+    {
+        return kReflectionGlowAlpha;
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Configuration Helpers
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    int WaveRenderer::GetGlowLayerCount() const
+    {
+        return kGlowLayerCount;
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Validation Helpers
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    bool WaveRenderer::ShouldRenderGlow() const
+    {
+        return m_settings.useGlow;
+    }
+
+    bool WaveRenderer::ShouldRenderReflection() const
+    {
+        return m_settings.useReflection;
+    }
+
+    bool WaveRenderer::IsSpectrumValid(const SpectrumData& spectrum) const
+    {
+        return !spectrum.empty();
     }
 
 } // namespace Spectrum

@@ -1,7 +1,7 @@
 ﻿#ifndef SPECTRUM_CPP_GRAPHICS_API_HELPERS_TYPE_CONVERSION_H
 #define SPECTRUM_CPP_GRAPHICS_API_HELPERS_TYPE_CONVERSION_H
 
-#include "Types.h"
+#include "Common/Types.h"
 #include <d2d1.h>
 
 namespace Spectrum::Helpers::TypeConversion {

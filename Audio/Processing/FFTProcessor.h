@@ -5,7 +5,7 @@
 #ifndef SPECTRUM_CPP_FFT_PROCESSOR_H
 #define SPECTRUM_CPP_FFT_PROCESSOR_H
 
-#include "Common.h"
+#include "Common/Common.h"
 
 namespace Spectrum {
 

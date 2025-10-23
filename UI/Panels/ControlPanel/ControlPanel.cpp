@@ -1,4 +1,4 @@
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+﻿// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // Implements the ControlPanel with data-driven widget creation.
 //
 // Key implementation details:
@@ -7,17 +7,20 @@
 // - Hierarchical input handling with toggle button priority
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "ControlPanel.h"
-#include "AudioManager.h"
-#include "ControllerCore.h"
-#include "Canvas.h"
-#include "RenderEngine.h"
-#include "PanelDrawHelper.h"
-#include "RendererManager.h"
-#include "StringUtils.h"
-#include "UIButton.h"
-#include "UILayout.h"
-#include "WindowManager.h"
+#include "UI/Panels/ControlPanel/ControlPanel.h"
+#include "UI/Panels/PanelDrawHelper.h"
+#include "UI/Components/UIButton.h"
+#include "UI/Common/UILayout.h"
+#include "Audio/AudioManager.h"
+#include "App/ControllerCore.h"
+#include "Graphics/API/Canvas.h"
+#include "Graphics/API/Core/RenderEngine.h"
+#include "Graphics/API/Structs/Paint.h"
+#include "Graphics/API/Structs/TextStyle.h"
+#include "Graphics/RendererManager.h"
+#include "Platform/WindowManager.h"
+#include "Common/StringUtils.h"
+#include "Common/MathUtils.h"
 
 namespace Spectrum
 {
@@ -63,10 +66,13 @@ namespace Spectrum
     // Main Execution
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    void ControlPanel::Update(const Point& mousePos, bool isMouseDown, float deltaTime)
+    void ControlPanel::Update(
+        const Point& mousePos,
+        bool isMouseDown,
+        float deltaTime
+    )
     {
         m_animator.Update(deltaTime);
-
         m_isToggleButtonHovered = IsToggleButtonHovered(mousePos);
 
         if (isMouseDown && m_isToggleButtonHovered && !m_wasTogglePressed)
@@ -117,21 +123,22 @@ namespace Spectrum
     void ControlPanel::CreateWidgets()
     {
         if (!m_controller) return;
-
         auto* rendererManager = m_controller->GetRendererManager();
         auto* windowManager = m_controller->GetWindowManager();
         auto* audioManager = m_controller->GetAudioManager();
-
         if (!rendererManager || !windowManager || !audioManager) return;
 
         m_buttons.clear();
         m_navLabels.clear();
-
         CreateNavigationControls(rendererManager, windowManager, audioManager);
         CreateActionButtons(windowManager, audioManager);
     }
 
-    void ControlPanel::CreateNavigationControls(RendererManager* rm, Platform::WindowManager* /*wm*/, AudioManager* am)
+    void ControlPanel::CreateNavigationControls(
+        RendererManager* rm,
+        Platform::WindowManager* /*wm*/,
+        AudioManager* am
+    )
     {
         const std::vector<NavControlDefinition> navDefs = {
             {
@@ -166,7 +173,6 @@ namespace Spectrum
                 L"<",
                 def.prevAction
             ));
-
             m_buttons.emplace_back(std::make_unique<UIButton>(
                 Rect{
                     UILayout::kControlPanelWidth - UILayout::kNavButtonWidth,
@@ -177,7 +183,6 @@ namespace Spectrum
                 L">",
                 def.nextAction
             ));
-
             m_navLabels.push_back({
                 { UILayout::kControlPanelWidth * 0.5f + 5.0f, def.yPos + UILayout::kNavWidgetHeight * 0.5f },
                 def.labelSource
@@ -185,24 +190,15 @@ namespace Spectrum
         }
     }
 
-    void ControlPanel::CreateActionButtons(Platform::WindowManager* wm, AudioManager* am)
+    void ControlPanel::CreateActionButtons(
+        Platform::WindowManager* wm,
+        AudioManager* am
+    )
     {
         const std::vector<ButtonDefinition> buttonDefs = {
-            {
-                UILayout::GetActionButtonY(0),
-                L"Audio Settings",
-                [this] { if (m_onShowAudioSettings) m_onShowAudioSettings(); }
-            },
-            {
-                UILayout::GetActionButtonY(1),
-                L"Toggle Overlay",
-                [wm] { wm->ToggleOverlay(); }
-            },
-            {
-                UILayout::GetActionButtonY(2),
-                L"Toggle Capture",
-                [am] { am->ToggleCapture(); }
-            }
+            { UILayout::GetActionButtonY(0), L"Audio Settings", [this] { if (m_onShowAudioSettings) m_onShowAudioSettings(); } },
+            { UILayout::GetActionButtonY(1), L"Toggle Overlay", [wm] { wm->ToggleOverlay(); } },
+            { UILayout::GetActionButtonY(2), L"Toggle Capture", [am] { am->ToggleCapture(); } }
         };
 
         for (const auto& def : buttonDefs)
@@ -222,13 +218,10 @@ namespace Spectrum
 
     void ControlPanel::ToggleVisibility()
     {
-        if (m_animator.GetState() == AnimationState::Open ||
-            m_animator.GetState() == AnimationState::Opening)
-        {
+        if (m_animator.GetState() == AnimationState::Open || m_animator.GetState() == AnimationState::Opening) {
             m_animator.Close();
         }
-        else
-        {
+        else {
             m_animator.Open();
         }
     }
@@ -240,8 +233,8 @@ namespace Spectrum
 
         constexpr Rect panelRect = { 5.0f, 5.0f, UILayout::kControlPanelWidth, UILayout::kControlPanelHeight };
 
-        const Paint fillPaint{ Color(0.1f, 0.1f, 0.1f, 0.8f), 1.0f, true };
-        const Paint strokePaint{ Color(1.0f, 1.0f, 1.0f, 0.1f), 1.0f, false };
+        const Paint fillPaint = Paint::Fill(Color(0.1f, 0.1f, 0.1f, 0.8f));
+        const Paint strokePaint = Paint::Stroke(Color(1.0f, 1.0f, 1.0f, 0.1f), 1.0f);
 
         canvas.DrawRoundedRectangle(panelRect, 5.0f, fillPaint);
         canvas.DrawRoundedRectangle(panelRect, 5.0f, strokePaint);
@@ -252,14 +245,12 @@ namespace Spectrum
         }
 
         DrawNavLabels(canvas);
-
         constexpr float separatorY = UILayout::GetSeparatorY();
 
         canvas.DrawLine(
             { UILayout::kPadding, separatorY },
             { UILayout::kControlPanelWidth - UILayout::kPadding + 5.0f, separatorY },
-            UILayout::kSeparatorColor,
-            1.0f
+            Paint::Stroke(UILayout::kSeparatorColor, 1.0f)
         );
 
         canvas.PopTransform();
@@ -267,14 +258,26 @@ namespace Spectrum
 
     void ControlPanel::DrawNavLabels(Canvas& canvas) const
     {
+        TextStyle labelStyle = TextStyle::Default()
+            .WithColor(Color::White())
+            .WithSize(14.0f)
+            .WithAlign(TextAlign::Center)
+            .WithParagraphAlign(ParagraphAlign::Center);
+
         for (const auto& label : m_navLabels)
         {
+            const float textY = label.position.y - (UILayout::kNavWidgetHeight * 0.5f);
+            const Rect textRect = {
+                UILayout::kPadding + UILayout::kNavButtonWidth,
+                textY,
+                UILayout::kControlPanelWidth - 2.0f * (UILayout::kPadding + UILayout::kNavButtonWidth),
+                UILayout::kNavWidgetHeight
+            };
+
             canvas.DrawText(
                 label.textSource(),
-                label.position,
-                Color::White(),
-                14.0f,
-                DWRITE_TEXT_ALIGNMENT_CENTER
+                textRect,
+                labelStyle
             );
         }
     }
@@ -282,17 +285,13 @@ namespace Spectrum
     [[nodiscard]] bool ControlPanel::IsToggleButtonHovered(const Point& mousePos) const noexcept
     {
         const Rect toggleRect = GetToggleButtonRect();
-
-        return mousePos.x >= toggleRect.x &&
-            mousePos.x <= toggleRect.GetRight() &&
-            mousePos.y >= toggleRect.y &&
-            mousePos.y <= toggleRect.GetBottom();
+        return mousePos.x >= toggleRect.x && mousePos.x <= toggleRect.GetRight() &&
+            mousePos.y >= toggleRect.y && mousePos.y <= toggleRect.GetBottom();
     }
 
     [[nodiscard]] Rect ControlPanel::GetToggleButtonRect() const noexcept
     {
         const float xPos = Utils::Lerp(0.0f, UILayout::kControlPanelWidth + 5.0f, m_animator.GetProgress());
-
         return {
             xPos,
             UILayout::kControlPanelHeight * 0.5f - UILayout::kToggleButtonHeight * 0.5f,

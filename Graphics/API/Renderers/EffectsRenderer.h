@@ -19,8 +19,8 @@
 // - Non-owning pointers to render resources (lifetime managed externally)
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "Common.h"
-#include "Core/IRenderComponent.h"
+#include "Common/Common.h"
+#include "Graphics/API/Core/IRenderComponent.h"
 #include <functional>
 
 namespace Spectrum {

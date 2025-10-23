@@ -2,66 +2,97 @@
 #define SPECTRUM_CPP_D2D_HELPERS_H
 
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// Defines centralized Direct2D utility functions and RAII wrappers for
-// managing D2D render states. This eliminates code duplication across
-// multiple renderer classes and ensures proper state restoration.
+// D2DHelpers - Unified facade for all Direct2D utility functions
 //
-// THIS FILE IS NOW A BACKWARD-COMPATIBILITY FACADE.
-// It includes the new modular helpers and re-exports their namespaces.
-// New code should include specific helpers directly (e.g., "Helpers/TypeConversion.h").
+// This header maintains backward compatibility by including all modular
+// helper headers. Existing code continues to work, while new code can
+// include specific headers for faster compilation.
+//
+// Migration path:
+//   OLD: #include "D2DHelpers.h"
+//   NEW: #include "Helpers/TypeConversion.h"  // Include only what you need
+//
+// Version 2.0: Added Enums, Structs, and EnumConversion support
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "Helpers/TypeConversion.h"
-#include "Helpers/MathConstants.h"
-#include "Helpers/Validation.h"
-#include "Helpers/Sanitization.h"
-#include "Helpers/HResultHelpers.h"
-#include "Helpers/D2DScopes.h"
+// Core types (must be first)
+#include "Common/Types.h"
 
-namespace Spectrum {
-    namespace D2DHelpers {
+// NEW: Enums (v2.0)
+#include "Graphics/API/Enums/PaintEnums.h"
+#include "Graphics/API/Enums/RenderEnums.h"
+#include "Graphics/API/Enums/TextEnums.h"
 
-        // Re-export all modular helper namespaces for backward compatibility.
-        using namespace Spectrum::Helpers::TypeConversion;
-        using namespace Spectrum::Helpers::Math;
-        using namespace Spectrum::Helpers::Validate;
-        using namespace Spectrum::Helpers::Sanitize;
-        using namespace Spectrum::Helpers::HResult;
-        using namespace Spectrum::Helpers::Scopes;
+// NEW: Structs (v2.0)
+#include "Graphics/API/Structs/Paint.h"
+#include "Graphics/API/Structs/StrokeOptions.h"
+#include "Graphics/API/Structs/TextStyle.h"
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Geometry Building Helpers (kept in facade for legacy compatibility)
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        namespace Geometry {
+// Helpers (modular)
+#include "Graphics/API/Helpers/TypeConversion.h"
+#include "Graphics/API/Helpers/EnumConversion.h"
+#include "Graphics/API/Helpers/MathConstants.h"
+#include "Graphics/API/Helpers/Validation.h"
+#include "Graphics/API/Helpers/Sanitization.h"
+#include "Graphics/API/Helpers/HResultHelpers.h"
+#include "Graphics/API/Helpers/D2DScopes.h"
 
-            inline void BeginFigure(ID2D1GeometrySink* sink, const Point& startPoint, bool filled)
-            {
-                if (!sink) return;
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// Backward Compatibility Namespace
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-                sink->BeginFigure(
-                    ToD2DPoint(startPoint),
-                    filled ? D2D1_FIGURE_BEGIN_FILLED : D2D1_FIGURE_BEGIN_HOLLOW
-                );
-            }
+namespace Spectrum::D2DHelpers {
 
-            inline void EndFigure(ID2D1GeometrySink* sink, bool closed)
-            {
-                if (!sink) return;
+    // Re-export all helper namespaces for backward compatibility
+    using namespace Helpers::TypeConversion;
+    using namespace Helpers::EnumConversion;    // NEW: v2.0
+    using namespace Helpers::Math;
+    using namespace Helpers::Validate;
+    using namespace Helpers::Sanitize;
+    using namespace Helpers::HResult;
+    using namespace Helpers::Scopes;
 
-                sink->EndFigure(
-                    closed ? D2D1_FIGURE_END_CLOSED : D2D1_FIGURE_END_OPEN
-                );
-            }
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Geometry Building Helpers (kept in facade for legacy compatibility)
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    namespace Geometry {
 
-            inline void AddLine(ID2D1GeometrySink* sink, const Point& point)
-            {
-                if (!sink) return;
-                sink->AddLine(ToD2DPoint(point));
-            }
+        inline void BeginFigure(ID2D1GeometrySink* sink, const Point& startPoint, bool filled)
+        {
+            if (!sink) return;
 
-        } // namespace Geometry
+            sink->BeginFigure(
+                ToD2DPoint(startPoint),
+                filled ? D2D1_FIGURE_BEGIN_FILLED : D2D1_FIGURE_BEGIN_HOLLOW
+            );
+        }
 
-    } // namespace D2DHelpers
-} // namespace Spectrum
+        inline void EndFigure(ID2D1GeometrySink* sink, bool closed)
+        {
+            if (!sink) return;
+
+            sink->EndFigure(
+                closed ? D2D1_FIGURE_END_CLOSED : D2D1_FIGURE_END_OPEN
+            );
+        }
+
+        inline void AddLine(ID2D1GeometrySink* sink, const Point& point)
+        {
+            if (!sink) return;
+            sink->AddLine(ToD2DPoint(point));
+        }
+
+    } // namespace Geometry
+
+} // namespace Spectrum::D2DHelpers
+
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// Version Macros
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+#define SPECTRUM_D2DHELPERS_VERSION_MAJOR 2
+#define SPECTRUM_D2DHELPERS_VERSION_MINOR 0
+#define SPECTRUM_D2DHELPERS_HAS_PAINT_V2 1
+#define SPECTRUM_D2DHELPERS_HAS_ENUMS 1
 
 #endif // SPECTRUM_CPP_D2D_HELPERS_H

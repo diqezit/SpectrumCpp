@@ -12,24 +12,25 @@
 // click action.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "Common.h"
+#include "Common/Common.h"
+#include "Graphics/API/Structs/TextStyle.h"
 #include <functional>
 #include <string>
 #include <string_view>
 #include <vector>
+#include <d2d1.h>
 
 namespace Spectrum {
 
-    // Forward declaration
     class Canvas;
 
     struct ButtonStyle {
         std::vector<D2D1_GRADIENT_STOP> backgroundStops;
         std::vector<D2D1_GRADIENT_STOP> backgroundHoverStops;
-        Color textColor;
         Color borderColor;
         Color glowColor;
         float cornerRadius;
+        TextStyle textStyle;
     };
 
     class UIButton final {
@@ -57,7 +58,11 @@ namespace Spectrum {
         // Public Interface
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        void Update(const Point& mousePos, bool isMouseDown, float deltaTime);
+        void Update(
+            const Point& mousePos,
+            bool isMouseDown,
+            float deltaTime
+        );
 
         void Draw(Canvas& canvas) const;
 
@@ -66,9 +71,7 @@ namespace Spectrum {
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         [[nodiscard]] bool IsHovered() const noexcept;
-
         [[nodiscard]] bool IsPressed() const noexcept;
-
         [[nodiscard]] bool IsInHitbox(const Point& mousePos) const noexcept;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -76,7 +79,6 @@ namespace Spectrum {
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void SetStyle(const ButtonStyle& style);
-
         void SetRect(const Rect& rect) noexcept;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -92,7 +94,11 @@ namespace Spectrum {
 
         enum class State { Normal, Hovered, Pressed };
 
-        void ProcessInput(const Point& mousePos, bool isMouseDown);
+        void ProcessInput(
+            const Point& mousePos,
+            bool isMouseDown
+        );
+
         void UpdateAnimation(float deltaTime);
 
         void DrawBackground(Canvas& canvas) const;

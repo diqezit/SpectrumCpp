@@ -10,7 +10,7 @@
 #ifndef SPECTRUM_CPP_WIN32_UTILS_H
 #define SPECTRUM_CPP_WIN32_UTILS_H
 
-#include "Common.h"
+#include "Common/Common.h"
 
 namespace Spectrum::Platform::Win32Utils {
 

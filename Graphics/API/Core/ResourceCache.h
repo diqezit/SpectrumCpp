@@ -1,4 +1,6 @@
-// ResourceCache.h
+#ifndef SPECTRUM_CPP_RESOURCE_CACHE_H
+#define SPECTRUM_CPP_RESOURCE_CACHE_H
+
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // Defines the ResourceCache for managing expensive Direct2D resources.
 //
@@ -7,7 +9,7 @@
 // performance. Resources are stored with string keys for flexible lookup.
 //
 // Key responsibilities:
-// - Lazy creation of gradient brushes (linear and radial)
+// - Lazy creation of brushes (solid, linear, radial)
 // - Path geometry caching with custom builder functions
 // - Automatic cache invalidation on render target change
 //
@@ -22,16 +24,19 @@
 // - Device-dependent resources cleared on render target change
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#ifndef SPECTRUM_CPP_RESOURCE_CACHE_H
-#define SPECTRUM_CPP_RESOURCE_CACHE_H
-
-#include "Common.h"
-#include "Core/IRenderComponent.h"
+#include "Common/Common.h"
+#include "Graphics/API/Core/IRenderComponent.h"
 #include <unordered_map>
 #include <string>
 #include <functional>
+#include <memory>
 
 namespace Spectrum {
+
+    class IBrush;
+    class LinearGradientBrush;
+    class RadialGradientBrush;
+    struct GradientStop;
 
     class ResourceCache final : public IRenderComponent
     {
@@ -46,25 +51,19 @@ namespace Spectrum {
         ResourceCache& operator=(const ResourceCache&) = delete;
 
         // IRenderComponent implementation
-        void OnRenderTargetChanged(ID2D1RenderTarget* renderTarget) override;
+        void OnRenderTargetChanged(
+            ID2D1RenderTarget* renderTarget
+        ) override;
+
         void OnDeviceLost() override;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Resource Retrieval
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        [[nodiscard]] ID2D1LinearGradientBrush* GetLinearGradient(
-            const std::string& key,
-            const Point& start,
-            const Point& end,
-            const std::vector<D2D1_GRADIENT_STOP>& stops
-        ) const;
-
-        [[nodiscard]] ID2D1RadialGradientBrush* GetRadialGradient(
-            const std::string& key,
-            const Point& center,
-            float radius,
-            const std::vector<D2D1_GRADIENT_STOP>& stops
+        [[nodiscard]] wrl::ComPtr<ID2D1Brush> GetBrush(
+            const std::shared_ptr<IBrush>& brushDef,
+            float globalAlpha
         ) const;
 
         [[nodiscard]] ID2D1PathGeometry* GetPathGeometry(
@@ -78,29 +77,33 @@ namespace Spectrum {
 
         void Clear();
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // State Queries
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-        [[nodiscard]] bool HasLinearGradient(const std::string& key) const noexcept;
-        [[nodiscard]] bool HasRadialGradient(const std::string& key) const noexcept;
-        [[nodiscard]] bool HasGeometry(const std::string& key) const noexcept;
-
     private:
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Private Implementation
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        [[nodiscard]] wrl::ComPtr<ID2D1LinearGradientBrush> CreateLinearGradient(
-            const Point& start,
-            const Point& end,
-            const std::vector<D2D1_GRADIENT_STOP>& stops
+        [[nodiscard]] wrl::ComPtr<ID2D1SolidColorBrush> GetSolidColorBrush(
+            const Color& color
         ) const;
 
-        [[nodiscard]] wrl::ComPtr<ID2D1RadialGradientBrush> CreateRadialGradient(
-            const Point& center,
-            float radius,
-            const std::vector<D2D1_GRADIENT_STOP>& stops
+        [[nodiscard]] wrl::ComPtr<ID2D1LinearGradientBrush> GetLinearGradient(
+            const LinearGradientBrush& brushDef
+        ) const;
+
+        [[nodiscard]] wrl::ComPtr<ID2D1RadialGradientBrush> GetRadialGradient(
+            const RadialGradientBrush& brushDef
+        ) const;
+
+        [[nodiscard]] std::string GenerateKey(
+            const LinearGradientBrush& brushDef
+        ) const;
+
+        [[nodiscard]] std::string GenerateKey(
+            const RadialGradientBrush& brushDef
+        ) const;
+
+        [[nodiscard]] std::vector<D2D1_GRADIENT_STOP> ConvertStops(
+            const std::vector<GradientStop>& stops
         ) const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -110,6 +113,7 @@ namespace Spectrum {
         ID2D1Factory* m_factory;
         ID2D1RenderTarget* m_renderTarget;
 
+        mutable wrl::ComPtr<ID2D1SolidColorBrush> m_solidBrush;
         mutable std::unordered_map<std::string, wrl::ComPtr<ID2D1LinearGradientBrush>> m_linearGradientCache;
         mutable std::unordered_map<std::string, wrl::ComPtr<ID2D1RadialGradientBrush>> m_radialGradientCache;
         mutable std::unordered_map<std::string, wrl::ComPtr<ID2D1PathGeometry>> m_geometryCache;
@@ -117,4 +121,4 @@ namespace Spectrum {
 
 } // namespace Spectrum
 
-#endif
+#endif // SPECTRUM_CPP_RESOURCE_CACHE_H

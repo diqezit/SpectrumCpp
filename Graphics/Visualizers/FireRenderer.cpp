@@ -1,4 +1,3 @@
-// FireRenderer.cpp
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // Implements the FireRenderer for pixelated fire effect visualization.
 //
@@ -16,11 +15,14 @@
 // - Early exit for invalid grid or empty spectrum
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "FireRenderer.h"
-#include "../API/D2DHelpers.h"
-#include "MathUtils.h"
-#include "ColorUtils.h"
-#include "../API/Canvas.h"
+#include "Graphics/Visualizers/FireRenderer.h"
+#include "Graphics/API/D2DHelpers.h"
+#include "Graphics/API/Structs/Paint.h"
+#include "Common/MathUtils.h"
+#include "Common/ColorUtils.h"
+#include "Graphics/Base/RenderUtils.h"
+#include "Graphics/API/Canvas.h"
+#include <cmath>
 
 namespace Spectrum {
 
@@ -31,15 +33,22 @@ namespace Spectrum {
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     namespace {
+
         constexpr float kWindSpeed = 2.0f;
         constexpr float kWindPhaseOffset = 0.5f;
         constexpr float kWindAmplitude = 2.0f;
+
         constexpr float kSmoothingCenter = 0.5f;
         constexpr float kSmoothingSide = 0.25f;
+
         constexpr float kMinVisibleIntensity = 0.01f;
         constexpr float kMinVisibleAlpha = 0.01f;
+
         constexpr float kAlphaSmoothStepMin = 0.0f;
         constexpr float kAlphaSmoothStepMax = 0.1f;
+
+        constexpr size_t kPaletteSize = 8;
+
     } // anonymous namespace
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -54,7 +63,10 @@ namespace Spectrum {
         CreateFirePalette();
     }
 
-    void FireRenderer::OnActivate(int width, int height)
+    void FireRenderer::OnActivate(
+        int width,
+        int height
+    )
     {
         BaseRenderer::OnActivate(width, height);
         InitializeGrid();
@@ -78,6 +90,7 @@ namespace Spectrum {
             m_settings = { true, true, 8.0f, 0.95f, 1.5f };
             break;
         }
+
         InitializeGrid();
     }
 
@@ -86,7 +99,7 @@ namespace Spectrum {
         float /*deltaTime*/
     )
     {
-        if (m_gridWidth == 0 || m_gridHeight == 0) return;
+        if (!IsGridValid()) return;
 
         ApplyDecay();
         InjectHeat(spectrum);
@@ -98,7 +111,7 @@ namespace Spectrum {
         const SpectrumData& /*spectrum*/
     )
     {
-        if (m_gridWidth == 0 || m_gridHeight == 0) return;
+        if (!IsGridValid()) return;
 
         for (int y = 0; y < m_gridHeight; ++y) {
             for (int x = 0; x < m_gridWidth; ++x) {
@@ -113,21 +126,20 @@ namespace Spectrum {
 
     void FireRenderer::InitializeGrid()
     {
-        if (m_width <= 0 || m_height <= 0 || m_settings.pixelSize <= 0.0f) {
+        if (!CanInitializeGrid()) {
             m_gridWidth = 0;
             m_gridHeight = 0;
             m_fireGrid.clear();
             return;
         }
 
-        m_gridWidth = static_cast<int>(m_width / m_settings.pixelSize);
-        m_gridHeight = static_cast<int>(m_height / m_settings.pixelSize);
+        m_gridWidth = CalculateGridWidth();
+        m_gridHeight = CalculateGridHeight();
 
-        if (m_gridWidth > 0 && m_gridHeight > 0) {
-            m_fireGrid.assign(
-                static_cast<size_t>(m_gridWidth) * m_gridHeight,
-                0.0f
-            );
+        const size_t gridSize = CalculateGridSize();
+
+        if (gridSize > 0) {
+            m_fireGrid.assign(gridSize, 0.0f);
         }
         else {
             m_fireGrid.clear();
@@ -148,6 +160,27 @@ namespace Spectrum {
         };
     }
 
+    bool FireRenderer::CanInitializeGrid() const
+    {
+        return m_width > 0 && m_height > 0 && m_settings.pixelSize > 0.0f;
+    }
+
+    int FireRenderer::CalculateGridWidth() const
+    {
+        return static_cast<int>(m_width / m_settings.pixelSize);
+    }
+
+    int FireRenderer::CalculateGridHeight() const
+    {
+        return static_cast<int>(m_height / m_settings.pixelSize);
+    }
+
+    size_t FireRenderer::CalculateGridSize() const
+    {
+        if (m_gridWidth <= 0 || m_gridHeight <= 0) return 0;
+        return static_cast<size_t>(m_gridWidth) * static_cast<size_t>(m_gridHeight);
+    }
+
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Fire Simulation
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -162,25 +195,32 @@ namespace Spectrum {
     void FireRenderer::InjectHeat(const SpectrumData& spectrum)
     {
         const int bottomY = m_gridHeight - 1;
-        if (bottomY < 0) return;
+
+        if (!IsBottomRowValid(bottomY)) return;
 
         for (size_t i = 0; i < spectrum.size(); ++i) {
             const float normalized = NormalizedFloat(spectrum[i]);
-            const int x = static_cast<int>(
-                (static_cast<float>(i) / std::max<size_t>(1, spectrum.size() - 1))
-                * (m_gridWidth - 1)
-                );
+            const int x = MapSpectrumIndexToGridX(i, spectrum.size());
 
-            const size_t idx = static_cast<size_t>(bottomY) * m_gridWidth
-                + Utils::Clamp(x, 0, m_gridWidth - 1);
-
-            if (idx < m_fireGrid.size()) {
-                m_fireGrid[idx] = std::max(
-                    m_fireGrid[idx],
-                    normalized * m_settings.heatMultiplier
-                );
-            }
+            InjectHeatAtPosition(x, bottomY, normalized);
         }
+    }
+
+    void FireRenderer::InjectHeatAtPosition(
+        int x,
+        int bottomY,
+        float normalizedValue
+    )
+    {
+        const int clampedX = Utils::Clamp(x, 0, m_gridWidth - 1);
+        const size_t idx = GetGridIndex(clampedX, bottomY);
+
+        if (!IsGridIndexValid(idx)) return;
+
+        m_fireGrid[idx] = std::max(
+            m_fireGrid[idx],
+            normalizedValue * m_settings.heatMultiplier
+        );
     }
 
     void FireRenderer::PropagateFire()
@@ -189,79 +229,92 @@ namespace Spectrum {
 
         for (int y = 0; y < m_gridHeight - 1; ++y) {
             for (int x = 0; x < m_gridWidth; ++x) {
-                float nextValue = GetSourcePixelValue(
-                    readGrid,
-                    x,
-                    y,
-                    m_gridWidth,
-                    m_settings.useWind,
-                    GetTime()
-                );
-
-                nextValue = ApplySmoothing(
-                    readGrid,
-                    nextValue,
-                    x,
-                    y,
-                    m_gridWidth,
-                    m_settings.useSmoothing
-                );
-
-                const size_t destIdx = static_cast<size_t>(y) * m_gridWidth + x;
-                if (destIdx < m_fireGrid.size()) {
-                    m_fireGrid[destIdx] = nextValue;
-                }
+                PropagateCell(readGrid, x, y);
             }
         }
     }
 
-    float FireRenderer::GetSourcePixelValue(
+    void FireRenderer::PropagateCell(
         const std::vector<float>& readGrid,
         int x,
-        int y,
-        int gridWidth,
-        bool useWind,
-        float time
+        int y
     )
     {
-        int windOffset = 0;
-        if (useWind) {
-            windOffset = static_cast<int>(
-                std::sin(time * kWindSpeed + x * kWindPhaseOffset) * kWindAmplitude
-                );
+        const int srcY = y + 1;
+        int srcX = x;
+
+        if (m_settings.useWind) {
+            srcX += CalculateWindOffset(x, GetTime());
         }
 
-        const int srcX = Utils::Clamp(x + windOffset, 0, gridWidth - 1);
-        const int srcY = y + 1;
+        srcX = Utils::Clamp(srcX, 0, m_gridWidth - 1);
 
-        const size_t srcIdx = static_cast<size_t>(srcY) * gridWidth + srcX;
-        if (srcIdx >= readGrid.size()) return 0.0f;
+        float value = GetCellValue(readGrid, srcX, srcY);
 
-        return readGrid[srcIdx];
+        if (m_settings.useSmoothing) {
+            value = CalculateSmoothedValue(readGrid, value, x, srcY);
+        }
+
+        const size_t destIdx = GetGridIndex(x, y);
+
+        if (IsGridIndexValid(destIdx)) {
+            m_fireGrid[destIdx] = value;
+        }
     }
 
-    float FireRenderer::ApplySmoothing(
-        const std::vector<float>& readGrid,
-        float currentValue,
+    float FireRenderer::GetCellValue(
+        const std::vector<float>& grid,
         int x,
-        int y,
-        int gridWidth,
-        bool useSmoothing
-    )
+        int y
+    ) const
     {
-        if (!useSmoothing) return currentValue;
+        const size_t idx = GetGridIndex(x, y);
 
-        const int srcY = y + 1;
+        if (idx >= grid.size()) return 0.0f;
 
+        return grid[idx];
+    }
+
+    int FireRenderer::CalculateWindOffset(
+        int x,
+        float time
+    ) const
+    {
+        return static_cast<int>(
+            std::sin(time * kWindSpeed + x * kWindPhaseOffset) * kWindAmplitude
+            );
+    }
+
+    float FireRenderer::CalculateSmoothedValue(
+        const std::vector<float>& readGrid,
+        float centerValue,
+        int x,
+        int srcY
+    ) const
+    {
         const float leftValue = (x > 0)
-            ? readGrid[static_cast<size_t>(srcY) * gridWidth + (x - 1)]
-            : currentValue;
+            ? GetCellValue(readGrid, x - 1, srcY)
+            : centerValue;
 
-        const float rightValue = (x < gridWidth - 1)
-            ? readGrid[static_cast<size_t>(srcY) * gridWidth + (x + 1)]
-            : currentValue;
+        const float rightValue = (x < m_gridWidth - 1)
+            ? GetCellValue(readGrid, x + 1, srcY)
+            : centerValue;
 
-        return currentValue * kSmoothingCenter + (leftValue + rightValue) * kSmoothingSide;
+        return centerValue * kSmoothingCenter +
+            (leftValue + rightValue) * kSmoothingSide;
+    }
+
+    int FireRenderer::MapSpectrumIndexToGridX(
+        size_t spectrumIndex,
+        size_t spectrumSize
+    ) const
+    {
+        if (spectrumSize <= 1) return 0;
+
+        const float ratio = static_cast<float>(spectrumIndex) /
+            static_cast<float>(spectrumSize - 1);
+
+        return static_cast<int>(ratio * (m_gridWidth - 1));
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -274,25 +327,57 @@ namespace Spectrum {
         int y
     ) const
     {
-        const size_t idx = static_cast<size_t>(y) * m_gridWidth + x;
-        if (idx >= m_fireGrid.size()) return;
+        const size_t idx = GetGridIndex(x, y);
+
+        if (!IsGridIndexValid(idx)) return;
 
         const float intensity = m_fireGrid[idx];
-        if (intensity < kMinVisibleIntensity) return;
 
-        Color color = GetColorFromPalette(Utils::Clamp(intensity, 0.0f, 1.0f));
-        color.a *= Utils::SmoothStep(kAlphaSmoothStepMin, kAlphaSmoothStepMax, intensity);
+        if (!IsPixelVisible(intensity)) return;
 
-        if (color.a < kMinVisibleAlpha) return;
+        const float clampedIntensity = Utils::Clamp(intensity, 0.0f, 1.0f);
+        Color color = GetColorFromPalette(clampedIntensity);
+        color = ApplyAlphaAdjustment(color, clampedIntensity);
 
-        const Rect pixelRect{
+        if (!IsColorVisible(color)) return;
+
+        const Rect pixelRect = CalculatePixelRect(x, y);
+
+        RenderPixelRect(canvas, pixelRect, color);
+    }
+
+    void FireRenderer::RenderPixelRect(
+        Canvas& canvas,
+        const Rect& pixelRect,
+        const Color& color
+    ) const
+    {
+        canvas.DrawRectangle(pixelRect, Paint::Fill(color));
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Geometry Calculation
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    Rect FireRenderer::CalculatePixelRect(
+        int x,
+        int y
+    ) const
+    {
+        return {
             static_cast<float>(x) * m_settings.pixelSize,
             static_cast<float>(y) * m_settings.pixelSize,
             m_settings.pixelSize,
             m_settings.pixelSize
         };
+    }
 
-        canvas.DrawRectangle(pixelRect, Paint{ color, true });
+    size_t FireRenderer::GetGridIndex(
+        int x,
+        int y
+    ) const
+    {
+        return static_cast<size_t>(y) * m_gridWidth + x;
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -309,7 +394,68 @@ namespace Spectrum {
         const size_t i2 = std::min(i1 + 1, m_firePalette.size() - 1);
         const float t = scaled - static_cast<float>(i1);
 
-        return Utils::InterpolateColor(m_firePalette[i1], m_firePalette[i2], t);
+        return InterpolatePaletteColors(i1, i2, t);
+    }
+
+    Color FireRenderer::ApplyAlphaAdjustment(
+        Color color,
+        float intensity
+    ) const
+    {
+        color.a *= Utils::SmoothStep(
+            kAlphaSmoothStepMin,
+            kAlphaSmoothStepMax,
+            intensity
+        );
+
+        return color;
+    }
+
+    Color FireRenderer::InterpolatePaletteColors(
+        size_t index1,
+        size_t index2,
+        float t
+    ) const
+    {
+        return Utils::InterpolateColor(
+            m_firePalette[index1],
+            m_firePalette[index2],
+            t
+        );
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Validation Helpers
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    bool FireRenderer::IsGridValid() const
+    {
+        return m_gridWidth > 0 && m_gridHeight > 0;
+    }
+
+    bool FireRenderer::IsGridIndexValid(size_t index) const
+    {
+        return index < m_fireGrid.size();
+    }
+
+    bool FireRenderer::IsPixelVisible(float intensity) const
+    {
+        return intensity >= kMinVisibleIntensity;
+    }
+
+    bool FireRenderer::IsColorVisible(const Color& color) const
+    {
+        return color.a >= kMinVisibleAlpha;
+    }
+
+    bool FireRenderer::IsBottomRowValid(int bottomY) const
+    {
+        return bottomY >= 0;
+    }
+
+    bool FireRenderer::IsXInBounds(int x) const
+    {
+        return x >= 0 && x < m_gridWidth;
     }
 
 } // namespace Spectrum

@@ -1,4 +1,3 @@
-// GaugeRenderer.cpp
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // Implements the GaugeRenderer for vintage VU meter visualization.
 //
@@ -16,11 +15,14 @@
 // 4. Peak indicator: jeweled lamp with glow effect
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "GaugeRenderer.h"
-#include "D2DHelpers.h"
-#include "MathUtils.h"
-#include "RenderUtils.h"
-#include "Canvas.h"
+#include "Graphics/Visualizers/GaugeRenderer.h"
+#include "Graphics/API/D2DHelpers.h"
+#include "Graphics/API/Structs/Paint.h"
+#include "Graphics/API/Structs/TextStyle.h"
+#include "Common/MathUtils.h"
+#include "Common/ColorUtils.h"
+#include "Graphics/Base/RenderUtils.h"
+#include "Graphics/API/Canvas.h"
 #include <algorithm>
 #include <cmath>
 
@@ -54,6 +56,15 @@ namespace Spectrum {
         constexpr float kShadowAlpha = 0.3f;
 
         constexpr float kNeedleBaseWidth = 2.5f;
+
+        constexpr float kVULabelHeightRatio = 0.15f;
+        constexpr float kVULabelOffsetRatio = 1.5f;
+
+        constexpr float kPeakLampRadiusOverlay = 0.04f;
+        constexpr float kPeakLampRadiusNormal = 0.05f;
+        constexpr float kPeakLampInnerScale = 0.8f;
+        constexpr float kPeakLampGlowScale = 2.0f;
+        constexpr float kPeakLampPositionOffset = 2.5f;
 
         struct MajorMark { float db; const wchar_t* label; };
         constexpr MajorMark kMajorMarks[] = {
@@ -154,8 +165,8 @@ namespace Spectrum {
 
         DrawBackground(canvas, gaugeRect);
         DrawScale(canvas, gaugeRect);
-        DrawPeakIndicator(canvas, gaugeRect);
         DrawNeedle(canvas, gaugeRect);
+        DrawPeakIndicator(canvas, gaugeRect);
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -167,47 +178,9 @@ namespace Spectrum {
         const Rect& rect
     ) const
     {
-        canvas.DrawRoundedRectangle(
-            rect,
-            kBezelRadius,
-            Paint{ Color::FromRGB(80, 80, 80), true }
-        );
-
-        const Rect innerRect{
-            rect.x + kBezelPadding,
-            rect.y + kBezelPadding,
-            rect.width - kBezelPadding * 2.0f,
-            rect.height - kBezelPadding * 2.0f
-        };
-
-        canvas.DrawRoundedRectangle(
-            innerRect,
-            kInnerRadius,
-            Paint{ Color::FromRGB(105, 105, 105), true }
-        );
-
-        const Rect bgRect{
-            innerRect.x + kInnerPadding,
-            innerRect.y + kInnerPadding,
-            innerRect.width - kInnerPadding * 2.0f,
-            innerRect.height - kInnerPadding * 2.0f
-        };
-
-        canvas.DrawRectangle(bgRect, Paint{ Color::FromRGB(240, 240, 230), true });
-
-        const float vuTextSize = rect.height * 0.15f;
-        const Point textPos{
-            bgRect.x + bgRect.width * 0.5f,
-            bgRect.GetBottom() - vuTextSize * 1.5f
-        };
-
-        canvas.DrawText(
-            L"VU",
-            textPos,
-            Color::Black(),
-            vuTextSize,
-            DWRITE_TEXT_ALIGNMENT_CENTER
-        );
+        DrawBezelLayers(canvas, rect);
+        const Rect innerRect = GetInnerRect(rect);
+        DrawMeterFace(canvas, innerRect);
     }
 
     void GaugeRenderer::DrawScale(
@@ -247,46 +220,97 @@ namespace Spectrum {
     ) const
     {
         const float lampRadius = std::min(rect.width, rect.height) *
-            (m_isOverlay ? 0.04f : 0.05f);
+            (m_isOverlay ? kPeakLampRadiusOverlay : kPeakLampRadiusNormal);
 
-        const Point lampPos{
-            rect.GetRight() - lampRadius * 2.5f,
-            rect.y + lampRadius * 2.5f
-        };
+        const Point lampPos = GetPeakLampPosition(rect, lampRadius);
 
-        if (m_peakActive && m_quality != RenderQuality::Low) {
-            canvas.DrawGlow(lampPos, lampRadius * 2.0f, Color::Red(), 0.3f);
-        }
+        DrawPeakLamp(canvas, lampPos, lampRadius);
+        DrawPeakLabel(canvas, lampPos, lampRadius);
+    }
 
-        const Color lampColor = m_peakActive
-            ? Color::Red()
-            : Color::FromRGB(180, 0, 0);
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Background Components
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        canvas.DrawCircle(lampPos, lampRadius * 0.8f, Paint{ lampColor, 1.0f, true });
-
-        canvas.DrawCircle(
-            lampPos,
-            lampRadius,
-            Paint{ Color::FromRGB(40, 40, 40), 1.2f, false }
+    void GaugeRenderer::DrawBezelLayers(
+        Canvas& canvas,
+        const Rect& rect
+    ) const
+    {
+        canvas.DrawRoundedRectangle(
+            rect,
+            kBezelRadius,
+            Paint::Fill(Color::FromRGB(80, 80, 80))
         );
 
-        const float textSize = lampRadius;
+        const Rect innerRect = GetInnerRect(rect);
+
+        canvas.DrawRoundedRectangle(
+            innerRect,
+            kInnerRadius,
+            Paint::Fill(Color::FromRGB(105, 105, 105))
+        );
+    }
+
+    void GaugeRenderer::DrawMeterFace(
+        Canvas& canvas,
+        const Rect& outerRect
+    ) const
+    {
+        const Rect faceRect = GetFaceRect(outerRect);
+
+        canvas.DrawRectangle(
+            faceRect,
+            Paint::Fill(Color::FromRGB(240, 240, 230))
+        );
+
+        const float textSize = outerRect.height * kVULabelHeightRatio;
+        DrawVULabel(canvas, faceRect, textSize);
+    }
+
+    void GaugeRenderer::DrawVULabel(
+        Canvas& canvas,
+        const Rect& faceRect,
+        float textSize
+    ) const
+    {
         const Point textPos{
-            lampPos.x,
-            lampPos.y + lampRadius + textSize * 0.5f
+            faceRect.x + faceRect.width * 0.5f,
+            faceRect.GetBottom() - textSize * kVULabelOffsetRatio
         };
 
-        const Color textColor = m_peakActive
-            ? Color::Red()
-            : Color::FromRGB(180, 0, 0);
-
-        canvas.DrawText(
-            L"PEAK",
+        const Rect textRect = CreateCenteredTextRect(
             textPos,
-            textColor,
-            textSize,
-            DWRITE_TEXT_ALIGNMENT_CENTER
+            textSize * 2.0f,
+            textSize * 1.5f
         );
+
+        TextStyle style = TextStyle::Default()
+            .WithColor(Color::Black())
+            .WithSize(textSize)
+            .WithAlign(TextAlign::Center);
+
+        canvas.DrawText(L"VU", textRect, style);
+    }
+
+    Rect GaugeRenderer::GetInnerRect(const Rect& rect) const
+    {
+        return {
+            rect.x + kBezelPadding,
+            rect.y + kBezelPadding,
+            rect.width - kBezelPadding * 2.0f,
+            rect.height - kBezelPadding * 2.0f
+        };
+    }
+
+    Rect GaugeRenderer::GetFaceRect(const Rect& innerRect) const
+    {
+        return {
+            innerRect.x + kInnerPadding,
+            innerRect.y + kInnerPadding,
+            innerRect.width - kInnerPadding * 2.0f,
+            innerRect.height - kInnerPadding * 2.0f
+        };
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -303,42 +327,33 @@ namespace Spectrum {
     ) const
     {
         const float angle = DbToAngle(dbValue);
-        const float rad = Utils::DegToRad(angle);
         const float tickLength = GetTickLength(dbValue, true) * radiusY;
+        const auto [start, end] = GetTickPoints(
+            center,
+            radiusX,
+            radiusY,
+            angle,
+            tickLength
+        );
 
-        const Point start{
-            center.x + (radiusX - tickLength) * std::cos(rad),
-            center.y + (radiusY - tickLength) * std::sin(rad)
-        };
+        DrawTickLine(canvas, start, end, GetTickColor(dbValue, false), 1.8f);
 
-        const Point end{
-            center.x + radiusX * std::cos(rad),
-            center.y + radiusY * std::sin(rad)
-        };
+        if (label) {
+            const float textOffset = radiusY * (m_isOverlay ? 0.1f : 0.12f);
+            const float rad = Utils::DegToRad(angle);
 
-        const Color tickColor = (dbValue >= 0.0f)
-            ? Color::FromRGB(220, 0, 0)
-            : Color::FromRGB(80, 80, 80);
+            const Point labelPos{
+                center.x + (radiusX + textOffset) * std::cos(rad),
+                center.y + (radiusY + textOffset) * std::sin(rad)
+            };
 
-        canvas.DrawLine(start, end, tickColor, 1.8f);
+            const float textSize = GetLabelTextSize({ 0, 0, radiusY, radiusY }, dbValue);
+            const Color textColor = (dbValue >= 0.0f)
+                ? Color::FromRGB(200, 0, 0)
+                : Color::Black();
 
-        if (!label) return;
-
-        const float textOffset = radiusY * (m_isOverlay ? 0.1f : 0.12f);
-        float textSize = radiusY * (m_isOverlay ? 0.08f : 0.1f);
-
-        if (dbValue == 0.0f) textSize *= 1.15f;
-
-        const Point labelPos{
-            center.x + (radiusX + textOffset) * std::cos(rad),
-            center.y + (radiusY + textOffset) * std::sin(rad)
-        };
-
-        const Color textColor = (dbValue >= 0.0f)
-            ? Color::FromRGB(200, 0, 0)
-            : Color::Black();
-
-        canvas.DrawText(label, labelPos, textColor, textSize, DWRITE_TEXT_ALIGNMENT_CENTER);
+            DrawTickLabel(canvas, labelPos, textSize, label, textColor);
+        }
     }
 
     void GaugeRenderer::DrawMinorTick(
@@ -350,8 +365,60 @@ namespace Spectrum {
     ) const
     {
         const float angle = DbToAngle(dbValue);
-        const float rad = Utils::DegToRad(angle);
         const float tickLength = GetTickLength(dbValue, false) * radiusY;
+        const auto [start, end] = GetTickPoints(
+            center,
+            radiusX,
+            radiusY,
+            angle,
+            tickLength
+        );
+
+        DrawTickLine(canvas, start, end, GetTickColor(dbValue, true), 1.0f);
+    }
+
+    void GaugeRenderer::DrawTickLine(
+        Canvas& canvas,
+        const Point& start,
+        const Point& end,
+        const Color& color,
+        float width
+    ) const
+    {
+        canvas.DrawLine(start, end, Paint::Stroke(color, width));
+    }
+
+    void GaugeRenderer::DrawTickLabel(
+        Canvas& canvas,
+        const Point& labelPos,
+        float textSize,
+        const wchar_t* label,
+        const Color& color
+    ) const
+    {
+        const Rect labelRect = CreateCenteredTextRect(
+            labelPos,
+            textSize * 3.0f,
+            textSize * 1.5f
+        );
+
+        TextStyle style = TextStyle::Default()
+            .WithColor(color)
+            .WithSize(textSize)
+            .WithAlign(TextAlign::Center);
+
+        canvas.DrawText(label, labelRect, style);
+    }
+
+    std::pair<Point, Point> GaugeRenderer::GetTickPoints(
+        const Point& center,
+        float radiusX,
+        float radiusY,
+        float angle,
+        float tickLength
+    ) const
+    {
+        const float rad = Utils::DegToRad(angle);
 
         const Point start{
             center.x + (radiusX - tickLength) * std::cos(rad),
@@ -363,11 +430,37 @@ namespace Spectrum {
             center.y + radiusY * std::sin(rad)
         };
 
-        const Color minorColor = (dbValue >= 0.0f)
-            ? Color::FromRGB(180, 100, 100)
-            : Color::FromRGB(100, 100, 100);
+        return { start, end };
+    }
 
-        canvas.DrawLine(start, end, minorColor, 1.0f);
+    Color GaugeRenderer::GetTickColor(
+        float dbValue,
+        bool isMinor
+    ) const
+    {
+        if (isMinor) {
+            return (dbValue >= 0.0f)
+                ? Color::FromRGB(180, 100, 100)
+                : Color::FromRGB(100, 100, 100);
+        }
+
+        return (dbValue >= 0.0f)
+            ? Color::FromRGB(220, 0, 0)
+            : Color::FromRGB(80, 80, 80);
+    }
+
+    float GaugeRenderer::GetLabelTextSize(
+        const Rect& rect,
+        float dbValue
+    ) const
+    {
+        float textSize = rect.height * (m_isOverlay ? 0.08f : 0.1f);
+
+        if (dbValue == 0.0f) {
+            textSize *= 1.15f;
+        }
+
+        return textSize;
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -380,17 +473,13 @@ namespace Spectrum {
         float length
     ) const
     {
-        const std::vector<Point> needlePoints = {
-            {0.0f, -length},
-            {-kNeedleBaseWidth, 0.0f},
-            {kNeedleBaseWidth, 0.0f}
-        };
+        const std::vector<Point> needlePoints = GetNeedleGeometry(length);
 
         auto drawCall = [&]() {
             canvas.PushTransform();
             canvas.TranslateBy(center.x, center.y);
             canvas.RotateAt({ 0.0f, 0.0f }, m_currentNeedleAngle + 90.0f);
-            canvas.DrawPolygon(needlePoints, Paint{ Color::Black(), true });
+            canvas.DrawPolygon(needlePoints, Paint::Fill(Color::Black()));
             canvas.PopTransform();
             };
 
@@ -401,6 +490,7 @@ namespace Spectrum {
                 2.0f,
                 Color(0.0f, 0.0f, 0.0f, kShadowAlpha)
             );
+            drawCall();
         }
         else {
             drawCall();
@@ -413,6 +503,12 @@ namespace Spectrum {
         float radius
     ) const
     {
+        canvas.DrawCircle(
+            center,
+            radius,
+            Paint::Fill(Color::FromRGB(60, 60, 60))
+        );
+
         if (m_quality != RenderQuality::Low) {
             const Point highlightPos{
                 center.x - radius * 0.25f,
@@ -420,24 +516,102 @@ namespace Spectrum {
             };
 
             canvas.DrawCircle(
-                center,
-                radius,
-                Paint{ Color::FromRGB(60, 60, 60), true }
-            );
-
-            canvas.DrawCircle(
                 highlightPos,
                 radius * 0.4f,
-                Paint{ Color(1.0f, 1.0f, 1.0f, 0.6f), true }
+                Paint::Fill(Color(1.0f, 1.0f, 1.0f, 0.6f))
             );
         }
-        else {
-            canvas.DrawCircle(
-                center,
-                radius,
-                Paint{ Color::FromRGB(60, 60, 60), true }
+    }
+
+    std::vector<Point> GaugeRenderer::GetNeedleGeometry(float length) const
+    {
+        return {
+            {0.0f, -length},
+            {-kNeedleBaseWidth, 0.0f},
+            {kNeedleBaseWidth, 0.0f}
+        };
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Peak Indicator Components
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    void GaugeRenderer::DrawPeakLamp(
+        Canvas& canvas,
+        const Point& lampPos,
+        float lampRadius
+    ) const
+    {
+        if (m_peakActive && m_quality != RenderQuality::Low) {
+            canvas.DrawGlow(
+                lampPos,
+                lampRadius * kPeakLampGlowScale,
+                Color::Red(),
+                0.3f
             );
         }
+
+        canvas.DrawCircle(
+            lampPos,
+            lampRadius * kPeakLampInnerScale,
+            Paint::Fill(GetPeakLampColor())
+        );
+
+        canvas.DrawCircle(
+            lampPos,
+            lampRadius,
+            Paint::Stroke(Color::FromRGB(40, 40, 40), 1.2f)
+        );
+    }
+
+    void GaugeRenderer::DrawPeakLabel(
+        Canvas& canvas,
+        const Point& lampPos,
+        float lampRadius
+    ) const
+    {
+        const Point textPos{
+            lampPos.x,
+            lampPos.y + lampRadius + lampRadius * 0.5f
+        };
+
+        const Rect textRect = CreateCenteredTextRect(
+            textPos,
+            lampRadius * 4.0f,
+            lampRadius * 1.5f
+        );
+
+        TextStyle style = TextStyle::Default()
+            .WithColor(GetPeakTextColor())
+            .WithSize(lampRadius)
+            .WithAlign(TextAlign::Center);
+
+        canvas.DrawText(L"PEAK", textRect, style);
+    }
+
+    Point GaugeRenderer::GetPeakLampPosition(
+        const Rect& rect,
+        float lampRadius
+    ) const
+    {
+        return {
+            rect.GetRight() - lampRadius * kPeakLampPositionOffset,
+            rect.y + lampRadius * kPeakLampPositionOffset
+        };
+    }
+
+    Color GaugeRenderer::GetPeakLampColor() const
+    {
+        return m_peakActive
+            ? Color::Red()
+            : Color::FromRGB(180, 0, 0);
+    }
+
+    Color GaugeRenderer::GetPeakTextColor() const
+    {
+        return m_peakActive
+            ? Color::Red()
+            : Color::FromRGB(180, 0, 0);
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -483,11 +657,28 @@ namespace Spectrum {
         };
     }
 
-    float GaugeRenderer::GetTickLength(float dbValue, bool isMajor) const
+    float GaugeRenderer::GetTickLength(
+        float dbValue,
+        bool isMajor
+    ) const
     {
         if (!isMajor) return m_isOverlay ? 0.05f : 0.06f;
         if (dbValue == 0.0f) return m_isOverlay ? 0.12f : 0.15f;
         return m_isOverlay ? 0.064f : 0.08f;
+    }
+
+    Rect GaugeRenderer::CreateCenteredTextRect(
+        const Point& center,
+        float width,
+        float height
+    ) const
+    {
+        return {
+            center.x - width * 0.5f,
+            center.y - height * 0.5f,
+            width,
+            height
+        };
     }
 
 } // namespace Spectrum

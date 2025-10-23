@@ -1,4 +1,3 @@
-// WaveRenderer.h
 #ifndef SPECTRUM_CPP_WAVE_RENDERER_H
 #define SPECTRUM_CPP_WAVE_RENDERER_H
 
@@ -21,9 +20,11 @@
 // - Glow rendered in multiple passes (back to front)
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "BaseRenderer.h"
+#include "Graphics/Base/BaseRenderer.h"
 
 namespace Spectrum {
+
+    class Canvas;
 
     class WaveRenderer final : public BaseRenderer
     {
@@ -73,25 +74,80 @@ namespace Spectrum {
         // Rendering Layers (SRP)
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        void DrawGlowEffect(
+        void RenderAllLayers(
             Canvas& canvas,
             const SpectrumData& spectrum,
             const Rect& bounds
         ) const;
 
-        void DrawGlowLayer(
+        void RenderGlowEffect(
+            Canvas& canvas,
+            const SpectrumData& spectrum,
+            const Rect& bounds
+        ) const;
+
+        void RenderGlowLayer(
             Canvas& canvas,
             const SpectrumData& spectrum,
             const Rect& bounds,
-            const Color& glowColor,
-            float glowWidth
+            int layerIndex
         ) const;
 
-        void DrawMainWaveform(
+        void RenderMainWaveform(
             Canvas& canvas,
             const SpectrumData& spectrum,
             const Rect& bounds
         ) const;
+
+        void RenderWaveform(
+            Canvas& canvas,
+            const SpectrumData& spectrum,
+            const Rect& bounds,
+            const Color& color,
+            float width,
+            bool reflected
+        ) const;
+
+        void RenderReflection(
+            Canvas& canvas,
+            const SpectrumData& spectrum,
+            const Rect& bounds,
+            const Color& color,
+            float width
+        ) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Geometry Calculation
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] Rect GetRenderBounds() const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Color Calculation
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] Color CalculateGlowColor(int layerIndex) const;
+        [[nodiscard]] Color CalculateReflectionColor(const Color& baseColor) const;
+
+        [[nodiscard]] float CalculateGlowAlpha(int layerIndex) const;
+        [[nodiscard]] float CalculateGlowWidth(int layerIndex) const;
+
+        [[nodiscard]] float GetReflectionAlpha() const;
+        [[nodiscard]] float GetGlowReflectionAlpha() const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Configuration Helpers
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] int GetGlowLayerCount() const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Validation Helpers
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] bool ShouldRenderGlow() const;
+        [[nodiscard]] bool ShouldRenderReflection() const;
+        [[nodiscard]] bool IsSpectrumValid(const SpectrumData& spectrum) const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Member Variables
@@ -102,4 +158,4 @@ namespace Spectrum {
 
 } // namespace Spectrum
 
-#endif
+#endif // SPECTRUM_CPP_WAVE_RENDERER_H

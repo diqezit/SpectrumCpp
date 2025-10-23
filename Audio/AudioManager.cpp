@@ -5,12 +5,12 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "AudioManager.h"
-#include "EventBus.h"
-#include "TemplateUtils.h"
-#include "MathUtils.h"
-#include "StringUtils.h"
-#include "RealtimeAudioSource.h"
-#include "AnimatedAudioSource.h"
+#include "Common/EventBus.h"
+#include "Common/TemplateUtils.h"
+#include "Common/MathUtils.h"
+#include "Common/StringUtils.h"
+#include "Audio/Sources/RealtimeAudioSource.h"
+#include "Audio/Sources/AnimatedAudioSource.h"
 
 namespace Spectrum {
 

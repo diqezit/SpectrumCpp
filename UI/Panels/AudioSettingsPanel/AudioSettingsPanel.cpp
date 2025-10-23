@@ -7,16 +7,17 @@
 // - Click-outside-to-close behavior
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "AudioSettingsPanel.h"
-#include "AudioManager.h"
-#include "ControllerCore.h"
-#include "Canvas.h"
-#include "RenderEngine.h"
-#include "PanelDrawHelper.h"
-#include "UIButton.h"
-#include "UILayout.h"
-#include "UISlider.h"
-#include "WindowManager.h"
+#include "UI/Panels/AudioSettingsPanel/AudioSettingsPanel.h"
+#include "UI/Panels/PanelDrawHelper.h"
+#include "UI/Components/UIButton.h"
+#include "UI/Components/UISlider.h"
+#include "UI/Common/UILayout.h"
+#include "Audio/AudioManager.h"
+#include "App/ControllerCore.h"
+#include "Graphics/API/Canvas.h"
+#include "Graphics/API/Core/RenderEngine.h"
+#include "Graphics/API/Structs/TextStyle.h"
+#include "Platform/WindowManager.h"
 #include <cmath>
 
 namespace Spectrum
@@ -25,6 +26,8 @@ namespace Spectrum
     {
         constexpr int kFloatPrecision = 2;
         constexpr float kRoundingMultiplier = 100.0f;
+        constexpr float kLabelTextHeight = 20.0f;
+        constexpr float kValueTextWidth = 80.0f;
 
         std::wstring FormatFloat(float value)
         {
@@ -35,8 +38,12 @@ namespace Spectrum
             if (dotPos != std::wstring::npos) {
                 result = result.substr(0, dotPos + kFloatPrecision + 1);
 
-                while (result.back() == L'0') result.pop_back();
-                if (result.back() == L'.') result.pop_back();
+                while (result.back() == L'0') {
+                    result.pop_back();
+                }
+                if (result.back() == L'.') {
+                    result.pop_back();
+                }
             }
 
             return result;
@@ -70,7 +77,11 @@ namespace Spectrum
     // Main Execution
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    void AudioSettingsPanel::Update(const Point& mousePos, bool isMouseDown, float deltaTime)
+    void AudioSettingsPanel::Update(
+        const Point& mousePos,
+        bool isMouseDown,
+        float deltaTime
+    )
     {
         if (!IsVisible()) return;
 
@@ -283,8 +294,15 @@ namespace Spectrum
     void AudioSettingsPanel::DrawSliders(Canvas& canvas) const
     {
         const float alpha = m_animator.GetProgress();
-        const Color labelColor = { 0.8f, 0.8f, 0.8f, alpha };
-        const Color valueColor = { 1.0f, 1.0f, 1.0f, alpha };
+
+        TextStyle labelStyle = TextStyle::Default()
+            .WithColor(Color(0.8f, 0.8f, 0.8f, alpha))
+            .WithSize(12.0f);
+
+        TextStyle valueStyle = TextStyle::Default()
+            .WithColor(Color(1.0f, 1.0f, 1.0f, alpha))
+            .WithSize(12.0f)
+            .WithAlign(TextAlign::Trailing);
 
         for (const auto& widget : m_sliderWidgets)
         {
@@ -293,25 +311,40 @@ namespace Spectrum
             widget.slider->Draw(canvas);
 
             const Rect& sliderRect = widget.slider->GetRect();
+            const float labelY = sliderRect.y + UILayout::kSliderLabelYOffset;
+
+            const Rect labelRect = {
+                sliderRect.x,
+                labelY - kLabelTextHeight * 0.5f,
+                sliderRect.width * 0.5f,
+                kLabelTextHeight
+            };
 
             canvas.DrawText(
                 widget.label,
-                { sliderRect.x, sliderRect.y + UILayout::kSliderLabelYOffset },
-                labelColor,
-                12.0f
+                labelRect,
+                labelStyle
             );
+
+            const Rect valueRect = {
+                sliderRect.GetRight() - kValueTextWidth,
+                labelY - kLabelTextHeight * 0.5f,
+                kValueTextWidth,
+                kLabelTextHeight
+            };
 
             canvas.DrawText(
                 widget.formatter(widget.slider->GetValue()),
-                { sliderRect.GetRight(), sliderRect.y + UILayout::kSliderLabelYOffset },
-                valueColor,
-                12.0f,
-                DWRITE_TEXT_ALIGNMENT_TRAILING
+                valueRect,
+                valueStyle
             );
         }
     }
 
-    void AudioSettingsPanel::HandleClickOutside(const Point& mousePos, bool isMouseDown)
+    void AudioSettingsPanel::HandleClickOutside(
+        const Point& mousePos,
+        bool isMouseDown
+    )
     {
         if (m_wasPressed && !isMouseDown && !IsInHitbox(mousePos))
         {

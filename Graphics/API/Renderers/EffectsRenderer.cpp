@@ -12,7 +12,7 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "EffectsRenderer.h"
-#include "D2DHelpers.h"
+#include "Graphics/API/D2DHelpers.h"
 
 namespace Spectrum {
 

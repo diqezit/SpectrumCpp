@@ -1,5 +1,4 @@
-﻿// RenderEngine.cpp
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+﻿// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // Implements the RenderEngine facade for the rendering system.
 //
 // Implementation details:
@@ -9,19 +8,18 @@
 // - Uses D2DHelpers for validation, sanitization, and HRESULT checking
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "RenderEngine.h"
-#include "D2DHelpers.h"
+#include "Graphics/API/Core/RenderEngine.h"
+#include "Graphics/API/D2DHelpers.h"
 
 // Include full component definitions
-#include "Canvas.h"
-#include "ResourceCache.h"
-#include "GeometryBuilder.h"
-#include "TransformManager.h"
-#include "Renderers/PrimitiveRenderer.h"
-#include "Renderers/GradientRenderer.h"
-#include "Renderers/TextRenderer.h"
-#include "Renderers/EffectsRenderer.h"
-#include "Renderers/SpectrumRenderer.h"
+#include "Graphics/API/Canvas.h"
+#include "Graphics/API/Core/ResourceCache.h"
+#include "Graphics/API/Core/GeometryBuilder.h"
+#include "Graphics/API/Core/TransformManager.h"
+#include "Graphics/API/Renderers/PrimitiveRenderer.h"
+#include "Graphics/API/Renderers/TextRenderer.h"
+#include "Graphics/API/Renderers/EffectsRenderer.h"
+#include "Graphics/API/Renderers/SpectrumRenderer.h"
 
 namespace Spectrum {
 
@@ -44,7 +42,10 @@ namespace Spectrum {
     // Lifecycle Management
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    RenderEngine::RenderEngine(HWND hwnd, bool isOverlay)
+    RenderEngine::RenderEngine(
+        HWND hwnd,
+        bool isOverlay
+    )
         : m_hwnd(hwnd)
         , m_isOverlay(isOverlay)
         , m_width(0)
@@ -75,23 +76,23 @@ namespace Spectrum {
 
         m_geometryBuilder = std::make_unique<GeometryBuilder>(m_d2dFactory.Get());
         m_resourceCache = std::make_unique<ResourceCache>(m_d2dFactory.Get());
-        m_primitiveRenderer = std::make_unique<PrimitiveRenderer>(m_geometryBuilder.get());
-        m_gradientRenderer = std::make_unique<GradientRenderer>(
-            m_resourceCache.get(),
-            m_geometryBuilder.get()
+
+        m_primitiveRenderer = std::make_unique<PrimitiveRenderer>(
+            m_geometryBuilder.get(),
+            m_resourceCache.get()
         );
+
         m_textRenderer = std::make_unique<TextRenderer>(m_writeFactory.Get());
         m_effectsRenderer = std::make_unique<EffectsRenderer>();
         m_transformManager = std::make_unique<TransformManager>();
+
         m_spectrumRenderer = std::make_unique<SpectrumRenderer>(
             m_primitiveRenderer.get(),
-            m_gradientRenderer.get(),
             m_geometryBuilder.get()
         );
 
         m_canvas = std::make_unique<Canvas>(
             m_primitiveRenderer.get(),
-            m_gradientRenderer.get(),
             m_textRenderer.get(),
             m_effectsRenderer.get(),
             m_transformManager.get(),
@@ -100,7 +101,6 @@ namespace Spectrum {
 
         RegisterComponent(m_resourceCache.get());
         RegisterComponent(m_primitiveRenderer.get());
-        RegisterComponent(m_gradientRenderer.get());
         RegisterComponent(m_textRenderer.get());
         RegisterComponent(m_effectsRenderer.get());
         RegisterComponent(m_transformManager.get());
@@ -233,19 +233,10 @@ namespace Spectrum {
             LOG_ERROR("Failed to create HWND render target");
             return false;
         }
-        if (!CreateSolidBrush()) {
-            LOG_ERROR("Failed to create solid brush");
-            return false;
-        }
 
         for (auto* comp : m_components) {
             comp->OnRenderTargetChanged(m_renderTarget.Get());
         }
-
-        m_primitiveRenderer->SetSolidBrush(m_solidBrush.Get());
-        m_gradientRenderer->SetSolidBrush(m_solidBrush.Get());
-        m_textRenderer->SetSolidBrush(m_solidBrush.Get());
-        m_effectsRenderer->SetSolidBrush(m_solidBrush.Get());
 
         return true;
     }
@@ -281,25 +272,11 @@ namespace Spectrum {
         return true;
     }
 
-    bool RenderEngine::CreateSolidBrush()
-    {
-        if (!m_renderTarget) return false;
-
-        return CheckWithReturn(
-            m_renderTarget->CreateSolidColorBrush(
-                ToD2DColor(Color::White()),
-                m_solidBrush.GetAddressOf()
-            ),
-            "ID2D1RenderTarget::CreateSolidColorBrush"
-        );
-    }
-
     void RenderEngine::DiscardDeviceResources()
     {
         for (auto* comp : m_components) {
             comp->OnDeviceLost();
         }
-        m_solidBrush.Reset();
         m_renderTarget.Reset();
     }
 }

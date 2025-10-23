@@ -1,4 +1,3 @@
-// RenderUtils.cpp
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // Implements rendering utility functions for spectrum analysis and layout.
 //
@@ -18,7 +17,7 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "RenderUtils.h"
-#include "D2DHelpers.h"
+#include "Graphics/API/D2DHelpers.h"
 #include <numeric>
 #include <algorithm>
 
@@ -30,7 +29,11 @@ namespace Spectrum::RenderUtils {
     // Range Utilities
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    float AverageRange(const SpectrumData& spectrum, size_t begin, size_t end)
+    float AverageRange(
+        const SpectrumData& spectrum,
+        size_t begin,
+        size_t end
+    )
     {
         if (spectrum.empty()) return 0.0f;
 
@@ -49,7 +52,11 @@ namespace Spectrum::RenderUtils {
         return sum / static_cast<float>(end - begin);
     }
 
-    float SegmentAverage(const SpectrumData& spectrum, size_t segments, size_t index)
+    float SegmentAverage(
+        const SpectrumData& spectrum,
+        size_t segments,
+        size_t index
+    )
     {
         if (spectrum.empty() || segments == 0) return 0.0f;
         if (index >= segments) return 0.0f;
@@ -107,7 +114,11 @@ namespace Spectrum::RenderUtils {
     // Layout Helpers
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    BarLayout ComputeBarLayout(size_t count, float spacing, int viewWidth)
+    BarLayout ComputeBarLayout(
+        size_t count,
+        float spacing,
+        int viewWidth
+    )
     {
         BarLayout layout{};
 
@@ -162,7 +173,11 @@ namespace Spectrum::RenderUtils {
         }
     }
 
-    float MagnitudeToHeight(float magnitude, int viewHeight, float scale)
+    float MagnitudeToHeight(
+        float magnitude,
+        int viewHeight,
+        float scale
+    )
     {
         if (viewHeight <= 0) return 0.0f;
 
@@ -171,6 +186,24 @@ namespace Spectrum::RenderUtils {
         const float height = sanitizedMagnitude * static_cast<float>(viewHeight) * sanitizedScale;
 
         return std::clamp(height, 0.0f, static_cast<float>(viewHeight));
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Quality-based Helpers
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    int GetMaxBarsForQuality(RenderQuality quality)
+    {
+        switch (quality)
+        {
+        case RenderQuality::Low:
+            return 32;
+        case RenderQuality::High:
+            return 128;
+        case RenderQuality::Medium:
+        default:
+            return 64;
+        }
     }
 
 } // namespace Spectrum::RenderUtils

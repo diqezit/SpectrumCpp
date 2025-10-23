@@ -21,7 +21,7 @@
 // - Uses RenderUtils for frequency band analysis
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "BaseRenderer.h"
+#include "Graphics/Base/BaseRenderer.h"
 
 namespace Spectrum {
 
@@ -82,7 +82,7 @@ namespace Spectrum {
         // Single Ring Rendering (SRP)
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        void RenderCalculatedRing(
+        void RenderRing(
             Canvas& canvas,
             const Point& center,
             float radius,
@@ -90,7 +90,7 @@ namespace Spectrum {
             float distanceFactor
         ) const;
 
-        void RenderGlowForRing(
+        void RenderRingGlow(
             Canvas& canvas,
             const Point& center,
             float radius,
@@ -99,7 +99,7 @@ namespace Spectrum {
             const Color& baseColor
         ) const;
 
-        void RenderMainRing(
+        void RenderRingShape(
             Canvas& canvas,
             const Point& center,
             float radius,
@@ -108,12 +108,26 @@ namespace Spectrum {
         ) const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Calculation Helpers
+        // Animation Updates
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        [[nodiscard]] Color CalculateRingColor(
-            float magnitude,
-            float distanceFactor
+        void UpdateRotationAngle(
+            float avgIntensity,
+            float deltaTime
+        );
+
+        void UpdateWavePhase(float deltaTime);
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Geometry Calculation
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] Point GetViewportCenter() const;
+        [[nodiscard]] float GetMaxRadius() const;
+
+        [[nodiscard]] float CalculateRingStep(
+            float maxRadius,
+            int ringCount
         ) const;
 
         [[nodiscard]] float CalculateRingRadius(
@@ -122,13 +136,58 @@ namespace Spectrum {
             float magnitude
         ) const;
 
+        [[nodiscard]] float CalculateDistanceFactor(
+            float radius,
+            float maxRadius
+        ) const;
+
         [[nodiscard]] float CalculateStrokeWidth(float magnitude) const;
+
+        [[nodiscard]] std::pair<float, float> GetRingRadii(
+            float centerRadius,
+            float strokeWidth
+        ) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Color Calculation
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] Color CalculateRingColor(
+            float magnitude,
+            float distanceFactor
+        ) const;
+
+        [[nodiscard]] Color CalculateGlowColor(const Color& baseColor) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Data Extraction
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] int GetEffectiveRingCount(const SpectrumData& spectrum) const;
 
         [[nodiscard]] static float GetRingMagnitude(
             const SpectrumData& spectrum,
             int ringIndex,
             int ringCount
         );
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Validation Helpers
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] bool IsRingVisible(float magnitude) const;
+
+        [[nodiscard]] bool IsRingInBounds(
+            float radius,
+            float maxRadius
+        ) const;
+
+        [[nodiscard]] bool CanRenderRingShape(
+            float innerRadius,
+            float outerRadius
+        ) const;
+
+        [[nodiscard]] bool ShouldRenderGlow(float magnitude) const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Member Variables

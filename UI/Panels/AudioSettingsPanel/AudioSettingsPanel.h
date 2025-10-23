@@ -9,8 +9,8 @@
 // animations and click-outside-to-close behavior.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "Common.h"
-#include "PanelAnimator.h"
+#include "Common/Common.h"
+#include "UI/Panels/PanelAnimator.h"
 #include <vector>
 #include <memory>
 #include <functional>
@@ -42,7 +42,12 @@ namespace Spectrum
         // Main Execution
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        void Update(const Point& mousePos, bool isMouseDown, float deltaTime);
+        void Update(
+            const Point& mousePos,
+            bool isMouseDown,
+            float deltaTime
+        );
+
         void Draw(Canvas& canvas) const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=

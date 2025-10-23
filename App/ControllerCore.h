@@ -6,8 +6,8 @@
 #ifndef SPECTRUM_CPP_CONTROLLER_CORE_H
 #define SPECTRUM_CPP_CONTROLLER_CORE_H
 
-#include "Common.h"
-#include "Timer.h"
+#include "Common/Common.h"
+#include "Common/Timer.h"
 #include <memory>
 #include <vector>
 

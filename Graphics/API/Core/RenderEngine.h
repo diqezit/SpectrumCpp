@@ -1,4 +1,6 @@
-// RenderEngine.h
+#ifndef SPECTRUM_CPP_RENDER_ENGINE_H
+#define SPECTRUM_CPP_RENDER_ENGINE_H
+
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // Defines the RenderEngine, the central manager for graphics resources.
 //
@@ -21,11 +23,8 @@
 // Architecture pattern: Resource Manager + Factory
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#ifndef SPECTRUM_CPP_RENDER_ENGINE_H
-#define SPECTRUM_CPP_RENDER_ENGINE_H
-
-#include "Common.h"
-#include "Core/IRenderComponent.h"
+#include "Common/Common.h"
+#include "Graphics/API/Core/IRenderComponent.h"
 #include <memory>
 #include <vector>
 
@@ -36,7 +35,6 @@ namespace Spectrum {
     class ResourceCache;
     class GeometryBuilder;
     class PrimitiveRenderer;
-    class GradientRenderer;
     class TextRenderer;
     class EffectsRenderer;
     class TransformManager;
@@ -74,7 +72,10 @@ namespace Spectrum {
         // Lifecycle Management
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        explicit RenderEngine(HWND hwnd, bool isOverlay = false);
+        explicit RenderEngine(
+            HWND hwnd,
+            bool isOverlay = false
+        );
         ~RenderEngine();
 
         RenderEngine(const RenderEngine&) = delete;
@@ -116,7 +117,7 @@ namespace Spectrum {
         [[nodiscard]] bool CreateDWriteFactory();
         [[nodiscard]] bool CreateDeviceResources();
         [[nodiscard]] bool CreateHwndRenderTarget();
-        [[nodiscard]] bool CreateSolidBrush();
+
         void DiscardDeviceResources();
         void RegisterComponent(IRenderComponent* component);
 
@@ -133,13 +134,11 @@ namespace Spectrum {
         wrl::ComPtr<ID2D1Factory> m_d2dFactory;
         wrl::ComPtr<IDWriteFactory> m_writeFactory;
         wrl::ComPtr<ID2D1HwndRenderTarget> m_renderTarget;
-        wrl::ComPtr<ID2D1SolidColorBrush> m_solidBrush;
 
         // Owned sub-components (worker classes)
         std::unique_ptr<ResourceCache> m_resourceCache;
         std::unique_ptr<GeometryBuilder> m_geometryBuilder;
         std::unique_ptr<PrimitiveRenderer> m_primitiveRenderer;
-        std::unique_ptr<GradientRenderer> m_gradientRenderer;
         std::unique_ptr<TextRenderer> m_textRenderer;
         std::unique_ptr<EffectsRenderer> m_effectsRenderer;
         std::unique_ptr<TransformManager> m_transformManager;

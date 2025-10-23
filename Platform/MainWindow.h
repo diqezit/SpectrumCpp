@@ -11,7 +11,7 @@
 #ifndef SPECTRUM_CPP_MAINWINDOW_H
 #define SPECTRUM_CPP_MAINWINDOW_H
 
-#include "Common.h"
+#include "Common/Common.h"
 #include <string>
 
 namespace Spectrum::Platform {

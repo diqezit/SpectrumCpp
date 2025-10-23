@@ -8,14 +8,14 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "WindowManager.h"
-#include "ControllerCore.h"
-#include "RenderEngine.h"
-#include "IRenderer.h"
-#include "RendererManager.h"
+#include "App/ControllerCore.h"
+#include "Graphics/Api/Core/RenderEngine.h"
+#include "Graphics/IRenderer.h"
+#include "Graphics/RendererManager.h"
 #include "MainWindow.h"
 #include "MessageHandler.h"
 #include "Win32Utils.h"
-#include "UIManager.h"
+#include "UI/Core/UIManager.h"
 #include <stdexcept>
 
 namespace Spectrum::Platform {

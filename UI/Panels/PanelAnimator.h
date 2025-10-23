@@ -9,7 +9,7 @@
 // compared to linear or quadratic curves.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "MathUtils.h"
+#include "Common/MathUtils.h"
 #include <algorithm>
 
 namespace Spectrum

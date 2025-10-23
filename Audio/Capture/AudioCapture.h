@@ -5,7 +5,7 @@
 #ifndef SPECTRUM_CPP_AUDIO_CAPTURE_H
 #define SPECTRUM_CPP_AUDIO_CAPTURE_H
 
-#include "Common.h"
+#include "Common/Common.h"
 #include <memory>
 
 namespace Spectrum {

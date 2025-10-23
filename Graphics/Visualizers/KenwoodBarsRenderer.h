@@ -22,9 +22,10 @@
 // - Gradient intensity boosted for vibrant Kenwood look
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "BaseRenderer.h"
-#include "RenderUtils.h"
-#include "SpectrumTypes.h"
+#include "Graphics/Base/BaseRenderer.h"
+#include "Graphics/Base/RenderUtils.h"
+#include "Common/SpectrumTypes.h"
+#include <vector>
 
 namespace Spectrum {
 
@@ -93,15 +94,38 @@ namespace Spectrum {
             float deltaTime
         );
 
+        void UpdatePeakHoldTimer(
+            size_t index,
+            float deltaTime
+        );
+
+        void UpdatePeakFall(
+            size_t index,
+            float deltaTime
+        );
+
         [[nodiscard]] float GetPeakValue(size_t index) const;
+        [[nodiscard]] bool IsPeakIndexValid(size_t index) const;
+        [[nodiscard]] bool ShouldUpdatePeak(float value, size_t index) const;
+        [[nodiscard]] bool IsPeakHoldActive(size_t index) const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Style Helpers
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         [[nodiscard]] float CalculateCornerRadius(float barWidth) const;
+        [[nodiscard]] float GetCornerRadiusRatio() const;
+
         [[nodiscard]] BarStyle CreateBarStyle(float cornerRadius) const;
+        [[nodiscard]] float GetBarSpacing() const;
+
         [[nodiscard]] std::vector<D2D1_GRADIENT_STOP> GetAdjustedGradientStops() const;
+        [[nodiscard]] float GetGradientIntensityBoost() const;
+
+        [[nodiscard]] D2D1_GRADIENT_STOP AdjustGradientStop(
+            const D2D1_GRADIENT_STOP& stop,
+            float intensityBoost
+        ) const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Rendering Layers
@@ -110,7 +134,6 @@ namespace Spectrum {
         void RenderMainLayer(
             Canvas& canvas,
             const SpectrumData& spectrum,
-            const RenderUtils::BarLayout& layout,
             const BarStyle& barStyle
         ) const;
 
@@ -131,6 +154,94 @@ namespace Spectrum {
             Canvas& canvas,
             const RenderUtils::BarLayout& layout
         ) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Bar Rendering
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        void RenderBarOutline(
+            Canvas& canvas,
+            const Rect& barRect,
+            float magnitude,
+            float cornerRadius
+        ) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Peak Rendering
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        void CollectPeakRects(
+            std::vector<Rect>& peakRects,
+            const RenderUtils::BarLayout& layout
+        ) const;
+
+        void RenderPeakRects(
+            Canvas& canvas,
+            const std::vector<Rect>& peakRects,
+            float cornerRadius
+        ) const;
+
+        void RenderPeakEnhancement(
+            Canvas& canvas,
+            size_t index,
+            float totalBarWidth,
+            float barWidth
+        ) const;
+
+        void RenderPeakEnhancementLines(
+            Canvas& canvas,
+            const Rect& peakRect,
+            const Color& outlineColor,
+            float outlineWidth
+        ) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Geometry Calculation
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] Rect CalculateBarRect(
+            size_t index,
+            float magnitude,
+            const RenderUtils::BarLayout& layout
+        ) const;
+
+        [[nodiscard]] Rect CalculatePeakRect(
+            size_t index,
+            float peakValue,
+            const RenderUtils::BarLayout& layout
+        ) const;
+
+        [[nodiscard]] Rect CalculatePeakRectForEnhancement(
+            size_t index,
+            float peakValue,
+            float totalBarWidth,
+            float barWidth
+        ) const;
+
+        [[nodiscard]] float CalculateBarHeight(float magnitude) const;
+        [[nodiscard]] float CalculatePeakY(float peakValue) const;
+        [[nodiscard]] float GetPeakHeight() const;
+        [[nodiscard]] float GetPeakCornerRadius(float baseCornerRadius) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Color Calculation
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] Color GetOutlineColor(float magnitude) const;
+        [[nodiscard]] Color GetPeakOutlineColor() const;
+
+        [[nodiscard]] float GetOutlineAlpha() const;
+        [[nodiscard]] float GetPeakOutlineAlpha() const;
+        [[nodiscard]] float GetOutlineWidth() const;
+        [[nodiscard]] float GetPeakEnhancementOutlineWidth() const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Validation Helpers
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] bool ShouldRenderBar(float magnitude) const;
+        [[nodiscard]] bool ShouldRenderPeak(float peakValue) const;
+        [[nodiscard]] bool IsBarHeightValid(float height) const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Member Variables

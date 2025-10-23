@@ -1,5 +1,5 @@
-#include "ColorUtils.h"
-#include "MathUtils.h"
+#include "Common/ColorUtils.h"
+#include "Common/MathUtils.h"
 
 namespace Spectrum {
     namespace Utils {

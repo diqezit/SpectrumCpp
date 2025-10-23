@@ -1,4 +1,3 @@
-// CircularWaveRenderer.cpp
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // Implements the CircularWaveRenderer for concentric ring visualizations.
 //
@@ -16,12 +15,14 @@
 // 4. Render main ring
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "CircularWaveRenderer.h"
-#include "D2DHelpers.h"
-#include "MathUtils.h"
-#include "ColorUtils.h"
-#include "RenderUtils.h"
-#include "Canvas.h"
+#include "Graphics/Visualizers/CircularWaveRenderer.h"
+#include "Graphics/API/D2DHelpers.h"
+#include "Graphics/API/Structs/Paint.h"
+#include "Common/MathUtils.h"
+#include "Common/ColorUtils.h"
+#include "Graphics/Base/RenderUtils.h"
+#include "Graphics/API/Canvas.h"
+#include <cmath>
 
 namespace Spectrum {
 
@@ -35,13 +36,25 @@ namespace Spectrum {
 
         constexpr float kCenterRadius = 30.0f;
         constexpr float kMaxRadiusFactor = 0.45f;
+        constexpr float kViewportCenterFactor = 0.5f;
+
         constexpr float kMinStroke = 1.5f;
         constexpr float kStrokeClampFactor = 6.0f;
+
         constexpr float kWaveInfluence = 1.0f;
         constexpr float kWavePhaseOffset = 0.1f;
+
         constexpr float kRotationIntensityFactor = 0.3f;
+        constexpr float kRotationSpeedBase = 1.0f;
+
         constexpr float kMinMagnitudeThreshold = 0.01f;
         constexpr float kGlowThreshold = 0.5f;
+
+        constexpr float kAlphaMultiplier = 1.5f;
+        constexpr float kGlowAlphaFactor = 0.5f;
+        constexpr float kGlowIntensityFactor = 0.8f;
+
+        constexpr float kStrokeOffsetFactor = 0.5f;
 
     } // anonymous namespace
 
@@ -71,6 +84,7 @@ namespace Spectrum {
             case RenderQuality::High:
                 m_settings = { true, 6.0f, 20, 0.4f, 1.5f };
                 break;
+            case RenderQuality::Medium:
             default:
                 m_settings = { true, 5.0f, 16, 0.4f, 1.5f };
                 break;
@@ -84,6 +98,7 @@ namespace Spectrum {
             case RenderQuality::High:
                 m_settings = { true, 8.0f, 32, 0.5f, 2.0f };
                 break;
+            case RenderQuality::Medium:
             default:
                 m_settings = { true, 7.0f, 24, 0.5f, 2.0f };
                 break;
@@ -98,15 +113,8 @@ namespace Spectrum {
     {
         const float avgIntensity = RenderUtils::GetAverageMagnitude(spectrum);
 
-        m_angle += m_settings.rotationSpeed
-            * (1.0f + avgIntensity * kRotationIntensityFactor)
-            * deltaTime;
-
-        if (m_angle > kTwoPi) {
-            m_angle -= kTwoPi;
-        }
-
-        m_waveTime += m_settings.waveSpeed * deltaTime;
+        UpdateRotationAngle(avgIntensity, deltaTime);
+        UpdateWavePhase(deltaTime);
     }
 
     void CircularWaveRenderer::DoRender(
@@ -114,30 +122,26 @@ namespace Spectrum {
         const SpectrumData& spectrum
     )
     {
-        const Point center = { m_width * 0.5f, m_height * 0.5f };
-        const float maxRadius = std::min(m_width, m_height) * kMaxRadiusFactor;
-
-        const int ringCount = std::min(
-            static_cast<int>(spectrum.size()),
-            m_settings.maxRings
-        );
+        const Point center = GetViewportCenter();
+        const float maxRadius = GetMaxRadius();
+        const int ringCount = GetEffectiveRingCount(spectrum);
 
         if (ringCount == 0) return;
 
-        const float ringStep = (maxRadius - kCenterRadius) / ringCount;
+        const float ringStep = CalculateRingStep(maxRadius, ringCount);
 
         for (int i = ringCount - 1; i >= 0; --i) {
             const float magnitude = GetRingMagnitude(spectrum, i, ringCount);
 
-            if (magnitude < kMinMagnitudeThreshold) continue;
+            if (!IsRingVisible(magnitude)) continue;
 
             const float radius = CalculateRingRadius(i, ringStep, magnitude);
 
-            if (radius <= 0.0f || radius > maxRadius) continue;
+            if (!IsRingInBounds(radius, maxRadius)) continue;
 
-            const float distanceFactor = 1.0f - radius / maxRadius;
+            const float distanceFactor = CalculateDistanceFactor(radius, maxRadius);
 
-            RenderCalculatedRing(canvas, center, radius, magnitude, distanceFactor);
+            RenderRing(canvas, center, radius, magnitude, distanceFactor);
         }
     }
 
@@ -145,7 +149,7 @@ namespace Spectrum {
     // Single Ring Rendering (SRP)
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    void CircularWaveRenderer::RenderCalculatedRing(
+    void CircularWaveRenderer::RenderRing(
         Canvas& canvas,
         const Point& center,
         float radius,
@@ -156,11 +160,11 @@ namespace Spectrum {
         const float strokeWidth = CalculateStrokeWidth(magnitude);
         const Color ringColor = CalculateRingColor(magnitude, distanceFactor);
 
-        RenderGlowForRing(canvas, center, radius, strokeWidth, magnitude, ringColor);
-        RenderMainRing(canvas, center, radius, strokeWidth, ringColor);
+        RenderRingGlow(canvas, center, radius, strokeWidth, magnitude, ringColor);
+        RenderRingShape(canvas, center, radius, strokeWidth, ringColor);
     }
 
-    void CircularWaveRenderer::RenderGlowForRing(
+    void CircularWaveRenderer::RenderRingGlow(
         Canvas& canvas,
         const Point& center,
         float radius,
@@ -169,16 +173,20 @@ namespace Spectrum {
         const Color& baseColor
     ) const
     {
-        if (!m_settings.useGlow || magnitude <= kGlowThreshold) return;
+        if (!ShouldRenderGlow(magnitude)) return;
 
-        Color glowColor = baseColor;
-        glowColor.a *= 0.5f;
-
+        const Color glowColor = CalculateGlowColor(baseColor);
         const float glowRadius = radius + strokeWidth;
-        canvas.DrawGlow(center, glowRadius, glowColor, magnitude * 0.8f);
+
+        canvas.DrawGlow(
+            center,
+            glowRadius,
+            glowColor,
+            magnitude * kGlowIntensityFactor
+        );
     }
 
-    void CircularWaveRenderer::RenderMainRing(
+    void CircularWaveRenderer::RenderRingShape(
         Canvas& canvas,
         const Point& center,
         float radius,
@@ -186,29 +194,65 @@ namespace Spectrum {
         const Color& color
     ) const
     {
-        const float innerRadius = radius - strokeWidth * 0.5f;
-        const float outerRadius = radius + strokeWidth * 0.5f;
+        const auto [innerRadius, outerRadius] = GetRingRadii(radius, strokeWidth);
 
-        if (innerRadius < outerRadius && innerRadius > 0.0f) {
-            canvas.DrawRing(center, innerRadius, outerRadius, color);
-        }
+        if (!CanRenderRingShape(innerRadius, outerRadius)) return;
+
+        canvas.DrawRing(
+            center,
+            innerRadius,
+            outerRadius,
+            Paint::Stroke(color)
+        );
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Calculation Helpers
+    // Animation Updates
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    Color CircularWaveRenderer::CalculateRingColor(
-        float magnitude,
-        float distanceFactor
+    void CircularWaveRenderer::UpdateRotationAngle(
+        float avgIntensity,
+        float deltaTime
+    )
+    {
+        const float rotationSpeed = m_settings.rotationSpeed
+            * (kRotationSpeedBase + avgIntensity * kRotationIntensityFactor);
+
+        m_angle += rotationSpeed * deltaTime;
+
+        if (m_angle > kTwoPi) {
+            m_angle -= kTwoPi;
+        }
+    }
+
+    void CircularWaveRenderer::UpdateWavePhase(float deltaTime)
+    {
+        m_waveTime += m_settings.waveSpeed * deltaTime;
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Geometry Calculation
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    Point CircularWaveRenderer::GetViewportCenter() const
+    {
+        return {
+            m_width * kViewportCenterFactor,
+            m_height * kViewportCenterFactor
+        };
+    }
+
+    float CircularWaveRenderer::GetMaxRadius() const
+    {
+        return std::min(m_width, m_height) * kMaxRadiusFactor;
+    }
+
+    float CircularWaveRenderer::CalculateRingStep(
+        float maxRadius,
+        int ringCount
     ) const
     {
-        const float alpha = Utils::Saturate(magnitude * 1.5f * distanceFactor);
-
-        Color ringColor = m_primaryColor;
-        ringColor.a = alpha;
-
-        return ringColor;
+        return (maxRadius - kCenterRadius) / ringCount;
     }
 
     float CircularWaveRenderer::CalculateRingRadius(
@@ -225,12 +269,66 @@ namespace Spectrum {
         return baseRadius + waveOffset;
     }
 
+    float CircularWaveRenderer::CalculateDistanceFactor(
+        float radius,
+        float maxRadius
+    ) const
+    {
+        return 1.0f - radius / maxRadius;
+    }
+
     float CircularWaveRenderer::CalculateStrokeWidth(float magnitude) const
     {
         return Utils::Clamp(
             kMinStroke + magnitude * kStrokeClampFactor,
             kMinStroke,
             m_settings.maxStroke
+        );
+    }
+
+    std::pair<float, float> CircularWaveRenderer::GetRingRadii(
+        float centerRadius,
+        float strokeWidth
+    ) const
+    {
+        const float innerRadius = centerRadius - strokeWidth * kStrokeOffsetFactor;
+        const float outerRadius = centerRadius + strokeWidth * kStrokeOffsetFactor;
+
+        return { innerRadius, outerRadius };
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Color Calculation
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    Color CircularWaveRenderer::CalculateRingColor(
+        float magnitude,
+        float distanceFactor
+    ) const
+    {
+        const float alpha = Utils::Saturate(
+            magnitude * kAlphaMultiplier * distanceFactor
+        );
+
+        return m_primaryColor.WithAlpha(alpha);
+    }
+
+    Color CircularWaveRenderer::CalculateGlowColor(const Color& baseColor) const
+    {
+        Color glowColor = baseColor;
+        glowColor.a *= kGlowAlphaFactor;
+        return glowColor;
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Data Extraction
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    int CircularWaveRenderer::GetEffectiveRingCount(const SpectrumData& spectrum) const
+    {
+        return std::min(
+            static_cast<int>(spectrum.size()),
+            m_settings.maxRings
         );
     }
 
@@ -250,6 +348,36 @@ namespace Spectrum {
         );
 
         return RenderUtils::AverageRange(spectrum, start, end);
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Validation Helpers
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    bool CircularWaveRenderer::IsRingVisible(float magnitude) const
+    {
+        return magnitude >= kMinMagnitudeThreshold;
+    }
+
+    bool CircularWaveRenderer::IsRingInBounds(
+        float radius,
+        float maxRadius
+    ) const
+    {
+        return radius > 0.0f && radius <= maxRadius;
+    }
+
+    bool CircularWaveRenderer::CanRenderRingShape(
+        float innerRadius,
+        float outerRadius
+    ) const
+    {
+        return innerRadius > 0.0f && innerRadius < outerRadius;
+    }
+
+    bool CircularWaveRenderer::ShouldRenderGlow(float magnitude) const
+    {
+        return m_settings.useGlow && magnitude > kGlowThreshold;
     }
 
 } // namespace Spectrum

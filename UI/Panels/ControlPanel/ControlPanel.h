@@ -8,8 +8,8 @@
 // settings, as well as action buttons for audio settings and overlay mode.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "Common.h"
-#include "PanelAnimator.h"
+#include "Common/Common.h"
+#include "UI/Panels/PanelAnimator.h"
 #include <vector>
 #include <memory>
 #include <functional>
@@ -24,7 +24,7 @@ namespace Spectrum
     class UIButton;
 
     namespace Platform {
-        class WindowManager; // Corrected namespace
+        class WindowManager;
     }
 
     class ControlPanel final
@@ -48,7 +48,12 @@ namespace Spectrum
         // Main Execution
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        void Update(const Point& mousePos, bool isMouseDown, float deltaTime);
+        void Update(
+            const Point& mousePos,
+            bool isMouseDown,
+            float deltaTime
+        );
+
         void Draw(Canvas& canvas) const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -73,8 +78,17 @@ namespace Spectrum
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void CreateWidgets();
-        void CreateNavigationControls(RendererManager* rm, Platform::WindowManager* wm, AudioManager* am);
-        void CreateActionButtons(Platform::WindowManager* wm, AudioManager* am);
+
+        void CreateNavigationControls(
+            RendererManager* rm,
+            Platform::WindowManager* wm,
+            AudioManager* am
+        );
+
+        void CreateActionButtons(
+            Platform::WindowManager* wm,
+            AudioManager* am
+        );
 
         void ToggleVisibility();
         void DrawContent(Canvas& canvas) const;

@@ -21,8 +21,9 @@
 // - CubeGeometry struct pre-calculates all face dimensions
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "BaseRenderer.h"
-#include "RenderUtils.h"
+#include "Graphics/Base/BaseRenderer.h"
+#include "Graphics/Base/RenderUtils.h"
+#include <vector>
 
 namespace Spectrum {
 
@@ -84,6 +85,16 @@ namespace Spectrum {
         };
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Cube Collection
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        void CollectVisibleCubes(
+            std::vector<CubeGeometry>& cubes,
+            const SpectrumData& spectrum,
+            const RenderUtils::BarLayout& layout
+        ) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Geometry Calculation
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
@@ -93,6 +104,16 @@ namespace Spectrum {
             const RenderUtils::BarLayout& layout
         ) const;
 
+        [[nodiscard]] Rect CalculateFrontFace(
+            size_t index,
+            float height,
+            const RenderUtils::BarLayout& layout
+        ) const;
+
+        [[nodiscard]] float CalculateBarHeight(float magnitude) const;
+        [[nodiscard]] float CalculateTopHeight(float barWidth) const;
+        [[nodiscard]] float CalculateSideWidth(float barWidth) const;
+
         [[nodiscard]] std::vector<Point> GetSideFacePoints(
             const CubeGeometry& cube
         ) const;
@@ -101,10 +122,18 @@ namespace Spectrum {
             const CubeGeometry& cube
         ) const;
 
-        [[nodiscard]] Color GetCubeColor(float magnitude) const;
+        [[nodiscard]] Point CalculateSidePoint1(const CubeGeometry& cube) const;
+        [[nodiscard]] Point CalculateSidePoint2(const CubeGeometry& cube) const;
+        [[nodiscard]] Point CalculateSidePoint3(const CubeGeometry& cube) const;
+        [[nodiscard]] Point CalculateSidePoint4(const CubeGeometry& cube) const;
+
+        [[nodiscard]] Point CalculateTopPoint1(const CubeGeometry& cube) const;
+        [[nodiscard]] Point CalculateTopPoint2(const CubeGeometry& cube) const;
+        [[nodiscard]] Point CalculateTopPoint3(const CubeGeometry& cube) const;
+        [[nodiscard]] Point CalculateTopPoint4(const CubeGeometry& cube) const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Rendering Methods
+        // Face Rendering (SRP)
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void RenderCubes(
@@ -117,20 +146,60 @@ namespace Spectrum {
             const std::vector<CubeGeometry>& cubes
         ) const;
 
-        void RenderSideFace(
+        void RenderAllFaces(
             Canvas& canvas,
-            const CubeGeometry& cube
+            const std::vector<CubeGeometry>& cubes
         ) const;
 
-        void RenderTopFace(
+        void RenderSideFaces(
             Canvas& canvas,
-            const CubeGeometry& cube
+            const std::vector<CubeGeometry>& cubes
+        ) const;
+
+        void RenderTopFaces(
+            Canvas& canvas,
+            const std::vector<CubeGeometry>& cubes
         ) const;
 
         void RenderFrontFaces(
             Canvas& canvas,
             const std::vector<CubeGeometry>& cubes
         ) const;
+
+        void RenderSingleSideFace(
+            Canvas& canvas,
+            const CubeGeometry& cube
+        ) const;
+
+        void RenderSingleTopFace(
+            Canvas& canvas,
+            const CubeGeometry& cube
+        ) const;
+
+        void RenderSingleFrontFace(
+            Canvas& canvas,
+            const CubeGeometry& cube
+        ) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Color Calculation
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] Color CalculateBaseColor(float magnitude) const;
+        [[nodiscard]] Color CalculateSideColor(float magnitude) const;
+        [[nodiscard]] Color CalculateTopColor(float magnitude) const;
+        [[nodiscard]] Color CalculateFrontColor(float magnitude) const;
+
+        [[nodiscard]] float CalculateColorAlpha(float magnitude) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Validation Helpers
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] bool IsMagnitudeVisible(float magnitude) const;
+        [[nodiscard]] bool ShouldRenderSideFaces() const;
+        [[nodiscard]] bool ShouldRenderTopFaces() const;
+        [[nodiscard]] bool AreCubesEmpty(const std::vector<CubeGeometry>& cubes) const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Member Variables

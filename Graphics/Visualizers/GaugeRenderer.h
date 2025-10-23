@@ -20,7 +20,9 @@
 // - No external color support (fixed vintage color scheme)
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "BaseRenderer.h"
+#include "Graphics/Base/BaseRenderer.h"
+#include <utility>
+#include <vector>
 
 namespace Spectrum {
 
@@ -69,10 +71,48 @@ namespace Spectrum {
         // Main Drawing Components (SRP)
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        void DrawBackground(Canvas& canvas, const Rect& rect) const;
-        void DrawScale(Canvas& canvas, const Rect& rect) const;
-        void DrawNeedle(Canvas& canvas, const Rect& rect) const;
-        void DrawPeakIndicator(Canvas& canvas, const Rect& rect) const;
+        void DrawBackground(
+            Canvas& canvas,
+            const Rect& rect
+        ) const;
+
+        void DrawScale(
+            Canvas& canvas,
+            const Rect& rect
+        ) const;
+
+        void DrawNeedle(
+            Canvas& canvas,
+            const Rect& rect
+        ) const;
+
+        void DrawPeakIndicator(
+            Canvas& canvas,
+            const Rect& rect
+        ) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Background Components
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        void DrawBezelLayers(
+            Canvas& canvas,
+            const Rect& rect
+        ) const;
+
+        void DrawMeterFace(
+            Canvas& canvas,
+            const Rect& outerRect
+        ) const;
+
+        void DrawVULabel(
+            Canvas& canvas,
+            const Rect& faceRect,
+            float textSize
+        ) const;
+
+        [[nodiscard]] Rect GetInnerRect(const Rect& rect) const;
+        [[nodiscard]] Rect GetFaceRect(const Rect& innerRect) const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Scale Components
@@ -95,6 +135,40 @@ namespace Spectrum {
             float dbValue
         ) const;
 
+        void DrawTickLine(
+            Canvas& canvas,
+            const Point& start,
+            const Point& end,
+            const Color& color,
+            float width
+        ) const;
+
+        void DrawTickLabel(
+            Canvas& canvas,
+            const Point& labelPos,
+            float textSize,
+            const wchar_t* label,
+            const Color& color
+        ) const;
+
+        [[nodiscard]] std::pair<Point, Point> GetTickPoints(
+            const Point& center,
+            float radiusX,
+            float radiusY,
+            float angle,
+            float tickLength
+        ) const;
+
+        [[nodiscard]] Color GetTickColor(
+            float dbValue,
+            bool isMinor
+        ) const;
+
+        [[nodiscard]] float GetLabelTextSize(
+            const Rect& rect,
+            float dbValue
+        ) const;
+
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Needle Components
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -111,6 +185,32 @@ namespace Spectrum {
             float radius
         ) const;
 
+        [[nodiscard]] std::vector<Point> GetNeedleGeometry(float length) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Peak Indicator Components
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        void DrawPeakLamp(
+            Canvas& canvas,
+            const Point& lampPos,
+            float lampRadius
+        ) const;
+
+        void DrawPeakLabel(
+            Canvas& canvas,
+            const Point& lampPos,
+            float lampRadius
+        ) const;
+
+        [[nodiscard]] Point GetPeakLampPosition(
+            const Rect& rect,
+            float lampRadius
+        ) const;
+
+        [[nodiscard]] Color GetPeakLampColor() const;
+        [[nodiscard]] Color GetPeakTextColor() const;
+
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Calculation Helpers
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -119,7 +219,17 @@ namespace Spectrum {
         [[nodiscard]] float DbToAngle(float db) const;
         [[nodiscard]] Point GetScaleCenter(const Rect& rect) const;
         [[nodiscard]] Point GetNeedleCenter(const Rect& rect) const;
-        [[nodiscard]] float GetTickLength(float dbValue, bool isMajor) const;
+
+        [[nodiscard]] float GetTickLength(
+            float dbValue,
+            bool isMajor
+        ) const;
+
+        [[nodiscard]] Rect CreateCenteredTextRect(
+            const Point& center,
+            float width,
+            float height
+        ) const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Member Variables

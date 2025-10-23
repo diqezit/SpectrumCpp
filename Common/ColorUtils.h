@@ -1,15 +1,18 @@
 #ifndef SPECTRUM_CPP_COLOR_UTILS_H
 #define SPECTRUM_CPP_COLOR_UTILS_H
 
-#include "Common.h"
+#include "Common/Common.h"
 
 namespace Spectrum {
     namespace Utils {
 
         struct HSV {
             float h, s, v;
-            HSV(float hIn = 0.0f, float sIn = 0.0f, float vIn = 0.0f)
-                : h(hIn), s(sIn), v(vIn) {
+            HSV(
+                float hIn = 0.0f,
+                float sIn = 0.0f,
+                float vIn = 0.0f
+            ) : h(hIn), s(sIn), v(vIn) {
             }
         };
 

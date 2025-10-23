@@ -1,15 +1,15 @@
-// Types.h
+#ifndef SPECTRUM_CPP_TYPES_H
+#define SPECTRUM_CPP_TYPES_H
+
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 // Types.h: Core data types, constants, and enumerations for the project.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-
-#ifndef SPECTRUM_CPP_TYPES_H
-#define SPECTRUM_CPP_TYPES_H
 
 #include <cstdint>
 #include <vector>
 #include <array>
 #include <cmath>
+#include <tuple>
 
 namespace Spectrum {
 
@@ -38,17 +38,35 @@ namespace Spectrum {
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
     struct Color {
         float r, g, b, a;
+
         constexpr Color(
-            float r_ = 0.0f, float g_ = 0.0f, float b_ = 0.0f, float a_ = 1.0f
+            float r_ = 0.0f,
+            float g_ = 0.0f,
+            float b_ = 0.0f,
+            float a_ = 1.0f
         ) noexcept : r(r_), g(g_), b(b_), a(a_) {
         }
 
         static constexpr Color FromRGB(
-            uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha = 255
+            uint8_t red,
+            uint8_t green,
+            uint8_t blue,
+            uint8_t alpha = 255
         ) noexcept {
             return Color(
-                red / 255.0f, green / 255.0f, blue / 255.0f, alpha / 255.0f
+                red / 255.0f,
+                green / 255.0f,
+                blue / 255.0f,
+                alpha / 255.0f
             );
+        }
+
+        [[nodiscard]] constexpr Color WithAlpha(float newAlpha) const noexcept {
+            return Color(r, g, b, newAlpha);
+        }
+
+        bool operator<(const Color& other) const {
+            return std::tie(r, g, b, a) < std::tie(other.r, other.g, other.b, other.a);
         }
 
         static constexpr Color Black() noexcept { return Color(0.0f, 0.0f, 0.0f); }
@@ -61,18 +79,27 @@ namespace Spectrum {
 
     struct Rect {
         float x, y, width, height;
+
         constexpr Rect(
-            float x_ = 0.f, float y_ = 0.f, float w_ = 0.f, float h_ = 0.f
+            float x_ = 0.f,
+            float y_ = 0.f,
+            float w_ = 0.f,
+            float h_ = 0.f
         ) noexcept : x(x_), y(y_), width(w_), height(h_) {
         }
 
-        float GetRight() const noexcept { return x + width; }
-        float GetBottom() const noexcept { return y + height; }
+        [[nodiscard]] float GetRight() const noexcept { return x + width; }
+        [[nodiscard]] float GetBottom() const noexcept { return y + height; }
     };
 
     struct Point {
         float x, y;
-        constexpr Point(float x_ = 0.f, float y_ = 0.f) noexcept : x(x_), y(y_) {}
+
+        constexpr Point(
+            float x_ = 0.f,
+            float y_ = 0.f
+        ) noexcept : x(x_), y(y_) {
+        }
 
         Point operator+(const Point& other) const noexcept {
             return Point(x + other.x, y + other.y);
@@ -83,24 +110,22 @@ namespace Spectrum {
     };
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-    // Drawing Style Structures
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-
-    // Describes the drawing style (brush, pen) for Canvas operations
-    // Analogous to SKPaint from Skia or Pen/Brush from GDI+
-    struct Paint {
-        Color color = Color::White();
-        float strokeWidth = 1.0f;
-        bool isFilled = true;
-        // In the future add more parameters
-    };
-
-
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
     // Enumerations
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
     enum class RenderStyle : uint8_t {
-        Bars = 0, Wave, CircularWave, Cubes, Fire, LedPanel, Gauge, KenwoodBars, Count
+        Bars = 0,
+        Wave,
+        CircularWave,
+        Cubes,
+        Fire,
+        LedPanel,
+        Gauge,
+        KenwoodBars,
+        Particles,
+        MatrixLed,
+        Sphere,
+        PolylineWave,
+        Count
     };
 
     enum class RenderQuality : uint8_t {
@@ -142,7 +167,6 @@ namespace Spectrum {
         FFTWindowType windowType = FFTWindowType::Hann;
         SpectrumScale scaleType = SpectrumScale::Logarithmic;
     };
-
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
     // Type aliases

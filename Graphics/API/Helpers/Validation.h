@@ -1,7 +1,7 @@
 ﻿#ifndef SPECTRUM_CPP_GRAPHICS_API_HELPERS_VALIDATION_H
 #define SPECTRUM_CPP_GRAPHICS_API_HELPERS_VALIDATION_H
 
-#include "Types.h"
+#include "Common/Types.h"
 #include <vector>
 #include <d2d1.h>
 #include <cmath>

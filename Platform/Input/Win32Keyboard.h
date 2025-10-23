@@ -10,7 +10,7 @@
 #define SPECTRUM_CPP_WIN32KEYBOARD_H
 
 #include "IKeyboard.h"
-#include "Common.h"
+#include "Common/Common.h"
 
 namespace Spectrum::Platform::Input {
 

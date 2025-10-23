@@ -8,7 +8,7 @@
 #ifndef SPECTRUM_CPP_GAIN_NORMALIZER_H
 #define SPECTRUM_CPP_GAIN_NORMALIZER_H
 
-#include "Common.h"
+#include "Common/Common.h"
 
 namespace Spectrum {
 

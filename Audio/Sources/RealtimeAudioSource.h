@@ -8,8 +8,8 @@
 #define SPECTRUM_CPP_REALTIMEAUDIOSOURCE_H
 
 #include "IAudioSource.h"
-#include "AudioCapture.h"
-#include "SpectrumAnalyzer.h"
+#include "Audio/Capture/AudioCapture.h"
+#include "Audio/Processing/SpectrumAnalyzer.h"
 
 namespace Spectrum {
 

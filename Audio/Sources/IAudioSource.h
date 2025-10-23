@@ -7,7 +7,7 @@
 #ifndef SPECTRUM_CPP_IAUDIOSOURCE_H
 #define SPECTRUM_CPP_IAUDIOSOURCE_H
 
-#include "Common.h"
+#include "Common/Common.h"
 
 namespace Spectrum {
 

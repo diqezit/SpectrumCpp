@@ -11,7 +11,7 @@
 #ifndef SPECTRUM_CPP_INPUT_MANAGER_H
 #define SPECTRUM_CPP_INPUT_MANAGER_H
 
-#include "Common.h"
+#include "Common/Common.h"
 #include "IKeyboard.h"
 #include <memory>
 #include <unordered_map>

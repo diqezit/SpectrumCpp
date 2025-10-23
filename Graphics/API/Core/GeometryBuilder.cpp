@@ -1,4 +1,3 @@
-// GeometryBuilder.cpp
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // Implements the GeometryBuilder class for Direct2D geometry creation.
 //
@@ -9,8 +8,8 @@
 // - Uses D2DHelpers for conversion, sanitization, and geometry helpers
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "GeometryBuilder.h"
-#include "D2DHelpers.h"
+#include "Graphics/API/Core/GeometryBuilder.h"
+#include "Graphics/API/D2DHelpers.h"
 #include <cmath>
 
 namespace Spectrum {
@@ -134,6 +133,7 @@ namespace Spectrum {
         if (!PositiveRadius(radius)) return nullptr;
 
         const int sanitizedSides = PolygonSides(sides);
+        const auto vertices = GenerateRegularPolygonVertices(center, radius, sanitizedSides, rotation);
 
         wrl::ComPtr<ID2D1PathGeometry> geometry;
         HRESULT hr = m_factory->CreatePathGeometry(geometry.GetAddressOf());
@@ -147,23 +147,10 @@ namespace Spectrum {
             return nullptr;
         }
 
-        const float angleStep = kTwoPi / static_cast<float>(sanitizedSides);
-        const float rotationRad = DegreesToRadians(rotation);
+        Geometry::BeginFigure(sink.Get(), vertices.front(), true);
 
-        const Point startPoint = {
-            center.x + radius * std::cos(rotationRad),
-            center.y + radius * std::sin(rotationRad)
-        };
-
-        Geometry::BeginFigure(sink.Get(), startPoint, true);
-
-        for (int i = 1; i <= sanitizedSides; ++i) {
-            const float angle = i * angleStep + rotationRad;
-            const Point point = {
-                center.x + radius * std::cos(angle),
-                center.y + radius * std::sin(angle)
-            };
-            Geometry::AddLine(sink.Get(), point);
+        for (size_t i = 1; i < vertices.size(); ++i) {
+            Geometry::AddLine(sink.Get(), vertices[i]);
         }
 
         Geometry::EndFigure(sink.Get(), true);
@@ -240,6 +227,30 @@ namespace Spectrum {
         }
 
         return points;
+    }
+
+    std::vector<Point> GeometryBuilder::GenerateRegularPolygonVertices(
+        const Point& center,
+        float radius,
+        int sides,
+        float rotation
+    )
+    {
+        const int sanitizedSides = PolygonSides(sides);
+        std::vector<Point> vertices;
+        vertices.reserve(sanitizedSides);
+
+        const float angleStep = kTwoPi / static_cast<float>(sanitizedSides);
+        const float rotationRad = DegreesToRadians(rotation);
+
+        for (int i = 0; i < sanitizedSides; ++i) {
+            const float angle = i * angleStep + rotationRad;
+            vertices.push_back({
+                center.x + radius * std::cos(angle),
+                center.y + radius * std::sin(angle)
+                });
+        }
+        return vertices;
     }
 
     std::vector<Point> GeometryBuilder::GenerateStarVertices(

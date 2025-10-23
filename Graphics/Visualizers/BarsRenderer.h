@@ -19,7 +19,8 @@
 // - SRP pattern: separate methods for shadow, main bar, highlight
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "BaseRenderer.h"
+#include "Graphics/Base/BaseRenderer.h"
+#include "Graphics/Base/RenderUtils.h"
 
 namespace Spectrum {
 
@@ -99,10 +100,30 @@ namespace Spectrum {
         ) const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Calculation Helpers
+        // Geometry Calculation
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] Rect CalculateBarRect(
+            size_t index,
+            float height,
+            const RenderUtils::BarLayout& layout
+        ) const;
+
+        [[nodiscard]] Rect CalculateHighlightRect(const Rect& barRect) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Color Calculation
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         [[nodiscard]] Color CalculateBarColor(float magnitude) const;
+        [[nodiscard]] Color CalculateHighlightColor(float magnitude) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Validation Helpers
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] bool IsBarVisible(float height) const;
+        [[nodiscard]] bool IsHighlightVisible(const Rect& rect) const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Member Variables

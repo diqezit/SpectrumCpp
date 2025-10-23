@@ -5,7 +5,7 @@
 #ifndef SPECTRUM_CPP_FREQUENCY_MAPPER_H
 #define SPECTRUM_CPP_FREQUENCY_MAPPER_H
 
-#include "Common.h"
+#include "Common/Common.h"
 #include "FFTProcessor.h"
 
 namespace Spectrum {

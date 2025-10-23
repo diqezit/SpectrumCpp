@@ -9,18 +9,22 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "RendererManager.h"
-#include "BarsRenderer.h"
-#include "CircularWaveRenderer.h"
-#include "CubesRenderer.h"
-#include "EventBus.h"
-#include "FireRenderer.h"
-#include "GaugeRenderer.h"
-#include "KenwoodBarsRenderer.h"
-#include "LedPanelRenderer.h"
-#include "TemplateUtils.h"
-#include "WaveRenderer.h"
-#include "WindowManager.h"
-#include "RenderEngine.h"
+#include "Graphics/Visualizers/BarsRenderer.h"
+#include "Graphics/Visualizers/CircularWaveRenderer.h"
+#include "Graphics/Visualizers/CubesRenderer.h"
+#include "Common/EventBus.h"
+#include "Graphics/Visualizers/FireRenderer.h"
+#include "Graphics/Visualizers/GaugeRenderer.h"
+#include "Graphics/Visualizers/KenwoodBarsRenderer.h"
+#include "Graphics/Visualizers/LedPanelRenderer.h"
+#include "Graphics/Visualizers/MatrixLedRenderer.h"
+#include "Graphics/Visualizers/ParticlesRenderer.h"
+#include "Graphics/Visualizers/PolylineWaveRenderer.h"
+#include "Graphics/Visualizers/SphereRenderer.h"
+#include "Common/TemplateUtils.h"
+#include "Graphics/Visualizers/WaveRenderer.h"
+#include "Platform/WindowManager.h"
+#include "Graphics/API/Core/RenderEngine.h"
 
 namespace Spectrum
 {
@@ -146,6 +150,10 @@ namespace Spectrum
         m_renderers[RenderStyle::LedPanel] = std::make_unique<LedPanelRenderer>();
         m_renderers[RenderStyle::Gauge] = std::make_unique<GaugeRenderer>();
         m_renderers[RenderStyle::KenwoodBars] = std::make_unique<KenwoodBarsRenderer>();
+        m_renderers[RenderStyle::Particles] = std::make_unique<ParticlesRenderer>();
+        m_renderers[RenderStyle::MatrixLed] = std::make_unique<MatrixLedRenderer>();
+        m_renderers[RenderStyle::Sphere] = std::make_unique<SphereRenderer>();
+        m_renderers[RenderStyle::PolylineWave] = std::make_unique<PolylineWaveRenderer>();
     }
 
     void RendererManager::ActivateInitialRenderer()

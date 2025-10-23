@@ -9,18 +9,18 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "ControllerCore.h"
-#include "AudioManager.h"
-#include "EventBus.h"
-#include "RenderEngine.h"
-#include "Canvas.h"
-#include "InputManager.h"
-#include "IRenderer.h"
-#include "MainWindow.h"
-#include "MessageHandler.h"
-#include "RendererManager.h"
-#include "UIManager.h"
-#include "WindowManager.h"
-#include "Win32Keyboard.h"
+#include "Audio/AudioManager.h"
+#include "Common/EventBus.h"
+#include "Graphics/Api/Core/RenderEngine.h"
+#include "Graphics/Api/Canvas.h"
+#include "Platform/Input/InputManager.h"
+#include "Graphics/IRenderer.h"
+#include "Platform/MainWindow.h"
+#include "Platform/MessageHandler.h"
+#include "Graphics/RendererManager.h"
+#include "UI/Core/UIManager.h"
+#include "Platform/WindowManager.h"
+#include "Platform/Input/Win32Keyboard.h"
 #include <algorithm>
 #include <thread>
 

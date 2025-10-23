@@ -1,17 +1,10 @@
-// ResourceCache.cpp
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// Implements the ResourceCache for Direct2D resource management.
-//
-// Implementation details:
-// - Uses unordered_map for O(1) average lookup performance
-// - Lazy creation pattern - resources created on first request
-// - Automatic cache invalidation on render target change
-// - Single lookup optimization (find once, insert if missing)
-// - Uses D2DHelpers for validation, sanitization, and HRESULT checking
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-#include "ResourceCache.h"
-#include "D2DHelpers.h"
+#include "Graphics/API/Core/ResourceCache.h"
+#include "Graphics/API/D2DHelpers.h"
+#include "Graphics/API/Brushes/SolidColorBrush.h"
+#include "Graphics/API/Brushes/LinearGradientBrush.h"
+#include "Graphics/API/Brushes/RadialGradientBrush.h"
+#include <sstream>
+#include <iomanip>
 
 namespace Spectrum {
 
@@ -23,61 +16,74 @@ namespace Spectrum {
     // Lifecycle Management
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    ResourceCache::ResourceCache(ID2D1Factory* factory)
+    ResourceCache::ResourceCache(
+        ID2D1Factory* factory
+    )
         : m_factory(factory), m_renderTarget(nullptr)
     {
     }
 
-    void ResourceCache::OnRenderTargetChanged(ID2D1RenderTarget* renderTarget)
+    void ResourceCache::OnRenderTargetChanged(
+        ID2D1RenderTarget* renderTarget
+    )
     {
         m_renderTarget = renderTarget;
+        m_solidBrush.Reset();
         m_linearGradientCache.clear();
         m_radialGradientCache.clear();
+        m_geometryCache.clear();
     }
 
     void ResourceCache::OnDeviceLost()
     {
         m_renderTarget = nullptr;
+        m_solidBrush.Reset();
         m_linearGradientCache.clear();
         m_radialGradientCache.clear();
+        m_geometryCache.clear();
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Resource Retrieval
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    ID2D1LinearGradientBrush* ResourceCache::GetLinearGradient(
-        const std::string& key, const Point& start, const Point& end,
-        const std::vector<D2D1_GRADIENT_STOP>& stops
+    wrl::ComPtr<ID2D1Brush> ResourceCache::GetBrush(
+        const std::shared_ptr<IBrush>& brushDef,
+        float globalAlpha
     ) const
     {
-        auto it = m_linearGradientCache.find(key);
-        if (it != m_linearGradientCache.end()) {
-            return it->second.Get();
+        if (!brushDef) {
+            return nullptr;
         }
-        auto brush = CreateLinearGradient(start, end, stops);
-        if (!brush) return nullptr;
-        m_linearGradientCache[key] = brush;
-        return brush.Get();
-    }
 
-    ID2D1RadialGradientBrush* ResourceCache::GetRadialGradient(
-        const std::string& key, const Point& center, float radius,
-        const std::vector<D2D1_GRADIENT_STOP>& stops
-    ) const
-    {
-        auto it = m_radialGradientCache.find(key);
-        if (it != m_radialGradientCache.end()) {
-            return it->second.Get();
+        if (auto solid = std::dynamic_pointer_cast<SolidColorBrush>(brushDef)) {
+            Color c = solid->color;
+            c.a *= globalAlpha;
+            return GetSolidColorBrush(c);
         }
-        auto brush = CreateRadialGradient(center, radius, stops);
-        if (!brush) return nullptr;
-        m_radialGradientCache[key] = brush;
-        return brush.Get();
+
+        if (auto linear = std::dynamic_pointer_cast<LinearGradientBrush>(brushDef)) {
+            auto brush = GetLinearGradient(*linear);
+            if (brush) {
+                brush->SetOpacity(globalAlpha);
+            }
+            return brush;
+        }
+
+        if (auto radial = std::dynamic_pointer_cast<RadialGradientBrush>(brushDef)) {
+            auto brush = GetRadialGradient(*radial);
+            if (brush) {
+                brush->SetOpacity(globalAlpha);
+            }
+            return brush;
+        }
+
+        return nullptr;
     }
 
     ID2D1PathGeometry* ResourceCache::GetPathGeometry(
-        const std::string& key, std::function<void(ID2D1GeometrySink*)> buildFunc
+        const std::string& key,
+        std::function<void(ID2D1GeometrySink*)> buildFunc
     ) const
     {
         auto it = m_geometryCache.find(key);
@@ -85,7 +91,9 @@ namespace Spectrum {
             return it->second.Get();
         }
 
-        if (!m_factory) return nullptr;
+        if (!m_factory) {
+            return nullptr;
+        }
 
         wrl::ComPtr<ID2D1PathGeometry> geometry;
         HRESULT hr = m_factory->CreatePathGeometry(geometry.GetAddressOf());
@@ -113,77 +121,158 @@ namespace Spectrum {
 
     void ResourceCache::Clear()
     {
+        m_solidBrush.Reset();
         m_linearGradientCache.clear();
         m_radialGradientCache.clear();
         m_geometryCache.clear();
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // State Queries
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-    bool ResourceCache::HasLinearGradient(const std::string& key) const noexcept
-    {
-        return m_linearGradientCache.find(key) != m_linearGradientCache.end();
-    }
-
-    bool ResourceCache::HasRadialGradient(const std::string& key) const noexcept
-    {
-        return m_radialGradientCache.find(key) != m_radialGradientCache.end();
-    }
-
-    bool ResourceCache::HasGeometry(const std::string& key) const noexcept
-    {
-        return m_geometryCache.find(key) != m_geometryCache.end();
-    }
-
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Private Implementation
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    wrl::ComPtr<ID2D1LinearGradientBrush> ResourceCache::CreateLinearGradient(
-        const Point& start, const Point& end, const std::vector<D2D1_GRADIENT_STOP>& stops
+    wrl::ComPtr<ID2D1SolidColorBrush> ResourceCache::GetSolidColorBrush(
+        const Color& color
+    ) const {
+        if (!m_renderTarget) {
+            return nullptr;
+        }
+
+        if (!m_solidBrush) {
+            m_renderTarget->CreateSolidColorBrush(
+                ToD2DColor(color),
+                &m_solidBrush
+            );
+        }
+        else {
+            m_solidBrush->SetColor(ToD2DColor(color));
+        }
+        return m_solidBrush;
+    }
+
+    wrl::ComPtr<ID2D1LinearGradientBrush> ResourceCache::GetLinearGradient(
+        const LinearGradientBrush& brushDef
     ) const
     {
-        if (!m_renderTarget) return nullptr;
-        if (!GradientStops(stops)) return nullptr;
+        const std::string key = GenerateKey(brushDef);
+        auto it = m_linearGradientCache.find(key);
+        if (it != m_linearGradientCache.end()) {
+            return it->second;
+        }
 
+        if (!m_renderTarget || brushDef.stops.empty()) {
+            return nullptr;
+        }
+
+        auto d2dStops = ConvertStops(brushDef.stops);
         wrl::ComPtr<ID2D1GradientStopCollection> stopCollection;
-        HRESULT hr = m_renderTarget->CreateGradientStopCollection(stops.data(), static_cast<UINT32>(stops.size()), stopCollection.GetAddressOf());
-        if (!CheckComCreation(hr, "ID2D1RenderTarget::CreateGradientStopCollection", stopCollection)) {
+        HRESULT hr = m_renderTarget->CreateGradientStopCollection(
+            d2dStops.data(),
+            static_cast<UINT32>(d2dStops.size()),
+            &stopCollection
+        );
+        if (!CheckComCreation(hr, "CreateGradientStopCollection", stopCollection)) {
             return nullptr;
         }
 
         wrl::ComPtr<ID2D1LinearGradientBrush> brush;
-        const D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES props = D2D1::LinearGradientBrushProperties(ToD2DPoint(start), ToD2DPoint(end));
-        hr = m_renderTarget->CreateLinearGradientBrush(props, stopCollection.Get(), brush.GetAddressOf());
-        if (!CheckComCreation(hr, "ID2D1RenderTarget::CreateLinearGradientBrush", brush)) {
+        const D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES props = D2D1::LinearGradientBrushProperties(
+            ToD2DPoint(brushDef.startPoint),
+            ToD2DPoint(brushDef.endPoint)
+        );
+        hr = m_renderTarget->CreateLinearGradientBrush(
+            props,
+            stopCollection.Get(),
+            &brush
+        );
+        if (!CheckComCreation(hr, "CreateLinearGradientBrush", brush)) {
             return nullptr;
         }
+
+        m_linearGradientCache[key] = brush;
         return brush;
     }
 
-    wrl::ComPtr<ID2D1RadialGradientBrush> ResourceCache::CreateRadialGradient(
-        const Point& center, float radius, const std::vector<D2D1_GRADIENT_STOP>& stops
+    wrl::ComPtr<ID2D1RadialGradientBrush> ResourceCache::GetRadialGradient(
+        const RadialGradientBrush& brushDef
     ) const
     {
-        if (!m_renderTarget) return nullptr;
-        if (!GradientStops(stops)) return nullptr;
-        if (!PositiveRadius(radius)) return nullptr;
+        const std::string key = GenerateKey(brushDef);
+        auto it = m_radialGradientCache.find(key);
+        if (it != m_radialGradientCache.end()) {
+            return it->second;
+        }
 
+        if (!m_renderTarget || brushDef.stops.empty()) {
+            return nullptr;
+        }
+
+        auto d2dStops = ConvertStops(brushDef.stops);
         wrl::ComPtr<ID2D1GradientStopCollection> stopCollection;
-        HRESULT hr = m_renderTarget->CreateGradientStopCollection(stops.data(), static_cast<UINT32>(stops.size()), stopCollection.GetAddressOf());
-        if (!CheckComCreation(hr, "ID2D1RenderTarget::CreateGradientStopCollection", stopCollection)) {
+        HRESULT hr = m_renderTarget->CreateGradientStopCollection(
+            d2dStops.data(),
+            static_cast<UINT32>(d2dStops.size()),
+            &stopCollection
+        );
+        if (!CheckComCreation(hr, "CreateGradientStopCollection", stopCollection)) {
             return nullptr;
         }
 
         wrl::ComPtr<ID2D1RadialGradientBrush> brush;
-        const D2D1_RADIAL_GRADIENT_BRUSH_PROPERTIES props = D2D1::RadialGradientBrushProperties(ToD2DPoint(center), D2D1::Point2F(0.0f, 0.0f), radius, radius);
-        hr = m_renderTarget->CreateRadialGradientBrush(props, stopCollection.Get(), brush.GetAddressOf());
-        if (!CheckComCreation(hr, "ID2D1RenderTarget::CreateRadialGradientBrush", brush)) {
+        const D2D1_RADIAL_GRADIENT_BRUSH_PROPERTIES props = D2D1::RadialGradientBrushProperties(
+            ToD2DPoint(brushDef.center),
+            { 0,0 },
+            brushDef.radiusX,
+            brushDef.radiusY
+        );
+        hr = m_renderTarget->CreateRadialGradientBrush(
+            props,
+            stopCollection.Get(),
+            &brush
+        );
+        if (!CheckComCreation(hr, "CreateRadialGradientBrush", brush)) {
             return nullptr;
         }
+
+        m_radialGradientCache[key] = brush;
         return brush;
+    }
+
+    std::string ResourceCache::GenerateKey(
+        const LinearGradientBrush& brushDef
+    ) const {
+        std::ostringstream oss;
+        oss << "lin_" << std::fixed << std::setprecision(2)
+            << brushDef.startPoint.x << "_" << brushDef.startPoint.y << "_"
+            << brushDef.endPoint.x << "_" << brushDef.endPoint.y;
+        for (const auto& stop : brushDef.stops) {
+            oss << "_" << stop.position << "_" << stop.color.r << stop.color.g << stop.color.b << stop.color.a;
+        }
+        return oss.str();
+    }
+
+    std::string ResourceCache::GenerateKey(
+        const RadialGradientBrush& brushDef
+    ) const {
+        std::ostringstream oss;
+        oss << "rad_" << std::fixed << std::setprecision(2)
+            << brushDef.center.x << "_" << brushDef.center.y << "_"
+            << brushDef.radiusX << "_" << brushDef.radiusY;
+        for (const auto& stop : brushDef.stops) {
+            oss << "_" << stop.position << "_" << stop.color.r << stop.color.g << stop.color.b << stop.color.a;
+        }
+        return oss.str();
+    }
+
+    std::vector<D2D1_GRADIENT_STOP> ResourceCache::ConvertStops(
+        const std::vector<GradientStop>& stops
+    ) const {
+        std::vector<D2D1_GRADIENT_STOP> d2dStops;
+        d2dStops.reserve(stops.size());
+        for (const auto& stop : stops) {
+            d2dStops.push_back({ stop.position, ToD2DColor(stop.color) });
+        }
+        return d2dStops;
     }
 
 } // namespace Spectrum

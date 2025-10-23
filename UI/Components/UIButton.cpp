@@ -1,4 +1,3 @@
-// UIButton.cpp (ÏÎËÍÎÑÒÜÞ ÈÑÏÐÀÂËÅÍÍÛÉ)
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // Implements the UIButton with smooth cubic easing for hover animations.
 //
@@ -6,10 +5,13 @@
 // compared to the previous quadratic easing.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "UIButton.h"
-#include "ColorUtils.h"
-#include "MathUtils.h"
-#include "Canvas.h"
+#include "UI/Components/UIButton.h"
+#include "Common/ColorUtils.h"
+#include "Common/MathUtils.h"
+#include "Graphics/API/Canvas.h"
+#include "Graphics/API/Structs/Paint.h"
+#include "Graphics/API/Structs/TextStyle.h"
+#include "Graphics/API/Brushes/GradientStop.h"
 
 namespace Spectrum {
 
@@ -36,7 +38,11 @@ namespace Spectrum {
     // Public Interface
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    void UIButton::Update(const Point& mousePos, bool isMouseDown, float deltaTime)
+    void UIButton::Update(
+        const Point& mousePos,
+        bool isMouseDown,
+        float deltaTime
+    )
     {
         ProcessInput(mousePos, isMouseDown);
         UpdateAnimation(deltaTime);
@@ -44,13 +50,15 @@ namespace Spectrum {
 
     void UIButton::Draw(Canvas& canvas) const
     {
-        if (m_hoverAnimationProgress > 0.0f)
+        if (m_hoverAnimationProgress > 0.0f) {
             DrawGlow(canvas);
+        }
 
         canvas.PushTransform();
 
-        if (IsPressed())
+        if (IsPressed()) {
             canvas.TranslateBy(1.0f, 1.0f);
+        }
 
         DrawBackground(canvas);
         DrawBorder(canvas);
@@ -100,14 +108,18 @@ namespace Spectrum {
     [[nodiscard]] ButtonStyle UIButton::GetDefaultStyle()
     {
         return {
-            { { 0.0f, D2D1::ColorF(0.2f, 0.22f, 0.25f) },
-              { 1.0f, D2D1::ColorF(0.15f, 0.17f, 0.2f) } },
-            { { 0.0f, D2D1::ColorF(0.35f, 0.38f, 0.42f) },
-              { 1.0f, D2D1::ColorF(0.25f, 0.27f, 0.3f) } },
-            Color::White(),
-            Color(1.0f, 1.0f, 1.0f, 0.1f),
-            Color(0.5f, 0.7f, 1.0f),
-            4.0f
+            /* backgroundStops */      { { 0.0f, D2D1::ColorF(0.2f, 0.22f, 0.25f) },
+                                         { 1.0f, D2D1::ColorF(0.15f, 0.17f, 0.2f) } },
+            /* backgroundHoverStops */ { { 0.0f, D2D1::ColorF(0.35f, 0.38f, 0.42f) },
+                                         { 1.0f, D2D1::ColorF(0.25f, 0.27f, 0.3f) } },
+            /* borderColor */          Color(1.0f, 1.0f, 1.0f, 0.1f),
+            /* glowColor */            Color(0.5f, 0.7f, 1.0f),
+            /* cornerRadius */         4.0f,
+            /* textStyle */            TextStyle::Default()
+                                           .WithColor(Color::White())
+                                           .WithAlign(TextAlign::Center)
+                                           .WithParagraphAlign(ParagraphAlign::Center)
+                                           .WithSize(14.0f)
         };
     }
 
@@ -115,7 +127,10 @@ namespace Spectrum {
     // Private Implementation / Internal Helpers
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    void UIButton::ProcessInput(const Point& mousePos, bool isMouseDown)
+    void UIButton::ProcessInput(
+        const Point& mousePos,
+        bool isMouseDown
+    )
     {
         const bool isOver = IsInHitbox(mousePos);
         const State previousState = m_state;
@@ -130,8 +145,9 @@ namespace Spectrum {
         }
         else {
             m_state = State::Hovered;
-            if (previousState == State::Pressed && m_onClick)
+            if (previousState == State::Pressed && m_onClick) {
                 m_onClick();
+            }
         }
     }
 
@@ -149,19 +165,36 @@ namespace Spectrum {
 
     void UIButton::DrawBackground(Canvas& canvas) const
     {
-        if (m_hoverAnimationProgress <= 0.0f) {
-            canvas.DrawVerticalGradientBar(m_rect, m_style.backgroundStops, m_style.cornerRadius);
-            return;
+        const auto& d2dStops = (m_hoverAnimationProgress <= 0.0f)
+            ? m_style.backgroundStops
+            : GetInterpolatedGradientStops();
+
+        std::vector<GradientStop> stops;
+        stops.reserve(d2dStops.size());
+        for (const auto& stop : d2dStops) {
+            stops.push_back({
+                stop.position,
+                Color(stop.color.r, stop.color.g, stop.color.b, stop.color.a)
+                });
         }
 
-        const auto interpolatedStops = GetInterpolatedGradientStops();
-        canvas.DrawVerticalGradientBar(m_rect, interpolatedStops, m_style.cornerRadius);
+        Paint paint = Paint::LinearGradient(
+            { m_rect.x, m_rect.y },
+            { m_rect.x, m_rect.GetBottom() },
+            stops
+        );
+
+        canvas.DrawRoundedRectangle(m_rect, m_style.cornerRadius, paint);
     }
 
     void UIButton::DrawBorder(Canvas& canvas) const
     {
         const Color borderColor = GetCurrentBorderColor();
-        canvas.DrawRoundedRectangle(m_rect, m_style.cornerRadius, Paint{ borderColor, 1.0f, false });
+        canvas.DrawRoundedRectangle(
+            m_rect,
+            m_style.cornerRadius,
+            Paint::Stroke(borderColor, 1.0f)
+        );
     }
 
     void UIButton::DrawGlow(Canvas& canvas) const
@@ -175,23 +208,27 @@ namespace Spectrum {
         const Color glowColor = GetCurrentGlowColor();
         const float glowRadius = m_style.cornerRadius + 2.0f;
 
-        canvas.DrawRoundedRectangle(glowRect, glowRadius, Paint{ glowColor, 2.0f, false });
+        canvas.DrawRoundedRectangle(
+            glowRect,
+            glowRadius,
+            Paint::Stroke(glowColor, 2.0f)
+        );
     }
 
     void UIButton::DrawText(Canvas& canvas) const
     {
-        const Point center = {
-            m_rect.x + m_rect.width * 0.5f,
-            m_rect.y + m_rect.height * 0.5f
-        };
-
-        canvas.DrawText(m_text, center, m_style.textColor, 14.0f, DWRITE_TEXT_ALIGNMENT_CENTER);
+        canvas.DrawText(
+            m_text,
+            m_rect,
+            m_style.textStyle
+        );
     }
 
     [[nodiscard]] std::vector<D2D1_GRADIENT_STOP> UIButton::GetInterpolatedGradientStops() const
     {
-        if (m_style.backgroundStops.size() != m_style.backgroundHoverStops.size())
+        if (m_style.backgroundStops.size() != m_style.backgroundHoverStops.size()) {
             return m_style.backgroundStops;
+        }
 
         auto interpolatedStops = m_style.backgroundStops;
         const float easedProgress = Utils::EaseInOutCubic(m_hoverAnimationProgress);

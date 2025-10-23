@@ -1,7 +1,7 @@
 ﻿#ifndef SPECTRUM_CPP_GRAPHICS_API_HELPERS_HRESULT_HELPERS_H
 #define SPECTRUM_CPP_GRAPHICS_API_HELPERS_HRESULT_HELPERS_H
 
-#include "Common.h"
+#include "Common/Common.h"
 #include <string_view>
 #include <wrl/client.h>
 

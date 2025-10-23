@@ -1,4 +1,3 @@
-// RenderUtils.h
 #ifndef SPECTRUM_CPP_RENDER_UTILS_H
 #define SPECTRUM_CPP_RENDER_UTILS_H
 
@@ -24,7 +23,7 @@
 //   auto layout = RenderUtils::ComputeBarLayout(count, spacing, width);
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "Common.h"
+#include "Common/Common.h"
 #include <vector>
 
 namespace Spectrum::RenderUtils {
@@ -99,6 +98,12 @@ namespace Spectrum::RenderUtils {
         float scale = kDefaultHeightScale
     );
 
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Quality-based Helpers
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    [[nodiscard]] int GetMaxBarsForQuality(RenderQuality quality);
+
 } // namespace Spectrum::RenderUtils
 
-#endif
+#endif // SPECTRUM_CPP_RENDER_UTILS_H

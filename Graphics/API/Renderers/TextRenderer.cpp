@@ -1,38 +1,43 @@
-// TextRenderer.cpp
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // Implements the TextRenderer class. This file handles creating DirectWrite
 // text layouts and formats to render text with various styles.
 //
 // Implementation details:
-// - TextFormat objects cached by {fontSize, alignment} to reduce overhead
-// - Outline effect simulated via 8-directional multi-pass rendering
-// - Rotated text uses ScopedTransform for automatic state restoration
-// - Uses D2DHelpers for validation, sanitization, and conversion
+// - TextFormat objects cached by a hash of the TextStyle object.
+// - Outline effect simulated via 8-directional multi-pass rendering.
+// - Rotated text uses ScopedTransform for automatic state restoration.
+// - Uses D2DHelpers for validation, sanitization, and conversion.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "TextRenderer.h"
-#include "D2DHelpers.h"
+#include "Graphics/API/Renderers/TextRenderer.h"
+#include "Graphics/API/D2DHelpers.h"
+#include "Graphics/API/Structs/TextStyle.h"
 #include <array>
+#include <functional>
 
 namespace Spectrum {
 
     using namespace Helpers::TypeConversion;
     using namespace Helpers::Validate;
     using namespace Helpers::HResult;
+    using namespace Helpers::EnumConversion;
     using namespace Helpers::Scopes;
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Lifecycle Management
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    TextRenderer::TextRenderer(IDWriteFactory* writeFactory)
+    TextRenderer::TextRenderer(
+        IDWriteFactory* writeFactory
+    )
         : m_renderTarget(nullptr)
         , m_writeFactory(writeFactory)
-        , m_brush(nullptr)
     {
     }
 
-    void TextRenderer::OnRenderTargetChanged(ID2D1RenderTarget* renderTarget)
+    void TextRenderer::OnRenderTargetChanged(
+        ID2D1RenderTarget* renderTarget
+    )
     {
         m_renderTarget = renderTarget;
         m_formatCache.clear();
@@ -41,13 +46,7 @@ namespace Spectrum {
     void TextRenderer::OnDeviceLost()
     {
         m_renderTarget = nullptr;
-        m_brush = nullptr;
         m_formatCache.clear();
-    }
-
-    void TextRenderer::SetSolidBrush(ID2D1SolidColorBrush* brush)
-    {
-        m_brush = brush;
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -56,115 +55,150 @@ namespace Spectrum {
 
     void TextRenderer::DrawText(
         const std::wstring& text,
-        const Point& position,
-        const Color& color,
-        float fontSize,
-        DWRITE_TEXT_ALIGNMENT alignment
+        const Rect& layoutRect,
+        const TextStyle& style
     ) const
     {
-        if (!RenderTargetAndBrush(m_renderTarget, m_brush)) return;
-        if (text.empty()) return;
+        if (style.HasOutline()) {
+            constexpr std::array<float, 3> offsets = { -1.0f, 0.0f, 1.0f };
+            const float outlineWidth = style.outlineWidth;
+            TextStyle outlineStyle = style.WithColor(style.outlineColor);
 
-        const float sanitizedFontSize = std::max(fontSize, 1.0f);
+            for (float dx : offsets) {
+                for (float dy : offsets) {
+                    if (dx == 0.0f && dy == 0.0f) continue;
 
-        auto format = CreateTextFormat(sanitizedFontSize, alignment);
-        if (!format) return;
+                    Rect offsetRect = layoutRect;
+                    offsetRect.x += dx * outlineWidth;
+                    offsetRect.y += dy * outlineWidth;
 
-        auto layout = CreateTextLayout(text, format.Get());
-        if (!layout) return;
-
-        const D2D1_RECT_F layoutRect = CalculateLayoutRect(position, alignment, layout.Get());
-
-        SetBrushColor(color);
-
-        m_renderTarget->DrawTextW(
-            text.c_str(),
-            static_cast<UINT32>(text.length()),
-            format.Get(),
-            &layoutRect,
-            m_brush
-        );
-    }
-
-    void TextRenderer::DrawTextWithOutline(
-        const std::wstring& text,
-        const Point& position,
-        const Color& fillColor,
-        const Color& outlineColor,
-        float fontSize,
-        float outlineWidth
-    ) const
-    {
-        if (!m_renderTarget || text.empty()) return;
-
-        const float sanitizedFontSize = std::max(fontSize, 1.0f);
-        const float sanitizedOutlineWidth = std::max(outlineWidth, 0.0f);
-
-        constexpr std::array<float, 3> offsets = { -1.0f, 0.0f, 1.0f };
-
-        for (float dx : offsets) {
-            for (float dy : offsets) {
-                if (dx == 0.0f && dy == 0.0f) continue;
-
-                DrawText(
-                    text,
-                    { position.x + dx * sanitizedOutlineWidth, position.y + dy * sanitizedOutlineWidth },
-                    outlineColor,
-                    sanitizedFontSize,
-                    DWRITE_TEXT_ALIGNMENT_LEADING
-                );
+                    DrawTextInternal(text, offsetRect, outlineStyle);
+                }
             }
         }
 
-        DrawText(text, position, fillColor, sanitizedFontSize, DWRITE_TEXT_ALIGNMENT_LEADING);
+        DrawTextInternal(text, layoutRect, style);
     }
 
-    void TextRenderer::DrawTextRotated(
+    void TextRenderer::DrawText(
         const std::wstring& text,
         const Point& position,
-        float angleDegrees,
-        const Color& color,
-        float fontSize
+        const TextStyle& style
     ) const
     {
-        if (!m_renderTarget) return;
+        if (!m_renderTarget || text.empty()) {
+            return;
+        }
 
-        const float sanitizedFontSize = std::max(fontSize, 1.0f);
+        auto format = GetOrCreateTextFormat(style);
+        if (!format) {
+            return;
+        }
 
-        const ScopedTransform transform(
-            m_renderTarget,
-            D2D1::Matrix3x2F::Rotation(angleDegrees, ToD2DPoint(position))
+        wrl::ComPtr<ID2D1SolidColorBrush> brush;
+        HRESULT hr = m_renderTarget->CreateSolidColorBrush(ToD2DColor(style.color), &brush);
+        if (FAILED(hr)) {
+            return;
+        }
+
+        wrl::ComPtr<IDWriteTextLayout> textLayout;
+        hr = m_writeFactory->CreateTextLayout(
+            text.c_str(),
+            static_cast<UINT32>(text.length()),
+            format.Get(),
+            4096.0f,
+            4096.0f,
+            &textLayout
         );
 
-        DrawText(text, position, color, sanitizedFontSize, DWRITE_TEXT_ALIGNMENT_CENTER);
+        if (FAILED(hr)) {
+            return;
+        }
+
+        DWRITE_TEXT_METRICS textMetrics;
+        textLayout->GetMetrics(&textMetrics);
+
+        Point origin = position;
+
+        if (style.textAlign == TextAlign::Center) {
+            origin.x -= textMetrics.widthIncludingTrailingWhitespace / 2.0f;
+        }
+        else if (style.textAlign == TextAlign::Trailing) {
+            origin.x -= textMetrics.widthIncludingTrailingWhitespace;
+        }
+
+        if (style.paragraphAlign == ParagraphAlign::Center) {
+            origin.y -= textMetrics.height / 2.0f;
+        }
+        else if (style.paragraphAlign == ParagraphAlign::Far) {
+            origin.y -= textMetrics.height;
+        }
+
+        m_renderTarget->DrawTextLayout(
+            ToD2DPoint(origin),
+            textLayout.Get(),
+            brush.Get()
+        );
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Private Implementation
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    wrl::ComPtr<IDWriteTextFormat> TextRenderer::CreateTextFormat(
-        float fontSize,
-        DWRITE_TEXT_ALIGNMENT alignment
+    void TextRenderer::DrawTextInternal(
+        const std::wstring& text,
+        const Rect& layoutRect,
+        const TextStyle& style
     ) const
     {
-        if (!m_writeFactory) return nullptr;
+        if (!m_renderTarget || text.empty()) {
+            return;
+        }
 
-        const uint64_t key = GenerateFormatKey(fontSize, alignment);
+        auto format = GetOrCreateTextFormat(style);
+        if (!format) {
+            return;
+        }
+
+        wrl::ComPtr<ID2D1SolidColorBrush> brush;
+        HRESULT hr = m_renderTarget->CreateSolidColorBrush(ToD2DColor(style.color), &brush);
+        if (FAILED(hr)) {
+            return;
+        }
+
+        m_renderTarget->DrawTextW(
+            text.c_str(),
+            static_cast<UINT32>(text.length()),
+            format.Get(),
+            ToD2DRect(layoutRect),
+            brush.Get()
+        );
+    }
+
+    wrl::ComPtr<IDWriteTextFormat> TextRenderer::GetOrCreateTextFormat(
+        const TextStyle& style
+    ) const
+    {
+        if (!m_writeFactory) {
+            return nullptr;
+        }
+
+        const size_t key = GenerateFormatKey(style);
 
         auto it = m_formatCache.find(key);
-        if (it != m_formatCache.end()) return it->second;
+        if (it != m_formatCache.end()) {
+            return it->second;
+        }
 
         wrl::ComPtr<IDWriteTextFormat> textFormat;
-
         const HRESULT hr = m_writeFactory->CreateTextFormat(
-            L"Segoe UI",
+            style.fontFamily.c_str(),
             nullptr,
-            DWRITE_FONT_WEIGHT_NORMAL,
-            DWRITE_FONT_STYLE_NORMAL,
-            DWRITE_FONT_STRETCH_NORMAL,
-            fontSize,
-            L"en-us",
+            ToDWriteFontWeight(style.weight),
+            ToDWriteFontStyle(style.style),
+            ToDWriteFontStretch(style.stretch),
+            style.fontSize,
+            L"en-us", // Locale
             textFormat.GetAddressOf()
         );
 
@@ -172,103 +206,36 @@ namespace Spectrum {
             return nullptr;
         }
 
-        textFormat->SetTextAlignment(alignment);
-        textFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+        textFormat->SetTextAlignment(ToDWriteTextAlign(style.textAlign));
+        textFormat->SetParagraphAlignment(ToDWriteParagraphAlign(style.paragraphAlign));
+        textFormat->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
+        textFormat->SetLineSpacing(
+            DWRITE_LINE_SPACING_METHOD_DEFAULT,
+            0.0f,
+            0.0f
+        );
 
         m_formatCache[key] = textFormat;
-
         return textFormat;
     }
 
-    wrl::ComPtr<IDWriteTextLayout> TextRenderer::CreateTextLayout(
-        const std::wstring& text,
-        IDWriteTextFormat* format
+    size_t TextRenderer::GenerateFormatKey(
+        const TextStyle& style
     ) const
     {
-        if (!m_writeFactory || !format) return nullptr;
+        size_t seed = 0;
+        auto hash_combine = [&](size_t& seed, size_t hash) {
+            seed ^= hash + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+            };
 
-        wrl::ComPtr<IDWriteTextLayout> textLayout;
+        hash_combine(seed, std::hash<std::wstring>{}(style.fontFamily));
+        hash_combine(seed, std::hash<float>{}(style.fontSize));
+        hash_combine(seed, static_cast<size_t>(style.weight));
+        hash_combine(seed, static_cast<size_t>(style.style));
+        hash_combine(seed, static_cast<size_t>(style.stretch));
+        hash_combine(seed, static_cast<size_t>(style.textAlign));
+        hash_combine(seed, static_cast<size_t>(style.paragraphAlign));
 
-        constexpr float kMaxLayoutSize = 4096.0f;
-
-        const HRESULT hr = m_writeFactory->CreateTextLayout(
-            text.c_str(),
-            static_cast<UINT32>(text.length()),
-            format,
-            kMaxLayoutSize,
-            kMaxLayoutSize,
-            textLayout.GetAddressOf()
-        );
-
-        if (!CheckComCreation(hr, "IDWriteFactory::CreateTextLayout", textLayout)) {
-            return nullptr;
-        }
-
-        textLayout->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
-
-        return textLayout;
+        return seed;
     }
-
-    D2D1_RECT_F TextRenderer::CalculateLayoutRect(
-        const Point& position,
-        DWRITE_TEXT_ALIGNMENT alignment,
-        IDWriteTextLayout* layout
-    ) const
-    {
-        DWRITE_TEXT_METRICS textMetrics = {};
-
-        if (!layout || FAILED(layout->GetMetrics(&textMetrics))) {
-            return D2D1::RectF(0.0f, 0.0f, 0.0f, 0.0f);
-        }
-
-        const float halfHeight = textMetrics.height * 0.5f;
-
-        switch (alignment) {
-        case DWRITE_TEXT_ALIGNMENT_LEADING:
-        case DWRITE_TEXT_ALIGNMENT_JUSTIFIED:
-            return D2D1::RectF(
-                position.x,
-                position.y - halfHeight,
-                position.x + textMetrics.width,
-                position.y + halfHeight
-            );
-
-        case DWRITE_TEXT_ALIGNMENT_TRAILING:
-            return D2D1::RectF(
-                position.x - textMetrics.width,
-                position.y - halfHeight,
-                position.x,
-                position.y + halfHeight
-            );
-
-        case DWRITE_TEXT_ALIGNMENT_CENTER:
-            return D2D1::RectF(
-                position.x - textMetrics.width * 0.5f,
-                position.y - halfHeight,
-                position.x + textMetrics.width * 0.5f,
-                position.y + halfHeight
-            );
-
-        default:
-            return D2D1::RectF(0.0f, 0.0f, 0.0f, 0.0f);
-        }
-    }
-
-    void TextRenderer::SetBrushColor(const Color& color) const
-    {
-        if (!m_brush) return;
-        m_brush->SetColor(ToD2DColor(color));
-    }
-
-    uint64_t TextRenderer::GenerateFormatKey(
-        float fontSize,
-        DWRITE_TEXT_ALIGNMENT alignment
-    ) const noexcept
-    {
-        const uint32_t fontSizeInt = static_cast<uint32_t>(fontSize * 100.0f);
-        const uint32_t alignmentInt = static_cast<uint32_t>(alignment);
-
-        return (static_cast<uint64_t>(fontSizeInt) << 32) | alignmentInt;
-    }
-
-} // namespace Spectrum
+}

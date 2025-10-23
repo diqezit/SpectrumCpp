@@ -1,9 +1,9 @@
 #ifndef SPECTRUM_CPP_COLOR_WHEEL_GENERATOR_H
 #define SPECTRUM_CPP_COLOR_WHEEL_GENERATOR_H
 
-#include "Common.h"
-#include "MathUtils.h"
-#include "ColorUtils.h"
+#include "Common/Common.h"
+#include "Common/MathUtils.h"
+#include "Common/ColorUtils.h"
 #include <vector>
 #include <cmath>
 
@@ -11,7 +11,10 @@ namespace Spectrum {
 
     class ColorWheelGenerator {
     public:
-        static std::vector<uint32_t> GenerateBitmapData(int size, float radius) {
+        static std::vector<uint32_t> GenerateBitmapData(
+            int size,
+            float radius
+        ) {
             std::vector<uint32_t> pixels(static_cast<size_t>(size) * size, 0u);
 
             for (int y = 0; y < size; ++y) {
@@ -25,7 +28,11 @@ namespace Spectrum {
         }
 
     private:
-        static uint32_t MakeWheelPixel(float dx, float dy, float radius) {
+        static uint32_t MakeWheelPixel(
+            float dx,
+            float dy,
+            float radius
+        ) {
             const float dist = std::sqrt(dx * dx + dy * dy);
             if (dist > radius) {
                 return 0u; // Transparent pixel outside the wheel

@@ -12,7 +12,7 @@
 #ifndef SPECTRUM_CPP_UI_MANAGER_H
 #define SPECTRUM_CPP_UI_MANAGER_H
 
-#include "Common.h"
+#include "Common/Common.h"
 #include <memory>
 #include <functional>
 

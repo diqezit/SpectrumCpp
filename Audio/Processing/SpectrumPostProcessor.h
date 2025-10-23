@@ -8,7 +8,7 @@
 #ifndef SPECTRUM_CPP_SPECTRUM_POST_PROCESSOR_H
 #define SPECTRUM_CPP_SPECTRUM_POST_PROCESSOR_H
 
-#include "Common.h"
+#include "Common/Common.h"
 #include "GainNormalizer.h"
 #include <memory>
 
