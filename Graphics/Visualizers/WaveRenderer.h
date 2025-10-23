@@ -2,25 +2,29 @@
 #define SPECTRUM_CPP_WAVE_RENDERER_H
 
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// Defines the WaveRenderer, a smooth waveform visualizer.
+// Defines the WaveRenderer, an enhanced smooth waveform visualizer.
 //
 // This renderer displays spectrum data as a continuous waveform with
-// optional glow effects and reflection. The waveform represents the
-// frequency spectrum as a flowing curve.
+// advanced visual effects including multi-layer glow, shadows, reflections,
+// and dynamic brightness adjustments based on audio intensity.
 //
 // Key features:
-// - Quality-dependent glow layers (multi-pass for depth)
+// - Quality-dependent glow layers with intensity modulation
+// - Optional shadow rendering with configurable blur
 // - Optional reflection with transparency (mirrored waveform)
-// - Smooth line rendering via Canvas
-// - Configurable line width based on quality
+// - Smooth antialiased line rendering via Canvas
+// - Dynamic brightness boost for high-intensity audio
+// - Configurable line width and effects based on quality
 //
 // Design notes:
 // - All rendering methods are const (stateless rendering)
 // - Delegates drawing to Canvas.DrawWaveform
 // - Glow rendered in multiple passes (back to front)
+// - Intensity smoothing prevents jarring visual changes
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Graphics/Base/BaseRenderer.h"
+#include "Graphics/Visualizers/Settings/QualityTraits.h"
 
 namespace Spectrum {
 
@@ -53,6 +57,11 @@ namespace Spectrum {
 
         void UpdateSettings() override;
 
+        void UpdateAnimation(
+            const SpectrumData& spectrum,
+            float deltaTime
+        ) override;
+
         void DoRender(
             Canvas& canvas,
             const SpectrumData& spectrum
@@ -63,18 +72,19 @@ namespace Spectrum {
         // Settings
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        struct Settings
-        {
-            float lineWidth;
-            bool useGlow;
-            bool useReflection;
-        };
+        using Settings = Settings::WaveSettings;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Rendering Layers (SRP)
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void RenderAllLayers(
+            Canvas& canvas,
+            const SpectrumData& spectrum,
+            const Rect& bounds
+        ) const;
+
+        void RenderShadowLayer(
             Canvas& canvas,
             const SpectrumData& spectrum,
             const Rect& bounds
@@ -128,6 +138,7 @@ namespace Spectrum {
 
         [[nodiscard]] Color CalculateGlowColor(int layerIndex) const;
         [[nodiscard]] Color CalculateReflectionColor(const Color& baseColor) const;
+        [[nodiscard]] Color CalculateShadowColor() const;
 
         [[nodiscard]] float CalculateGlowAlpha(int layerIndex) const;
         [[nodiscard]] float CalculateGlowWidth(int layerIndex) const;
@@ -140,6 +151,8 @@ namespace Spectrum {
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         [[nodiscard]] int GetGlowLayerCount() const;
+        [[nodiscard]] float GetLineWidth() const;
+        [[nodiscard]] float GetShadowBlur() const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Validation Helpers
@@ -147,6 +160,7 @@ namespace Spectrum {
 
         [[nodiscard]] bool ShouldRenderGlow() const;
         [[nodiscard]] bool ShouldRenderReflection() const;
+        [[nodiscard]] bool ShouldRenderShadow() const;
         [[nodiscard]] bool IsSpectrumValid(const SpectrumData& spectrum) const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -154,6 +168,7 @@ namespace Spectrum {
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         Settings m_settings;
+        float m_smoothedIntensity;
     };
 
 } // namespace Spectrum

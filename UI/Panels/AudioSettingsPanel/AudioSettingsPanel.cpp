@@ -22,6 +22,10 @@
 
 namespace Spectrum
 {
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Anonymous namespace for internal helpers
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
     namespace
     {
         constexpr int kFloatPrecision = 2;
@@ -29,7 +33,7 @@ namespace Spectrum
         constexpr float kLabelTextHeight = 20.0f;
         constexpr float kValueTextWidth = 80.0f;
 
-        std::wstring FormatFloat(float value)
+        [[nodiscard]] std::wstring FormatFloat(float value)
         {
             const float rounded = std::round(value * kRoundingMultiplier) / kRoundingMultiplier;
             std::wstring result = std::to_wstring(rounded);
@@ -49,7 +53,7 @@ namespace Spectrum
             return result;
         }
 
-        std::wstring FormatInt(float value)
+        [[nodiscard]] std::wstring FormatInt(float value)
         {
             return std::to_wstring(static_cast<int>(value));
         }
@@ -85,22 +89,9 @@ namespace Spectrum
     {
         if (!IsVisible()) return;
 
-        m_animator.Update(deltaTime);
-
-        const MouseInputState sliderMouseState = { mousePos, isMouseDown };
-
-        for (auto& widget : m_sliderWidgets)
-        {
-            if (widget.slider) {
-                widget.slider->Update(sliderMouseState, deltaTime);
-            }
-        }
-
-        if (m_closeButton)
-        {
-            m_closeButton->Update(mousePos, isMouseDown, deltaTime);
-        }
-
+        UpdateAnimation(deltaTime);
+        UpdateSliders(mousePos, isMouseDown, deltaTime);
+        UpdateCloseButton(mousePos, isMouseDown, deltaTime);
         HandleClickOutside(mousePos, isMouseDown);
     }
 
@@ -109,7 +100,7 @@ namespace Spectrum
         if (!IsVisible()) return;
 
         const float progress = m_animator.GetProgress();
-        const float scale = Utils::EaseInOut(progress);
+        const float scale = Helpers::Math::EaseInOut(progress);
 
         PanelDrawHelper::DrawModalBackground(canvas, m_panelRect, progress);
 
@@ -121,19 +112,9 @@ namespace Spectrum
         };
         canvas.ScaleAt(center, scale, scale);
 
-        PanelDrawHelper::DrawTitle(
-            canvas,
-            L"Audio Settings",
-            { center.x, m_panelRect.y + UILayout::kAudioPanelTitleHeight * 0.5f },
-            progress
-        );
-
+        DrawTitle(canvas, center, progress);
         DrawSliders(canvas);
-
-        if (m_closeButton)
-        {
-            m_closeButton->Draw(canvas);
-        }
+        DrawCloseButton(canvas);
 
         canvas.PopTransform();
     }
@@ -203,31 +184,46 @@ namespace Spectrum
         auto* windowManager = m_controller->GetWindowManager();
         if (!audioManager || !windowManager) return;
 
+        m_panelRect = CalculatePanelRect(windowManager);
+
+        const auto sliderDefs = CreateSliderDefinitions(audioManager);
+        const float sliderX = m_panelRect.x + UILayout::kPadding;
+
+        CreateSliders(sliderDefs, sliderX);
+        CreateCloseButton();
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Widget Creation Helpers
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    [[nodiscard]] Rect AudioSettingsPanel::CalculatePanelRect(
+        Platform::WindowManager* windowManager
+    ) const
+    {
         auto* engine = windowManager->GetRenderEngine();
-        if (!engine) return;
+        if (!engine)
+        {
+            return { 0.0f, 0.0f, UILayout::kAudioPanelWidth, UILayout::kAudioPanelHeight };
+        }
 
         const int screenWidth = engine->GetWidth();
         const int screenHeight = engine->GetHeight();
 
-        m_panelRect = {
+        return {
             (screenWidth - UILayout::kAudioPanelWidth) * 0.5f,
             (screenHeight - UILayout::kAudioPanelHeight) * 0.5f,
             UILayout::kAudioPanelWidth,
             UILayout::kAudioPanelHeight
         };
+    }
 
-        struct SliderDef
-        {
-            std::wstring label;
-            float min;
-            float max;
-            float step;
-            std::function<float()> getter;
-            std::function<void(float)> setter;
-            std::function<std::wstring(float)> formatter;
-        };
-
-        std::vector<SliderDef> sliderDefs = {
+    [[nodiscard]] std::vector<AudioSettingsPanel::SliderDefinition>
+        AudioSettingsPanel::CreateSliderDefinitions(
+            AudioManager* audioManager
+        ) const
+    {
+        return {
             {
                 L"Amplification",
                 0.1f, 5.0f, 0.01f,
@@ -250,16 +246,21 @@ namespace Spectrum
                 FormatInt
             }
         };
+    }
 
+    void AudioSettingsPanel::CreateSliders(
+        const std::vector<SliderDefinition>& sliderDefs,
+        float sliderX
+    )
+    {
         m_sliderWidgets.clear();
         m_sliderWidgets.reserve(sliderDefs.size());
 
         constexpr float sliderWidth = UILayout::GetSliderWidth();
-        const float sliderX = m_panelRect.x + UILayout::kPadding;
 
         for (size_t i = 0; i < sliderDefs.size(); ++i)
         {
-            auto& def = sliderDefs[i];
+            const auto& def = sliderDefs[i];
             const float sliderY = m_panelRect.y + UILayout::GetSliderYOffset(i);
 
             auto slider = std::make_unique<UISlider>(
@@ -270,15 +271,19 @@ namespace Spectrum
                 def.step
             );
 
-            slider->SetOnValueChanged(std::move(def.setter));
+            std::function<void(float)> setter = def.setter;
+            slider->SetOnValueChanged(std::move(setter));
 
             m_sliderWidgets.push_back({
-                std::move(def.label),
+                def.label,
                 std::move(slider),
-                std::move(def.formatter)
+                def.formatter
                 });
         }
+    }
 
+    void AudioSettingsPanel::CreateCloseButton()
+    {
         m_closeButton = std::make_unique<UIButton>(
             Rect{
                 m_panelRect.GetRight() - UILayout::GetCloseButtonXOffset(),
@@ -288,6 +293,75 @@ namespace Spectrum
             },
             L"×",
             [this] { if (m_onCloseCallback) m_onCloseCallback(); }
+        );
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Update Helpers
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    void AudioSettingsPanel::UpdateAnimation(float deltaTime)
+    {
+        m_animator.Update(deltaTime);
+    }
+
+    void AudioSettingsPanel::UpdateSliders(
+        const Point& mousePos,
+        bool isMouseDown,
+        float deltaTime
+    )
+    {
+        const MouseInputState sliderMouseState = { mousePos, isMouseDown };
+
+        for (auto& widget : m_sliderWidgets)
+        {
+            if (widget.slider)
+            {
+                widget.slider->Update(sliderMouseState, deltaTime);
+            }
+        }
+    }
+
+    void AudioSettingsPanel::UpdateCloseButton(
+        const Point& mousePos,
+        bool isMouseDown,
+        float deltaTime
+    )
+    {
+        if (m_closeButton)
+        {
+            m_closeButton->Update(mousePos, isMouseDown, deltaTime);
+        }
+    }
+
+    void AudioSettingsPanel::HandleClickOutside(
+        const Point& mousePos,
+        bool isMouseDown
+    )
+    {
+        if (m_wasPressed && !isMouseDown && !IsInHitbox(mousePos))
+        {
+            Hide();
+        }
+
+        m_wasPressed = isMouseDown;
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Drawing Helpers
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    void AudioSettingsPanel::DrawTitle(
+        Canvas& canvas,
+        const Point& center,
+        float progress
+    ) const
+    {
+        PanelDrawHelper::DrawTitle(
+            canvas,
+            L"Audio Settings",
+            { center.x, m_panelRect.y + UILayout::kAudioPanelTitleHeight * 0.5f },
+            progress
         );
     }
 
@@ -341,17 +415,12 @@ namespace Spectrum
         }
     }
 
-    void AudioSettingsPanel::HandleClickOutside(
-        const Point& mousePos,
-        bool isMouseDown
-    )
+    void AudioSettingsPanel::DrawCloseButton(Canvas& canvas) const
     {
-        if (m_wasPressed && !isMouseDown && !IsInHitbox(mousePos))
+        if (m_closeButton)
         {
-            Hide();
+            m_closeButton->Draw(canvas);
         }
-
-        m_wasPressed = isMouseDown;
     }
 
 } // namespace Spectrum

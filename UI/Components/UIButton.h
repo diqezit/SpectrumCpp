@@ -14,6 +14,7 @@
 
 #include "Common/Common.h"
 #include "Graphics/API/Structs/TextStyle.h"
+#include "Graphics/API/Brushes/GradientStop.h"
 #include <functional>
 #include <string>
 #include <string_view>
@@ -29,6 +30,8 @@ namespace Spectrum {
         std::vector<D2D1_GRADIENT_STOP> backgroundHoverStops;
         Color borderColor;
         Color glowColor;
+        Color shadowColor;
+        Color shimmerColor;
         float cornerRadius;
         TextStyle textStyle;
     };
@@ -89,32 +92,100 @@ namespace Spectrum {
 
     private:
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Private Implementation / Internal Helpers
+        // State Management
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         enum class State { Normal, Hovered, Pressed };
 
-        void ProcessInput(
-            const Point& mousePos,
-            bool isMouseDown
-        );
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Update Pipeline
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
+        void ProcessInput(const Point& mousePos, bool isMouseDown);
         void UpdateAnimation(float deltaTime);
 
-        void DrawBackground(Canvas& canvas) const;
-        void DrawText(Canvas& canvas) const;
-        void DrawBorder(Canvas& canvas) const;
+        void UpdateState(const Point& mousePos, bool isMouseDown);
+        void HandleStateTransition(State newState, State previousState);
+        void TriggerClickIfReleased(State previousState);
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Animation
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        void AnimateHoverProgress(float deltaTime);
+        void AnimatePressProgress(float deltaTime);
+        void AnimateShimmer(float deltaTime);
+        void IncreaseHoverProgress(float deltaTime);
+        void DecreaseHoverProgress(float deltaTime);
+        [[nodiscard]] float CalculateAnimationStep(float deltaTime) const noexcept;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Rendering Pipeline
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        void DrawShadow(Canvas& canvas) const;
         void DrawGlow(Canvas& canvas) const;
+        void DrawBackground(Canvas& canvas) const;
+        void DrawBorder(Canvas& canvas) const;
+        void DrawText(Canvas& canvas) const;
+        void DrawShimmerOverlay(Canvas& canvas) const;
+
+        void DrawWithPressedOffset(Canvas& canvas) const;
+        void ApplyPressedTransform(Canvas& canvas) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Background Rendering
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        void DrawBackgroundGradient(Canvas& canvas, const std::vector<D2D1_GRADIENT_STOP>& d2dStops) const;
+        [[nodiscard]] std::vector<GradientStop> ConvertGradientStops(const std::vector<D2D1_GRADIENT_STOP>& d2dStops) const;
+        [[nodiscard]] GradientStop ConvertSingleStop(const D2D1_GRADIENT_STOP& stop) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Glow Rendering
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        void DrawGlowEffect(Canvas& canvas, const Rect& glowRect, float glowRadius, const Color& glowColor) const;
+        [[nodiscard]] Rect CalculateGlowRect() const;
+        [[nodiscard]] float CalculateGlowRadius() const noexcept;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Color Calculations
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         [[nodiscard]] std::vector<D2D1_GRADIENT_STOP> GetInterpolatedGradientStops() const;
         [[nodiscard]] Color GetCurrentBorderColor() const;
         [[nodiscard]] Color GetCurrentGlowColor() const;
 
+        [[nodiscard]] D2D1_GRADIENT_STOP InterpolateGradientStop(
+            const D2D1_GRADIENT_STOP& normalStop,
+            const D2D1_GRADIENT_STOP& hoverStop,
+            float progress
+        ) const;
+
+        [[nodiscard]] Color CalculateBorderColor(float easedProgress) const;
+        [[nodiscard]] Color CalculateGlowColor(float easedProgress) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // State Helpers
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] bool ShouldDrawShadow() const noexcept;
+        [[nodiscard]] bool ShouldDrawGlow() const noexcept;
+        [[nodiscard]] bool ShouldAnimateHoverIn() const noexcept;
+        [[nodiscard]] bool ShouldAnimateHoverOut() const noexcept;
+        [[nodiscard]] bool ShouldUseInterpolatedGradient() const noexcept;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Validation
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] bool HasValidGradientStops() const noexcept;
+        [[nodiscard]] bool GradientStopsSizeMatch() const noexcept;
+
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Member Variables
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-        static constexpr float kAnimationSpeed = 10.0f;
 
         Rect m_rect;
         std::wstring m_text;
@@ -122,6 +193,8 @@ namespace Spectrum {
         ButtonStyle m_style;
         State m_state;
         float m_hoverAnimationProgress;
+        float m_pressAnimationProgress;
+        float m_shimmerOffset;
     };
 
 } // namespace Spectrum

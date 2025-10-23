@@ -110,29 +110,114 @@ namespace Spectrum {
 
     private:
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Private Implementation / Internal Helpers
+        // Update Pipeline
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void ProcessInput(const MouseInputState& mouseState);
         void UpdateAnimations(float deltaTime);
+        void InvokeCallbackIfChanged();
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Input Processing
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        void UpdateHoverState(const Point& mousePos);
+        void ProcessMouseInput(const MouseInputState& mouseState);
+        void HandleMouseDown(const Point& mousePos);
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Animation Updates
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         void UpdateHoverAnimation(float deltaTime);
         void UpdateValueSmoothing(float deltaTime);
         void UpdateThumbSmoothing(float deltaTime);
 
+        void AnimateHoverProgress(float deltaTime);
+        void AnimateValueProgress(float deltaTime);
+        void AnimateThumbProgress(float deltaTime);
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Value Management
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         void SetTargetValueFromPosition(const Point& point);
+        void SetNormalizedValue(float normalizedValue);
+        void SetTargetValue(float normalizedValue);
+        void UpdateCurrentValue(float newValue);
+
+        [[nodiscard]] float CalculateNormalizedValueFromPosition(const Point& point) const;
+        [[nodiscard]] float NormalizePositionX(const Point& point) const;
         [[nodiscard]] float SnapToStep(float normalizedValue) const noexcept;
+        [[nodiscard]] float CalculateSteppedValue(float normalizedValue) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // State Queries
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         [[nodiscard]] bool IsActive() const noexcept;
+        [[nodiscard]] bool ShouldAnimateHoverIn() const noexcept;
+        [[nodiscard]] bool ShouldAnimateHoverOut() const noexcept;
+        [[nodiscard]] bool ShouldInvokeCallback(float currentValue) const noexcept;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Hit Testing
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         [[nodiscard]] bool HitTest(const Point& point) const noexcept;
+        [[nodiscard]] bool IsPointInHorizontalBounds(const Point& point) const noexcept;
+        [[nodiscard]] bool IsPointInVerticalBounds(const Point& point) const noexcept;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Geometry Calculations
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         [[nodiscard]] Rect GetThumbRect() const noexcept;
+        [[nodiscard]] Rect GetTrackRect() const noexcept;
+        [[nodiscard]] Rect GetFillRect() const noexcept;
+        [[nodiscard]] Rect GetGlowRect() const noexcept;
+
+        [[nodiscard]] float CalculateThumbX() const noexcept;
+        [[nodiscard]] float CalculateTrackY() const noexcept;
+        [[nodiscard]] float CalculateFillWidth() const noexcept;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Rendering Pipeline
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void DrawGlow(Canvas& canvas) const;
         void DrawTrack(Canvas& canvas) const;
         void DrawThumb(Canvas& canvas) const;
 
+        void DrawTrackBackground(Canvas& canvas, const Rect& trackRect) const;
+        void DrawTrackFill(Canvas& canvas, const Rect& fillRect) const;
+        void DrawThumbBody(Canvas& canvas, const Rect& thumbRect) const;
+        void DrawThumbBorder(Canvas& canvas, const Rect& thumbRect) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Color Calculations
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         [[nodiscard]] Color GetCurrentThumbColor() const noexcept;
         [[nodiscard]] Color GetCurrentGlowColor() const noexcept;
+        [[nodiscard]] Color InterpolateThumbColor() const noexcept;
+        [[nodiscard]] Color CalculateGlowColor() const noexcept;
 
-        void InvokeCallbackIfChanged();
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Callback Management
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        void TriggerCallback(float value);
+        void UpdateLastCallbackValue(float value);
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Validation
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] bool HasValidRange() const noexcept;
+        [[nodiscard]] bool HasValidStep() const noexcept;
+        [[nodiscard]] bool ShouldDrawGlow() const noexcept;
+        [[nodiscard]] bool ShouldDrawFill(const Rect& fillRect) const noexcept;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Member Variables

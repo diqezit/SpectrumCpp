@@ -5,10 +5,13 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "AnimatedAudioSource.h"
-#include "Common/Random.h"
-#include "Common/MathUtils.h"
+#include "Graphics/API/Helpers/Utils/Random.h"
+#include "Graphics/API/Helpers/Math/MathHelpers.h"
 
 namespace Spectrum {
+
+    using namespace Helpers::Utils;
+    using namespace Helpers::Math;
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
     // Lifecycle Management
@@ -75,7 +78,7 @@ namespace Spectrum {
         value = ApplyFrequencyFalloff(value, frequency);
         value = AddRandomNoise(value);
 
-        return Utils::Saturate(value);
+        return Saturate(value);
     }
 
     [[nodiscard]] float AnimatedAudioSource::CalculateBaseSineValue(float phase) const noexcept {
@@ -90,7 +93,7 @@ namespace Spectrum {
     }
 
     [[nodiscard]] float AnimatedAudioSource::AddRandomNoise(float value) const {
-        return value + Utils::Random::Instance().Float(-0.05f, 0.05f);
+        return value + Random::Instance().Float(-0.05f, 0.05f);
     }
 
 } // namespace Spectrum

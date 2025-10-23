@@ -40,6 +40,17 @@ namespace Spectrum {
             const Color& hoverColor,
             float animationProgress = 1.0f
         );
+
+    private:
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Calculation Helpers
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] static Point CalculateCenter(const Rect& bounds);
+        [[nodiscard]] static float CalculateRadius(const Rect& bounds);
+        [[nodiscard]] static float CalculateBorderAlpha(bool isHovered, float animationProgress);
+        [[nodiscard]] static float CalculateBorderThickness(float animationProgress);
+        [[nodiscard]] static Rect CalculatePreviewRect(const Rect& bounds, float actualSize);
     };
 
 } // namespace Spectrum

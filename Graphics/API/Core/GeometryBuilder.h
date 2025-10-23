@@ -17,7 +17,7 @@
 // Design notes:
 // - All creation methods are const (stateless operations)
 // - Static methods for vertex generation (no D2D dependency)
-// - Non-owning pointer to ID2D1Factory (lifetime managed externally)
+// - Manages ID2D1Factory lifetime via ComPtr
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Common/Common.h"
@@ -32,7 +32,7 @@ namespace Spectrum {
         // Lifecycle Management
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        explicit GeometryBuilder(ID2D1Factory* factory);
+        explicit GeometryBuilder(wrl::ComPtr<ID2D1Factory> factory);
 
         GeometryBuilder(const GeometryBuilder&) = delete;
         GeometryBuilder& operator=(const GeometryBuilder&) = delete;
@@ -99,12 +99,144 @@ namespace Spectrum {
 
     private:
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Private Implementation - Geometry Creation Helpers
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] wrl::ComPtr<ID2D1PathGeometry> CreateEmptyGeometry() const;
+
+        [[nodiscard]] wrl::ComPtr<ID2D1GeometrySink> OpenGeometrySink(
+            ID2D1PathGeometry* geometry
+        ) const;
+
+        [[nodiscard]] bool CloseGeometrySink(ID2D1GeometrySink* sink) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Private Implementation - Path Building
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        void BuildPathFromPoints(
+            ID2D1GeometrySink* sink,
+            const std::vector<Point>& points,
+            bool closed,
+            bool filled
+        ) const;
+
+        void BuildArcPath(
+            ID2D1GeometrySink* sink,
+            const Point& center,
+            float radius,
+            float startAngle,
+            float sweepAngle
+        ) const;
+
+        void BuildPolygonPath(
+            ID2D1GeometrySink* sink,
+            const std::vector<Point>& vertices
+        ) const;
+
+        void BuildSlicePath(
+            ID2D1GeometrySink* sink,
+            const Point& center,
+            float radius,
+            float startAngle,
+            float endAngle
+        ) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Private Implementation - Arc Segment Creation
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] D2D1_ARC_SEGMENT CreateArcSegment(
+            const Point& endPoint,
+            float radius,
+            float sweepAngle
+        ) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Private Implementation - Point Calculation
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] Point CalculatePointOnCircle(
+            const Point& center,
+            float radius,
+            float angleDegrees
+        ) const;
+
+        [[nodiscard]] Point CalculatePointOnCircleRad(
+            const Point& center,
+            float radius,
+            float angleRadians
+        ) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Private Implementation - Vertex Generation Helpers
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        struct RotationState {
+            float cosAngle;
+            float sinAngle;
+            float cosStep;
+            float sinStep;
+        };
+
+        [[nodiscard]] static RotationState InitializeRotation(
+            float startAngle,
+            float angleStep
+        );
+
+        static void ApplyRotation(RotationState& state);
+
+        [[nodiscard]] static Point CalculatePointFromRotation(
+            const Point& center,
+            float radius,
+            const RotationState& state
+        );
+
+        static void GeneratePointsDirect(
+            std::vector<Point>& points,
+            const Point& center,
+            float radius,
+            int count,
+            float startAngle,
+            float angleStep
+        );
+
+        static void GeneratePointsIncremental(
+            std::vector<Point>& points,
+            const Point& center,
+            float radius,
+            int count,
+            float startAngle,
+            float angleStep
+        );
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Private Implementation - Validation
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] bool CanCreateGeometry() const noexcept { return m_factory.Get() != nullptr; }
+
+        [[nodiscard]] bool ValidatePointArray(
+            const std::vector<Point>& points,
+            size_t minPoints
+        ) const noexcept;
+
+        [[nodiscard]] bool ValidateArcParameters(
+            float radius,
+            float sweepAngle
+        ) const noexcept;
+
+        [[nodiscard]] bool ValidateSliceParameters(
+            float radius
+        ) const noexcept;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Member Variables
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        ID2D1Factory* m_factory;
+        wrl::ComPtr<ID2D1Factory> m_factory;
     };
 
 } // namespace Spectrum
 
-#endif
+#endif // SPECTRUM_CPP_GEOMETRY_BUILDER_H

@@ -129,7 +129,11 @@ namespace Spectrum {
     };
 
     enum class RenderQuality : uint8_t {
-        Low = 0, Medium, High, Count
+        Low = 0,
+        Medium,
+        High,
+        Ultra,
+        Count
     };
 
     enum class FFTWindowType : uint8_t {

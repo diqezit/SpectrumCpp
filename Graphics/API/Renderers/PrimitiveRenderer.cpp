@@ -11,6 +11,7 @@
 
 #include "Graphics/API/Renderers/PrimitiveRenderer.h"
 #include "Graphics/API/D2DHelpers.h"
+#include "Graphics/API/Helpers/Rendering/RenderHelpers.h"
 #include "Graphics/API/Core/GeometryBuilder.h"
 #include "Graphics/API/Core/ResourceCache.h"
 #include "Graphics/API/Structs/Paint.h"
@@ -21,6 +22,7 @@ namespace Spectrum {
     using namespace Helpers::Validate;
     using namespace Helpers::Sanitize;
     using namespace Helpers::EnumConversion;
+    using namespace Helpers::Rendering;
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Lifecycle Management
@@ -28,29 +30,39 @@ namespace Spectrum {
 
     PrimitiveRenderer::PrimitiveRenderer(
         GeometryBuilder* geometryBuilder,
-        ResourceCache* resourceCache
+        Spectrum::ResourceCache* resourceCache
     )
-        : m_renderTarget(nullptr)
-        , m_geometryBuilder(geometryBuilder)
+        : m_geometryBuilder(geometryBuilder)
         , m_resourceCache(resourceCache)
     {
     }
 
-    void PrimitiveRenderer::OnRenderTargetChanged(
-        ID2D1RenderTarget* renderTarget
-    ) {
+    void PrimitiveRenderer::OnRenderTargetChanged(const wrl::ComPtr<ID2D1RenderTarget>& renderTarget)
+    {
         m_renderTarget = renderTarget;
-        m_strokeStyleCache.clear();
+        m_strokeStyleCache.Clear();
     }
 
     void PrimitiveRenderer::OnDeviceLost()
     {
-        m_renderTarget = nullptr;
-        m_strokeStyleCache.clear();
+        m_renderTarget.Reset();
+        m_strokeStyleCache.Clear();
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Private Helpers
+    // Brush & Resource Helpers (DRY)
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    wrl::ComPtr<ID2D1Brush> PrimitiveRenderer::GetPaintBrush(const Paint& paint) const
+    {
+        if (!m_resourceCache) {
+            return nullptr;
+        }
+        return m_resourceCache->GetBrush(paint.GetBrush(), paint.GetAlpha());
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Stroke Style Management (SRP)
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     void PrimitiveRenderer::ApplyPaintToStrokeStyle(
@@ -62,45 +74,174 @@ namespace Spectrum {
             return;
         }
 
-        uint64_t key = (static_cast<uint64_t>(paint.GetStrokeCap()) << 0) |
-            (static_cast<uint64_t>(paint.GetStrokeJoin()) << 8) |
-            (static_cast<uint64_t>(paint.GetDashStyle()) << 16);
-
-        auto it = m_strokeStyleCache.find(key);
-        if (it != m_strokeStyleCache.end()) {
-            strokeStyle = it->second;
-            return;
-        }
-
-        if (!m_renderTarget) {
-            return;
-        }
-
-        wrl::ComPtr<ID2D1Factory> factory;
-        m_renderTarget->GetFactory(factory.GetAddressOf());
-
-        if (!factory) {
-            return;
-        }
-
-        D2D1_STROKE_STYLE_PROPERTIES props = D2D1::StrokeStyleProperties(
+        const uint64_t key = HashGenerator::GenerateStrokeStyleKey(
             ToD2DCapStyle(paint.GetStrokeCap()),
             ToD2DCapStyle(paint.GetStrokeCap()),
             ToD2DCapStyle(paint.GetStrokeCap()),
             ToD2DLineJoin(paint.GetStrokeJoin()),
-            paint.GetMiterLimit(),
             ToD2DDashStyle(paint.GetDashStyle()),
             paint.GetDashOffset()
         );
 
-        factory->CreateStrokeStyle(
-            props,
-            paint.GetDashPattern().data(),
-            static_cast<UINT32>(paint.GetDashPattern().size()),
-            &strokeStyle
-        );
+        strokeStyle = m_strokeStyleCache.GetOrCreate(key, [&]() {
+            auto factory = FactoryHelper::GetFactoryFromRenderTarget(m_renderTarget.Get());
+            if (!factory) return wrl::ComPtr<ID2D1StrokeStyle>();
 
-        m_strokeStyleCache[key] = strokeStyle;
+            auto props = StrokeStyleManager::CreateStrokeProperties(
+                ToD2DCapStyle(paint.GetStrokeCap()),
+                ToD2DCapStyle(paint.GetStrokeCap()),
+                ToD2DCapStyle(paint.GetStrokeCap()),
+                ToD2DLineJoin(paint.GetStrokeJoin()),
+                paint.GetMiterLimit(),
+                ToD2DDashStyle(paint.GetDashStyle()),
+                paint.GetDashOffset()
+            );
+
+            return StrokeStyleManager::CreateStrokeStyle(
+                factory.Get(),
+                props,
+                paint.GetDashPattern().data(),
+                static_cast<UINT32>(paint.GetDashPattern().size())
+            );
+            });
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Drawing Primitives (SRP) - Fill
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    void PrimitiveRenderer::FillShape(
+        ID2D1Brush* brush,
+        const D2D1_RECT_F& rect
+    ) const {
+        if (m_renderTarget && brush) {
+            m_renderTarget->FillRectangle(&rect, brush);
+        }
+    }
+
+    void PrimitiveRenderer::FillShape(
+        ID2D1Brush* brush,
+        const D2D1_ROUNDED_RECT& rect
+    ) const {
+        if (m_renderTarget && brush) {
+            m_renderTarget->FillRoundedRectangle(&rect, brush);
+        }
+    }
+
+    void PrimitiveRenderer::FillShape(
+        ID2D1Brush* brush,
+        const D2D1_ELLIPSE& ellipse
+    ) const {
+        if (m_renderTarget && brush) {
+            m_renderTarget->FillEllipse(&ellipse, brush);
+        }
+    }
+
+    void PrimitiveRenderer::FillShape(
+        ID2D1Brush* brush,
+        ID2D1Geometry* geometry
+    ) const {
+        if (m_renderTarget && brush && geometry) {
+            m_renderTarget->FillGeometry(geometry, brush);
+        }
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Drawing Primitives (SRP) - Stroke
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    void PrimitiveRenderer::StrokeShape(
+        ID2D1Brush* brush,
+        const Paint& paint,
+        const D2D1_RECT_F& rect
+    ) const {
+        if (!m_renderTarget || !brush) return;
+
+        wrl::ComPtr<ID2D1StrokeStyle> strokeStyle;
+        ApplyPaintToStrokeStyle(paint, strokeStyle);
+
+        m_renderTarget->DrawRectangle(
+            &rect,
+            brush,
+            paint.GetStrokeWidth(),
+            strokeStyle.Get()
+        );
+    }
+
+    void PrimitiveRenderer::StrokeShape(
+        ID2D1Brush* brush,
+        const Paint& paint,
+        const D2D1_ROUNDED_RECT& rect
+    ) const {
+        if (!m_renderTarget || !brush) return;
+
+        wrl::ComPtr<ID2D1StrokeStyle> strokeStyle;
+        ApplyPaintToStrokeStyle(paint, strokeStyle);
+
+        m_renderTarget->DrawRoundedRectangle(
+            &rect,
+            brush,
+            paint.GetStrokeWidth(),
+            strokeStyle.Get()
+        );
+    }
+
+    void PrimitiveRenderer::StrokeShape(
+        ID2D1Brush* brush,
+        const Paint& paint,
+        const D2D1_ELLIPSE& ellipse
+    ) const {
+        if (!m_renderTarget || !brush) return;
+
+        wrl::ComPtr<ID2D1StrokeStyle> strokeStyle;
+        ApplyPaintToStrokeStyle(paint, strokeStyle);
+
+        m_renderTarget->DrawEllipse(
+            &ellipse,
+            brush,
+            paint.GetStrokeWidth(),
+            strokeStyle.Get()
+        );
+    }
+
+    void PrimitiveRenderer::StrokeShape(
+        ID2D1Brush* brush,
+        const Paint& paint,
+        ID2D1Geometry* geometry
+    ) const {
+        if (!m_renderTarget || !brush || !geometry) return;
+
+        wrl::ComPtr<ID2D1StrokeStyle> strokeStyle;
+        ApplyPaintToStrokeStyle(paint, strokeStyle);
+
+        m_renderTarget->DrawGeometry(
+            geometry,
+            brush,
+            paint.GetStrokeWidth(),
+            strokeStyle.Get()
+        );
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Geometry Drawing (DRY)
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    void PrimitiveRenderer::DrawGeometryWithPaint(
+        ID2D1Geometry* geometry,
+        const Paint& paint
+    ) const {
+        if (!geometry) return;
+
+        auto brush = GetPaintBrush(paint);
+        if (!brush) return;
+
+        if (paint.IsFilled()) {
+            FillShape(brush.Get(), geometry);
+        }
+
+        if (paint.IsStroked()) {
+            StrokeShape(brush.Get(), paint, geometry);
+        }
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -111,31 +252,19 @@ namespace Spectrum {
         const Rect& rect,
         const Paint& paint
     ) const {
-        if (!m_renderTarget || !m_resourceCache) {
-            return;
-        }
+        if (!RenderValidation::ValidateRenderTarget(m_renderTarget.Get())) return;
 
-        auto brush = m_resourceCache->GetBrush(paint.GetBrush(), paint.GetAlpha());
-        if (!brush) {
-            return;
-        }
+        auto brush = GetPaintBrush(paint);
+        if (!brush) return;
 
         const D2D1_RECT_F d2dRect = ToD2DRect(rect);
 
         if (paint.IsFilled()) {
-            m_renderTarget->FillRectangle(&d2dRect, brush.Get());
+            FillShape(brush.Get(), d2dRect);
         }
 
         if (paint.IsStroked()) {
-            wrl::ComPtr<ID2D1StrokeStyle> strokeStyle;
-            ApplyPaintToStrokeStyle(paint, strokeStyle);
-
-            m_renderTarget->DrawRectangle(
-                &d2dRect,
-                brush.Get(),
-                paint.GetStrokeWidth(),
-                strokeStyle.Get()
-            );
+            StrokeShape(brush.Get(), paint, d2dRect);
         }
     }
 
@@ -144,32 +273,24 @@ namespace Spectrum {
         float radius,
         const Paint& paint
     ) const {
-        if (!m_renderTarget || !m_resourceCache) {
-            return;
-        }
+        if (!RenderValidation::ValidateRenderTarget(m_renderTarget.Get())) return;
 
-        auto brush = m_resourceCache->GetBrush(paint.GetBrush(), paint.GetAlpha());
-        if (!brush) {
-            return;
-        }
+        auto brush = GetPaintBrush(paint);
+        if (!brush) return;
 
         const float sanitizedRadius = NonNegativeFloat(radius);
-        const D2D1_ROUNDED_RECT rr = { ToD2DRect(rect), sanitizedRadius, sanitizedRadius };
+        const D2D1_ROUNDED_RECT rr = {
+            ToD2DRect(rect),
+            sanitizedRadius,
+            sanitizedRadius
+        };
 
         if (paint.IsFilled()) {
-            m_renderTarget->FillRoundedRectangle(&rr, brush.Get());
+            FillShape(brush.Get(), rr);
         }
 
         if (paint.IsStroked()) {
-            wrl::ComPtr<ID2D1StrokeStyle> strokeStyle;
-            ApplyPaintToStrokeStyle(paint, strokeStyle);
-
-            m_renderTarget->DrawRoundedRectangle(
-                &rr,
-                brush.Get(),
-                paint.GetStrokeWidth(),
-                strokeStyle.Get()
-            );
+            StrokeShape(brush.Get(), paint, rr);
         }
     }
 
@@ -187,31 +308,20 @@ namespace Spectrum {
         float radiusY,
         const Paint& paint
     ) const {
-        if (!m_renderTarget || !m_resourceCache || !PositiveRadius(radiusX) || !PositiveRadius(radiusY)) {
-            return;
-        }
+        if (!RenderValidation::ValidateRenderTarget(m_renderTarget.Get())) return;
+        if (!PositiveRadius(radiusX) || !PositiveRadius(radiusY)) return;
 
-        auto brush = m_resourceCache->GetBrush(paint.GetBrush(), paint.GetAlpha());
-        if (!brush) {
-            return;
-        }
+        auto brush = GetPaintBrush(paint);
+        if (!brush) return;
 
         const D2D1_ELLIPSE ellipse = ToD2DEllipse(center, radiusX, radiusY);
 
         if (paint.IsFilled()) {
-            m_renderTarget->FillEllipse(&ellipse, brush.Get());
+            FillShape(brush.Get(), ellipse);
         }
 
         if (paint.IsStroked()) {
-            wrl::ComPtr<ID2D1StrokeStyle> strokeStyle;
-            ApplyPaintToStrokeStyle(paint, strokeStyle);
-
-            m_renderTarget->DrawEllipse(
-                &ellipse,
-                brush.Get(),
-                paint.GetStrokeWidth(),
-                strokeStyle.Get()
-            );
+            StrokeShape(brush.Get(), paint, ellipse);
         }
     }
 
@@ -220,14 +330,10 @@ namespace Spectrum {
         const Point& end,
         const Paint& paint
     ) const {
-        if (!m_renderTarget || !m_resourceCache) {
-            return;
-        }
+        if (!RenderValidation::ValidateRenderTarget(m_renderTarget.Get())) return;
 
-        auto brush = m_resourceCache->GetBrush(paint.GetBrush(), paint.GetAlpha());
-        if (!brush) {
-            return;
-        }
+        auto brush = GetPaintBrush(paint);
+        if (!brush) return;
 
         wrl::ComPtr<ID2D1StrokeStyle> strokeStyle;
         ApplyPaintToStrokeStyle(paint, strokeStyle);
@@ -245,64 +351,34 @@ namespace Spectrum {
         const std::vector<Point>& points,
         const Paint& paint
     ) const {
-        if (!m_renderTarget || !m_resourceCache || !m_geometryBuilder || !PointArray(points, 2)) {
-            return;
-        }
+        if (!RenderValidation::ValidateRenderTarget(m_renderTarget.Get())) return;
+        if (!m_geometryBuilder) return;
+        if (!PointArray(points, 2)) return;
 
         auto geo = m_geometryBuilder->CreatePathFromPoints(points, false, false);
-        if (!geo) {
-            return;
-        }
+        if (!geo) return;
 
-        auto brush = m_resourceCache->GetBrush(paint.GetBrush(), paint.GetAlpha());
-        if (!brush) {
-            return;
-        }
+        auto brush = GetPaintBrush(paint);
+        if (!brush) return;
 
-        wrl::ComPtr<ID2D1StrokeStyle> strokeStyle;
-        ApplyPaintToStrokeStyle(paint, strokeStyle);
-
-        m_renderTarget->DrawGeometry(
-            geo.Get(),
-            brush.Get(),
-            paint.GetStrokeWidth(),
-            strokeStyle.Get()
-        );
+        StrokeShape(brush.Get(), paint, geo.Get());
     }
 
     void PrimitiveRenderer::DrawPolygon(
         const std::vector<Point>& points,
         const Paint& paint
     ) const {
-        if (!m_renderTarget || !m_resourceCache || !m_geometryBuilder || !PointArray(points, 3)) {
-            return;
-        }
+        if (!RenderValidation::ValidateRenderTarget(m_renderTarget.Get())) return;
+        if (!m_geometryBuilder) return;
+        if (!PointArray(points, 3)) return;
 
-        auto geo = m_geometryBuilder->CreatePathFromPoints(points, true, paint.IsFilled());
-        if (!geo) {
-            return;
-        }
+        auto geo = m_geometryBuilder->CreatePathFromPoints(
+            points,
+            true,
+            paint.IsFilled()
+        );
 
-        auto brush = m_resourceCache->GetBrush(paint.GetBrush(), paint.GetAlpha());
-        if (!brush) {
-            return;
-        }
-
-        if (paint.IsFilled()) {
-            m_renderTarget->FillGeometry(geo.Get(), brush.Get());
-        }
-
-        if (paint.IsStroked()) {
-            wrl::ComPtr<ID2D1StrokeStyle> strokeStyle;
-            ApplyPaintToStrokeStyle(paint, strokeStyle);
-
-            m_renderTarget->DrawGeometry(
-                geo.Get(),
-                brush.Get(),
-                paint.GetStrokeWidth(),
-                strokeStyle.Get()
-            );
-        }
+        DrawGeometryWithPaint(geo.Get(), paint);
     }
 
     void PrimitiveRenderer::DrawArc(
@@ -312,29 +388,17 @@ namespace Spectrum {
         float sweepAngle,
         const Paint& paint
     ) const {
-        if (!m_renderTarget || !m_resourceCache || !m_geometryBuilder || !PositiveRadius(radius) || !NonZeroAngle(sweepAngle)) {
-            return;
-        }
+        if (!RenderValidation::ValidateRenderTarget(m_renderTarget.Get())) return;
+        if (!m_geometryBuilder) return;
+        if (!PositiveRadius(radius) || !NonZeroAngle(sweepAngle)) return;
 
         auto geo = m_geometryBuilder->CreateArc(center, radius, startAngle, sweepAngle);
-        if (!geo) {
-            return;
-        }
+        if (!geo) return;
 
-        auto brush = m_resourceCache->GetBrush(paint.GetBrush(), paint.GetAlpha());
-        if (!brush) {
-            return;
-        }
+        auto brush = GetPaintBrush(paint);
+        if (!brush) return;
 
-        wrl::ComPtr<ID2D1StrokeStyle> strokeStyle;
-        ApplyPaintToStrokeStyle(paint, strokeStyle);
-
-        m_renderTarget->DrawGeometry(
-            geo.Get(),
-            brush.Get(),
-            paint.GetStrokeWidth(),
-            strokeStyle.Get()
-        );
+        StrokeShape(brush.Get(), paint, geo.Get());
     }
 
     void PrimitiveRenderer::DrawRing(
@@ -343,9 +407,7 @@ namespace Spectrum {
         float outerRadius,
         const Paint& paint
     ) const {
-        if (!RadiusRange(innerRadius, outerRadius)) {
-            return;
-        }
+        if (!RadiusRange(innerRadius, outerRadius)) return;
 
         const float strokeWidth = outerRadius - innerRadius;
         const float radius = innerRadius + strokeWidth * 0.5f;
@@ -364,27 +426,18 @@ namespace Spectrum {
         float sweepAngle,
         const Paint& paint
     ) const {
-        if (!m_renderTarget || !m_resourceCache || !m_geometryBuilder || !PositiveRadius(radius) || !NonZeroAngle(sweepAngle)) {
-            return;
-        }
+        if (!RenderValidation::ValidateRenderTarget(m_renderTarget.Get())) return;
+        if (!m_geometryBuilder) return;
+        if (!PositiveRadius(radius) || !NonZeroAngle(sweepAngle)) return;
 
-        auto geo = m_geometryBuilder->CreateAngularSlice(center, radius, startAngle, startAngle + sweepAngle);
-        if (!geo) {
-            return;
-        }
+        auto geo = m_geometryBuilder->CreateAngularSlice(
+            center,
+            radius,
+            startAngle,
+            startAngle + sweepAngle
+        );
 
-        auto brush = m_resourceCache->GetBrush(paint.GetBrush(), paint.GetAlpha());
-        if (!brush) {
-            return;
-        }
-
-        if (paint.IsFilled()) {
-            m_renderTarget->FillGeometry(geo.Get(), brush.Get());
-        }
-
-        if (paint.IsStroked()) {
-            m_renderTarget->DrawGeometry(geo.Get(), brush.Get(), paint.GetStrokeWidth());
-        }
+        DrawGeometryWithPaint(geo.Get(), paint);
     }
 
     void PrimitiveRenderer::DrawRegularPolygon(
@@ -394,9 +447,7 @@ namespace Spectrum {
         float rotation,
         const Paint& paint
     ) const {
-        if (!m_geometryBuilder) {
-            return;
-        }
+        if (!m_geometryBuilder) return;
 
         const auto vertices = m_geometryBuilder->GenerateRegularPolygonVertices(
             center,
@@ -415,9 +466,8 @@ namespace Spectrum {
         int points,
         const Paint& paint
     ) const {
-        if (!m_geometryBuilder || !RadiusRange(innerRadius, outerRadius)) {
-            return;
-        }
+        if (!m_geometryBuilder) return;
+        if (!RadiusRange(innerRadius, outerRadius)) return;
 
         const auto vertices = m_geometryBuilder->GenerateStarVertices(
             center,
@@ -456,22 +506,16 @@ namespace Spectrum {
         float radius,
         const Paint& paint
     ) const {
-        if (!m_renderTarget || !m_resourceCache || !PositiveRadius(radius)) {
-            return;
-        }
+        if (!RenderValidation::ValidateRenderTarget(m_renderTarget.Get())) return;
+        if (!PositiveRadius(radius)) return;
 
-        auto brush = m_resourceCache->GetBrush(paint.GetBrush(), paint.GetAlpha());
-        if (!brush) {
-            return;
-        }
+        auto brush = GetPaintBrush(paint);
+        if (!brush) return;
 
         for (const auto& center : centers) {
             const D2D1_ELLIPSE ellipse = ToD2DEllipse(center, radius, radius);
             if (paint.IsFilled()) {
-                m_renderTarget->FillEllipse(&ellipse, brush.Get());
-            }
-            if (paint.IsStroked()) {
-                /* Batch stroke not implemented for brevity */
+                FillShape(brush.Get(), ellipse);
             }
         }
     }
@@ -480,22 +524,15 @@ namespace Spectrum {
         const std::vector<Rect>& rects,
         const Paint& paint
     ) const {
-        if (!m_renderTarget || !m_resourceCache) {
-            return;
-        }
+        if (!RenderValidation::ValidateRenderTarget(m_renderTarget.Get())) return;
 
-        auto brush = m_resourceCache->GetBrush(paint.GetBrush(), paint.GetAlpha());
-        if (!brush) {
-            return;
-        }
+        auto brush = GetPaintBrush(paint);
+        if (!brush) return;
 
         for (const auto& rect : rects) {
             const D2D1_RECT_F d2dRect = ToD2DRect(rect);
             if (paint.IsFilled()) {
-                m_renderTarget->FillRectangle(&d2dRect, brush.Get());
-            }
-            if (paint.IsStroked()) {
-                /* Batch stroke not implemented for brevity */
+                FillShape(brush.Get(), d2dRect);
             }
         }
     }

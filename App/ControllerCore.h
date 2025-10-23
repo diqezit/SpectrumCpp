@@ -1,13 +1,25 @@
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// Defines ControllerCore, the central orchestrator of the application that
-// coordinates all major subsystems (window, audio, rendering, input, UI).
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
 #ifndef SPECTRUM_CPP_CONTROLLER_CORE_H
 #define SPECTRUM_CPP_CONTROLLER_CORE_H
 
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// Defines the main application orchestrator
+//
+// Responsibilities:
+// - Owns and manages the lifecycle of all major application subsystems
+// - Uses an immutable FrameState to prevent mid-frame state changes
+// - Implements a fixed-timestep loop to decouple simulation from render speed
+// - Separates frame processing into Input Update Render phases for clarity
+// - Orchestrates automatic recovery from graphics device loss
+//
+// Design notes:
+// - Uses non-owning raw pointers for inter-system communication to avoid circular dependencies
+// - Propagates all initialization failures to the application entry point for a clean shutdown on error
+// - Ensures a graceful and ordered shutdown of all subsystems in the destructor
+// - Collects a single immutable state snapshot at the start of each frame
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
 #include "Common/Common.h"
-#include "Common/Timer.h"
+#include "Graphics/API/Helpers/Utils/Timer.h"
 #include <memory>
 #include <vector>
 
@@ -49,7 +61,8 @@ namespace Spectrum {
     // ControllerCore Class
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    class ControllerCore final {
+    class ControllerCore final
+    {
     public:
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Lifecycle Management
@@ -75,7 +88,7 @@ namespace Spectrum {
         void OnCloseRequest();
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Configuration & Setters
+        // Configuration
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void SetPrimaryColor(const Color& color);
@@ -90,30 +103,98 @@ namespace Spectrum {
 
     private:
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Private Implementation / Internal Helpers
+        // Subsystem Initialization
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        [[nodiscard]] bool InitializeManagers();
-        [[nodiscard]] bool InitializeWindowManager();
-        [[nodiscard]] bool InitializeAudioManager();
-        [[nodiscard]] bool InitializeRendererManager();
-        [[nodiscard]] bool InitializeUIManager();
+        bool InitializeSubsystems();
+        bool InitializeEventBus();
+        bool InitializeWindowManager();
+        bool InitializeInputManager();
+        bool InitializeAudioManager();
+        bool InitializeRendererManager();
+        bool InitializeUIManager();
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Main Loop
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void MainLoop();
-        [[nodiscard]] FrameState CollectFrameState();
+        void ProcessFrame(const FrameState& frameState);
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Frame State
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] FrameState CollectFrameState() const;
+        [[nodiscard]] MouseState CollectMouseState() const;
+        [[nodiscard]] float CalculateDeltaTime() const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Input Processing
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void ProcessInput();
+        void UpdateInputManager();
+        void PublishInputActions();
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Update Phase
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         void Update(const FrameState& frameState);
+        void UpdateAudioSystem(float deltaTime);
+        void UpdateUISystem(const FrameState& frameState);
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Render Phase
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         void Render(const FrameState& frameState);
+        [[nodiscard]] bool PrepareFrame(const FrameState& frameState);
+        void RenderContent();
+        void RenderSpectrum();
+        void RenderUI();
+        void FinalizeFrame();
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Render Validation
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         [[nodiscard]] bool CanRender(const FrameState& frameState) const;
-        void PrepareFrame(const FrameState& frameState) const;
-        void RenderSpectrum() const;
-        void RenderUI() const;
-        void FinalizeFrame();
+        [[nodiscard]] bool IsWindowOccluded() const;
+        [[nodiscard]] bool ShouldRenderInOverlayMode() const;
+        [[nodiscard]] bool ShouldRenderInNormalMode(const FrameState& frameState) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Frame Timing
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         [[nodiscard]] bool ShouldProcessFrame() const;
         void ThrottleFrameRate() const;
+        void ResetFrameTimer();
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Graphics Recovery
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        void HandleDeviceLoss();
+        bool RecreateGraphicsContext();
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Validation Helpers
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] bool ValidateManagers() const noexcept;
+        [[nodiscard]] bool ValidateWindowManager() const noexcept;
+        [[nodiscard]] bool ValidateAudioManager() const noexcept;
+        [[nodiscard]] bool ValidateRendererManager() const noexcept;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Utility Helpers
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] RenderEngine* GetRenderEngine() const noexcept;
+        [[nodiscard]] Color GetClearColor(bool isOverlayMode) const noexcept;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Member Variables
@@ -129,7 +210,7 @@ namespace Spectrum {
         std::unique_ptr<RendererManager> m_rendererManager;
         std::unique_ptr<Platform::Input::InputManager> m_inputManager;
 
-        Utils::Timer m_timer;
+        Helpers::Utils::Timer m_timer;
         std::vector<InputAction> m_actions;
         uint64_t m_frameCounter;
     };

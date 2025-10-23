@@ -1,11 +1,25 @@
 ﻿// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// Implements the ControllerCore class, defining the initialization sequence
-// for all subsystems and the main application loop logic.
+// Implements the main application orchestrator
 //
-// This implementation orchestrates input processing, state collection, and
-// rendering through a unified state-driven architecture. Each frame collects
-// a complete snapshot of system state (FrameState), which is then propagated
-// down through the update pipeline, ensuring deterministic behavior.
+// Implementation details:
+// - Initializes subsystems sequentially to guarantee dependencies are met
+// - Uses immutable FrameState to prevent mid-frame state corruption
+// - Runs a fixed-timestep loop for predictable animation and updates
+// - Separates each frame into Input Update Render phases for clarity
+// - Recovers from graphics device loss to prevent application crashes
+//
+// Initialization sequence:
+// - Follows a strict startup order to resolve dependencies correctly
+// - EventBus is created first because all subsystems depend on it
+// - WindowManager is next to provide a valid HWND for other systems
+// - RendererManager and UIManager are last as they need a full graphics context
+//
+// Frame pipeline:
+// - Gathers a single immutable state snapshot at the start of each frame
+// - Decouples input from game logic by publishing actions to the EventBus
+// - Updates all subsystem logic based on time and input before rendering
+// - Renders the final state only if the window is active and not occluded
+// - Checks for graphics errors after each frame to trigger recovery if needed
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "ControllerCore.h"
@@ -13,6 +27,7 @@
 #include "Common/EventBus.h"
 #include "Graphics/Api/Core/RenderEngine.h"
 #include "Graphics/Api/Canvas.h"
+#include "Graphics/API/Helpers/D2D/RenderTargetHelpers.h"
 #include "Platform/Input/InputManager.h"
 #include "Graphics/IRenderer.h"
 #include "Platform/MainWindow.h"
@@ -30,9 +45,9 @@ namespace Spectrum {
     // Lifecycle Management
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    ControllerCore::ControllerCore(HINSTANCE hInstance) :
-        m_hInstance(hInstance),
-        m_frameCounter(0)
+    ControllerCore::ControllerCore(HINSTANCE hInstance)
+        : m_hInstance(hInstance)
+        , m_frameCounter(0)
     {
     }
 
@@ -43,16 +58,23 @@ namespace Spectrum {
 
     [[nodiscard]] bool ControllerCore::Initialize()
     {
-        if (!InitializeManagers()) return false;
-        m_timer.Reset();
+        if (!InitializeSubsystems()) {
+            return false;
+        }
+
+        ResetFrameTimer();
         return true;
     }
 
     void ControllerCore::Run()
     {
-        if (!m_windowManager) return;
-        m_timer.Reset();
+        if (!ValidateWindowManager()) {
+            return;
+        }
+
+        ResetFrameTimer();
         m_frameCounter = 0;
+
         MainLoop();
     }
 
@@ -71,29 +93,33 @@ namespace Spectrum {
 
     void ControllerCore::OnResize(int width, int height)
     {
-        if (m_rendererManager) m_rendererManager->OnResize(width, height);
+        if (m_rendererManager) {
+            m_rendererManager->OnResize(width, height);
+        }
     }
 
     void ControllerCore::OnCloseRequest()
     {
-        if (!m_windowManager) return;
-        if (!m_windowManager->IsRunning()) return;
+        if (!ValidateWindowManager()) {
+            return;
+        }
 
-        if (auto* mainWindow = m_windowManager->GetMainWindow())
-        {
+        if (auto* mainWindow = m_windowManager->GetMainWindow()) {
             mainWindow->SetRunning(false);
         }
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Configuration & Setters
+    // Configuration
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     void ControllerCore::SetPrimaryColor(const Color& color)
     {
-        if (!m_rendererManager) return;
-        if (auto* currentRenderer = m_rendererManager->GetCurrentRenderer())
-        {
+        if (!ValidateRendererManager()) {
+            return;
+        }
+
+        if (auto* currentRenderer = m_rendererManager->GetCurrentRenderer()) {
             currentRenderer->SetPrimaryColor(color);
         }
     }
@@ -118,15 +144,14 @@ namespace Spectrum {
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Private Implementation / Internal Helpers
+    // Subsystem Initialization
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    [[nodiscard]] bool ControllerCore::InitializeManagers()
+    bool ControllerCore::InitializeSubsystems()
     {
-        m_eventBus = std::make_unique<EventBus>();
-        if (!m_eventBus) return false;
-
+        if (!InitializeEventBus()) return false;
         if (!InitializeWindowManager()) return false;
+        if (!InitializeInputManager()) return false;
         if (!InitializeAudioManager()) return false;
         if (!InitializeRendererManager()) return false;
         if (!InitializeUIManager()) return false;
@@ -134,46 +159,88 @@ namespace Spectrum {
         return true;
     }
 
-    [[nodiscard]] bool ControllerCore::InitializeWindowManager()
+    bool ControllerCore::InitializeEventBus()
+    {
+        m_eventBus = std::make_unique<EventBus>();
+        return m_eventBus != nullptr;
+    }
+
+    bool ControllerCore::InitializeWindowManager()
     {
         m_windowManager = std::make_unique<Platform::WindowManager>(
-            m_hInstance, this, m_eventBus.get()
+            m_hInstance,
+            this,
+            m_eventBus.get()
         );
-        if (!m_windowManager) return false;
-        if (!m_windowManager->Initialize()) return false;
 
-        auto keyboard = std::make_unique<Platform::Input::Win32Keyboard>();
-        m_inputManager = std::make_unique<Platform::Input::InputManager>(std::move(keyboard));
-        if (!m_inputManager) return false;
+        if (!m_windowManager) {
+            return false;
+        }
 
-        return true;
+        return m_windowManager->Initialize();
     }
 
-    [[nodiscard]] bool ControllerCore::InitializeAudioManager()
+    bool ControllerCore::InitializeInputManager()
+    {
+        auto keyboard = std::make_unique<Platform::Input::Win32Keyboard>();
+        if (!keyboard) {
+            return false;
+        }
+
+        m_inputManager = std::make_unique<Platform::Input::InputManager>(
+            std::move(keyboard)
+        );
+
+        return m_inputManager != nullptr;
+    }
+
+    bool ControllerCore::InitializeAudioManager()
     {
         m_audioManager = std::make_unique<AudioManager>(m_eventBus.get());
-        return m_audioManager && m_audioManager->Initialize();
+
+        if (!m_audioManager) {
+            return false;
+        }
+
+        return m_audioManager->Initialize();
     }
 
-    [[nodiscard]] bool ControllerCore::InitializeRendererManager()
+    bool ControllerCore::InitializeRendererManager()
     {
         m_rendererManager = std::make_unique<RendererManager>(
-            m_eventBus.get(), m_windowManager.get()
+            m_eventBus.get(),
+            m_windowManager.get()
         );
-        if (!m_rendererManager || !m_rendererManager->Initialize()) return false;
 
-        m_rendererManager->SetCurrentRenderer(m_rendererManager->GetCurrentStyle());
+        if (!m_rendererManager) {
+            return false;
+        }
+
+        if (!m_rendererManager->Initialize()) {
+            return false;
+        }
+
+        // Set initial renderer
+        m_rendererManager->SetCurrentRenderer(
+            m_rendererManager->GetCurrentStyle()
+        );
+
         return true;
     }
 
-    [[nodiscard]] bool ControllerCore::InitializeUIManager()
+    bool ControllerCore::InitializeUIManager()
     {
-        if (auto* uiManager = m_windowManager->GetUIManager())
-        {
-            return uiManager->Initialize();
+        auto* uiManager = m_windowManager->GetUIManager();
+        if (!uiManager) {
+            return false;
         }
-        return false;
+
+        return uiManager->Initialize();
     }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Main Loop
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     void ControllerCore::MainLoop()
     {
@@ -184,11 +251,7 @@ namespace Spectrum {
             if (ShouldProcessFrame())
             {
                 const FrameState frameState = CollectFrameState();
-
-                ProcessInput();
-                Update(frameState);
-                Render(frameState);
-
+                ProcessFrame(frameState);
                 ++m_frameCounter;
             }
             else
@@ -198,134 +261,255 @@ namespace Spectrum {
         }
     }
 
-    [[nodiscard]] FrameState ControllerCore::CollectFrameState()
+    void ControllerCore::ProcessFrame(const FrameState& frameState)
+    {
+        ProcessInput();
+        Update(frameState);
+        Render(frameState);
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Frame State
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    [[nodiscard]] FrameState ControllerCore::CollectFrameState() const
     {
         FrameState state;
-        state.deltaTime = 1.0f / 60.0f;
+        state.deltaTime = CalculateDeltaTime();
         state.frameNumber = m_frameCounter;
         state.isActive = m_windowManager->IsActive();
         state.isOverlayMode = m_windowManager->IsOverlayMode();
-
-        if (const auto* messageHandler = m_windowManager->GetMessageHandler())
-        {
-            const auto& mouseState = messageHandler->GetMouseState();
-            state.mouse.position = mouseState.position;
-            state.mouse.leftButtonDown = mouseState.leftButtonDown;
-            state.mouse.rightButtonDown = mouseState.rightButtonDown;
-            state.mouse.middleButtonDown = mouseState.middleButtonDown;
-            state.mouse.wheelDelta = mouseState.wheelDelta;
-        }
+        state.mouse = CollectMouseState();
 
         return state;
     }
 
+    [[nodiscard]] MouseState ControllerCore::CollectMouseState() const
+    {
+        MouseState state;
+
+        const auto* messageHandler = m_windowManager->GetMessageHandler();
+        if (!messageHandler) {
+            return state;
+        }
+
+        const auto& mouseState = messageHandler->GetMouseState();
+        state.position = mouseState.position;
+        state.leftButtonDown = mouseState.leftButtonDown;
+        state.rightButtonDown = mouseState.rightButtonDown;
+        state.middleButtonDown = mouseState.middleButtonDown;
+        state.wheelDelta = mouseState.wheelDelta;
+
+        return state;
+    }
+
+    [[nodiscard]] float ControllerCore::CalculateDeltaTime() const
+    {
+        return kTargetFrameTime;
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Input Processing
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
     void ControllerCore::ProcessInput()
     {
-        if (!m_inputManager || !m_eventBus) return;
+        if (!m_inputManager || !m_eventBus) {
+            return;
+        }
 
+        UpdateInputManager();
+        PublishInputActions();
+    }
+
+    void ControllerCore::UpdateInputManager()
+    {
         m_inputManager->Update();
         m_actions = m_inputManager->GetActions();
+    }
 
-        for (const auto& action : m_actions)
-        {
+    void ControllerCore::PublishInputActions()
+    {
+        for (const auto& action : m_actions) {
             m_eventBus->Publish(action);
         }
     }
 
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Update Phase
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
     void ControllerCore::Update(const FrameState& frameState)
     {
-        if (m_audioManager) m_audioManager->Update(frameState.deltaTime);
-        if (auto* uiManager = m_windowManager->GetUIManager())
-        {
-            uiManager->Update(
-                frameState.mouse.position,
-                frameState.mouse.leftButtonDown,
-                frameState.deltaTime
-            );
+        UpdateAudioSystem(frameState.deltaTime);
+        UpdateUISystem(frameState);
+    }
+
+    void ControllerCore::UpdateAudioSystem(float deltaTime)
+    {
+        if (m_audioManager) {
+            m_audioManager->Update(deltaTime);
         }
     }
+
+    void ControllerCore::UpdateUISystem(const FrameState& frameState)
+    {
+        auto* uiManager = m_windowManager->GetUIManager();
+        if (!uiManager) {
+            return;
+        }
+
+        uiManager->Update(
+            frameState.mouse.position,
+            frameState.mouse.leftButtonDown,
+            frameState.deltaTime
+        );
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Render Phase
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     void ControllerCore::Render(const FrameState& frameState)
     {
-        if (!CanRender(frameState)) return;
+        if (!CanRender(frameState)) {
+            return;
+        }
 
-        PrepareFrame(frameState);
-        RenderSpectrum();
-        RenderUI();
+        if (!PrepareFrame(frameState)) {
+            return;
+        }
+
+        RenderContent();
         FinalizeFrame();
     }
 
-    [[nodiscard]] bool ControllerCore::CanRender(const FrameState& frameState) const
+    bool ControllerCore::PrepareFrame(const FrameState& frameState)
     {
-        if (frameState.isOverlayMode)
-        {
-            if (auto* engine = m_windowManager->GetRenderEngine())
-            {
-                if (auto* rt = engine->GetRenderTarget())
-                {
-                    return (rt->CheckWindowState() & D2D1_WINDOW_STATE_OCCLUDED) == 0;
-                }
-            }
+        auto* engine = GetRenderEngine();
+        if (!engine) {
             return false;
         }
-        return frameState.isActive;
-    }
 
-    void ControllerCore::PrepareFrame(const FrameState& frameState) const
-    {
-        auto* engine = m_windowManager->GetRenderEngine();
-        if (!engine) return;
+        if (!engine->BeginDraw()) {
+            LOG_ERROR("ControllerCore: Failed to begin drawing frame.");
+            return false;
+        }
 
-        engine->BeginDraw();
-        const Color clearColor = frameState.isOverlayMode
-            ? Color::Transparent()
-            : Color::FromRGB(13, 13, 26);
+        const Color clearColor = GetClearColor(frameState.isOverlayMode);
         engine->Clear(clearColor);
+
+        return true;
     }
 
-    void ControllerCore::RenderSpectrum() const
+    void ControllerCore::RenderContent()
     {
-        if (!m_audioManager || !m_rendererManager) return;
-
-        auto* engine = m_windowManager->GetRenderEngine();
-        if (!engine) return;
-
-        if (auto* currentRenderer = m_rendererManager->GetCurrentRenderer())
-        {
-            const SpectrumData spectrum = m_audioManager->GetSpectrum();
-            currentRenderer->Render(engine->GetCanvas(), spectrum);
-        }
+        RenderSpectrum();
+        RenderUI();
     }
 
-    void ControllerCore::RenderUI() const
+    void ControllerCore::RenderSpectrum()
     {
-        if (m_windowManager->IsOverlayMode()) return;
-
-        auto* engine = m_windowManager->GetRenderEngine();
-        if (!engine) return;
-
-        if (auto* uiManager = m_windowManager->GetUIManager())
-        {
-            uiManager->Draw(engine->GetCanvas());
+        if (!ValidateAudioManager() || !ValidateRendererManager()) {
+            return;
         }
+
+        auto* engine = GetRenderEngine();
+        if (!engine) {
+            return;
+        }
+
+        auto* currentRenderer = m_rendererManager->GetCurrentRenderer();
+        if (!currentRenderer) {
+            return;
+        }
+
+        const SpectrumData spectrum = m_audioManager->GetSpectrum();
+        currentRenderer->Render(engine->GetCanvas(), spectrum);
+    }
+
+    void ControllerCore::RenderUI()
+    {
+        if (m_windowManager->IsOverlayMode()) {
+            return; // No UI in overlay mode
+        }
+
+        auto* engine = GetRenderEngine();
+        if (!engine) {
+            return;
+        }
+
+        auto* uiManager = m_windowManager->GetUIManager();
+        if (!uiManager) {
+            return;
+        }
+
+        uiManager->Draw(engine->GetCanvas());
     }
 
     void ControllerCore::FinalizeFrame()
     {
-        auto* engine = m_windowManager->GetRenderEngine();
-        if (!engine) return;
+        auto* engine = GetRenderEngine();
+        if (!engine) {
+            return;
+        }
 
-        if (engine->EndDraw() == D2DERR_RECREATE_TARGET)
-        {
-            if (const HWND hwnd = m_windowManager->GetCurrentHwnd())
-            {
-                if (!m_windowManager->RecreateGraphicsAndNotify(hwnd))
-                {
-                    LOG_ERROR("Failed to recreate graphics context after device loss");
-                }
-            }
+        const HRESULT hr = engine->EndDraw();
+
+        if (hr == D2DERR_RECREATE_TARGET) {
+            HandleDeviceLoss();
         }
     }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Render Validation
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    [[nodiscard]] bool ControllerCore::CanRender(const FrameState& frameState) const
+    {
+        if (frameState.isOverlayMode) {
+            return ShouldRenderInOverlayMode();
+        }
+
+        return ShouldRenderInNormalMode(frameState);
+    }
+
+    [[nodiscard]] bool ControllerCore::IsWindowOccluded() const
+    {
+        if (m_windowManager && m_windowManager->IsOverlayMode()) {
+            return false;
+        }
+
+        auto* engine = GetRenderEngine();
+        if (!engine) {
+            return true;
+        }
+
+        auto* renderTarget = engine->GetRenderTarget();
+        if (!Helpers::RenderTarget::IsValid(renderTarget)) {
+            return true;
+        }
+
+        return Helpers::RenderTarget::IsWindowOccluded(renderTarget);
+    }
+
+    [[nodiscard]] bool ControllerCore::ShouldRenderInOverlayMode() const
+    {
+        // Overlay windows are always rendered when the system is running
+        // They are topmost, so occlusion check is not necessary
+        return !IsWindowOccluded();
+    }
+
+    [[nodiscard]] bool ControllerCore::ShouldRenderInNormalMode(
+        const FrameState& frameState
+    ) const
+    {
+        return frameState.isActive;
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Frame Timing
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     [[nodiscard]] bool ControllerCore::ShouldProcessFrame() const
     {
@@ -335,6 +519,80 @@ namespace Spectrum {
     void ControllerCore::ThrottleFrameRate() const
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    void ControllerCore::ResetFrameTimer()
+    {
+        m_timer.Reset();
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Graphics Recovery
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    void ControllerCore::HandleDeviceLoss()
+    {
+        if (!RecreateGraphicsContext()) {
+            LOG_ERROR("ControllerCore: Failed to recreate graphics after device loss");
+        }
+    }
+
+    bool ControllerCore::RecreateGraphicsContext()
+    {
+        const HWND hwnd = m_windowManager->GetCurrentHwnd();
+        if (!hwnd) {
+            return false;
+        }
+
+        return m_windowManager->RecreateGraphicsAndNotify(hwnd);
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=--=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Validation Helpers
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    [[nodiscard]] bool ControllerCore::ValidateManagers() const noexcept
+    {
+        return ValidateWindowManager() &&
+            ValidateAudioManager() &&
+            ValidateRendererManager();
+    }
+
+    [[nodiscard]] bool ControllerCore::ValidateWindowManager() const noexcept
+    {
+        return m_windowManager != nullptr;
+    }
+
+    [[nodiscard]] bool ControllerCore::ValidateAudioManager() const noexcept
+    {
+        return m_audioManager != nullptr;
+    }
+
+    [[nodiscard]] bool ControllerCore::ValidateRendererManager() const noexcept
+    {
+        return m_rendererManager != nullptr;
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Utility Helpers
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    [[nodiscard]] RenderEngine* ControllerCore::GetRenderEngine() const noexcept
+    {
+        if (!m_windowManager) {
+            return nullptr;
+        }
+
+        return m_windowManager->GetRenderEngine();
+    }
+
+    [[nodiscard]] Color ControllerCore::GetClearColor(bool isOverlayMode) const noexcept
+    {
+        if (isOverlayMode) {
+            return Color::Transparent();
+        }
+
+        return Color::FromRGB(13, 13, 26);
     }
 
 } // namespace Spectrum

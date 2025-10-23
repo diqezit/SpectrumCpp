@@ -3,7 +3,7 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 #include "FFTProcessor.h"
-#include "Common/MathUtils.h"
+#include "Graphics/API/Helpers/Math/MathHelpers.h"
 
 namespace Spectrum {
 

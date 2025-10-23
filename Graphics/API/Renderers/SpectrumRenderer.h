@@ -22,12 +22,14 @@
 
 #include "Common/Common.h"
 #include "Common/SpectrumTypes.h"
+#include <vector>
 
 namespace Spectrum {
 
     class PrimitiveRenderer;
     class GeometryBuilder;
     class Paint;
+    struct GradientStop;
 
     class SpectrumRenderer final
     {
@@ -64,14 +66,87 @@ namespace Spectrum {
 
     private:
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Private Implementation
+        // Validation Helpers (DRY)
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        void DrawSingleBar(
+        [[nodiscard]] bool ValidateRendererDependencies() const noexcept;
+        [[nodiscard]] bool ValidateSpectrumData(const SpectrumData& spectrum) const noexcept;
+        [[nodiscard]] bool ValidateWaveformData(const SpectrumData& spectrum) const noexcept;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Bar Rendering Helpers (SRP)
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        struct BarDimensions {
+            float totalWidth;
+            float barWidth;
+        };
+
+        [[nodiscard]] BarDimensions CalculateBarDimensions(
+            const Rect& bounds,
+            size_t barCount,
+            float spacing
+        ) const noexcept;
+
+        [[nodiscard]] bool IsBarVisible(float barWidth) const noexcept;
+        [[nodiscard]] bool IsBarHeightVisible(float height) const noexcept;
+
+        [[nodiscard]] Rect CalculateBarRect(
+            const Rect& bounds,
+            const BarDimensions& dims,
+            size_t index,
+            float height,
+            float spacing
+        ) const noexcept;
+
+        void DrawBar(
             const Rect& barRect,
             const BarStyle& style,
             const Color& color
         ) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Paint Creation Helpers (SRP)
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] Paint CreateBarPaint(
+            const Rect& barRect,
+            const BarStyle& style,
+            const Color& color
+        ) const;
+
+        [[nodiscard]] Paint CreateGradientPaint(
+            const Rect& barRect,
+            const BarStyle& style
+        ) const;
+
+        [[nodiscard]] Paint CreateSolidPaint(const Color& color) const;
+
+        [[nodiscard]] std::vector<GradientStop> ConvertGradientStops(
+            const std::vector<D2D1_GRADIENT_STOP>& d2dStops
+        ) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Waveform Rendering Helpers (SRP)
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        void DrawWaveformLine(
+            const std::vector<Point>& points,
+            const Paint& paint
+        ) const;
+
+        void DrawMirroredWaveform(
+            std::vector<Point> points,
+            const Rect& bounds,
+            const Paint& paint
+        ) const;
+
+        void MirrorPointsVertically(
+            std::vector<Point>& points,
+            float centerY
+        ) const;
+
+        [[nodiscard]] float CalculateMirrorOpacity(float originalOpacity) const noexcept;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Member Variables

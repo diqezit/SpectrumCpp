@@ -73,6 +73,21 @@ namespace Spectrum
             std::function<std::wstring()> textSource;
         };
 
+        struct NavControlDefinition
+        {
+            float yPos;
+            std::function<void()> prevAction;
+            std::function<void()> nextAction;
+            std::function<std::wstring()> labelSource;
+        };
+
+        struct ButtonDefinition
+        {
+            float yPos;
+            std::wstring label;
+            std::function<void()> action;
+        };
+
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Private Implementation / Internal Helpers
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -90,9 +105,42 @@ namespace Spectrum
             AudioManager* am
         );
 
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Widget Creation Helpers
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] std::vector<NavControlDefinition> CreateNavControlDefinitions(
+            RendererManager* rm,
+            AudioManager* am
+        ) const;
+
+        [[nodiscard]] std::vector<ButtonDefinition> CreateActionButtonDefinitions(
+            Platform::WindowManager* wm,
+            AudioManager* am
+        ) const;
+
+        void AddNavigationButtons(const NavControlDefinition& def);
+        void AddNavigationLabel(const NavControlDefinition& def);
+        void AddActionButton(const ButtonDefinition& def);
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Update Helpers
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        void UpdateAnimation(float deltaTime);
+        void UpdateToggleButton(const Point& mousePos, bool isMouseDown);
+        void UpdateButtons(const Point& mousePos, bool isMouseDown, float deltaTime);
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Drawing Helpers
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         void ToggleVisibility();
         void DrawContent(Canvas& canvas) const;
+        void DrawPanelBackground(Canvas& canvas) const;
+        void DrawButtons(Canvas& canvas) const;
         void DrawNavLabels(Canvas& canvas) const;
+        void DrawSeparator(Canvas& canvas) const;
 
         [[nodiscard]] bool IsToggleButtonHovered(const Point& mousePos) const noexcept;
         [[nodiscard]] Rect GetToggleButtonRect() const noexcept;

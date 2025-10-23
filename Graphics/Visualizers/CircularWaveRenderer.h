@@ -5,23 +5,26 @@
 // Defines the CircularWaveRenderer for concentric ring visualizations.
 //
 // This renderer displays spectrum data as animated concentric rings that
-// pulse and rotate based on audio intensity. Each ring represents a
-// frequency band, with visual properties (radius, stroke, glow) driven
-// by magnitude.
+// pulse and rotate in response to audio. Creates a hypnotic wave effect
+// emanating from the center of the viewport.
 //
 // Key features:
-// - Dynamic rotation speed based on audio intensity
-// - Sine wave animation for fluid ring motion
-// - Magnitude-based glow effects (quality-dependent)
-// - Back-to-front rendering for correct alpha blending
+// - Concentric rings with radius based on frequency bands
+// - Wave animation using sine-based radius modulation
+// - Rotation synchronized with audio intensity
+// - Stroke width varies with magnitude for dynamic effect
+// - Optional glow rendering for high-intensity rings
+// - Uses GeometryHelpers for all geometric calculations
 //
 // Design notes:
-// - All rendering methods are const (animation state in m_angle, m_waveTime)
-// - Quality settings control ring count, glow, and stroke thickness
-// - Uses RenderUtils for frequency band analysis
+// - All rendering methods are const (state in m_angle, m_waveTime)
+// - Ring count adapts to spectrum size and quality setting
+// - Rings render back-to-front for proper layering
+// - Alpha decreases with distance from center for depth effect
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Graphics/Base/BaseRenderer.h"
+#include "Graphics/Visualizers/Settings/QualityTraits.h"
 
 namespace Spectrum {
 
@@ -69,17 +72,10 @@ namespace Spectrum {
         // Settings
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        struct QualitySettings
-        {
-            bool useGlow;
-            float maxStroke;
-            int maxRings;
-            float rotationSpeed;
-            float waveSpeed;
-        };
+        using Settings = Settings::CircularWaveSettings;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Single Ring Rendering (SRP)
+        // Rendering Components (SRP)
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void RenderRing(
@@ -111,11 +107,7 @@ namespace Spectrum {
         // Animation Updates
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        void UpdateRotationAngle(
-            float avgIntensity,
-            float deltaTime
-        );
-
+        void UpdateRotationAngle(float avgIntensity, float deltaTime);
         void UpdateWavePhase(float deltaTime);
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -124,76 +116,40 @@ namespace Spectrum {
 
         [[nodiscard]] Point GetViewportCenter() const;
         [[nodiscard]] float GetMaxRadius() const;
-
-        [[nodiscard]] float CalculateRingStep(
-            float maxRadius,
-            int ringCount
-        ) const;
-
-        [[nodiscard]] float CalculateRingRadius(
-            int index,
-            float ringStep,
-            float magnitude
-        ) const;
-
-        [[nodiscard]] float CalculateDistanceFactor(
-            float radius,
-            float maxRadius
-        ) const;
-
+        [[nodiscard]] float CalculateRingStep(float maxRadius, int ringCount) const;
+        [[nodiscard]] float CalculateRingRadius(int index, float ringStep, float magnitude) const;
+        [[nodiscard]] float CalculateDistanceFactor(float radius, float maxRadius) const;
         [[nodiscard]] float CalculateStrokeWidth(float magnitude) const;
-
-        [[nodiscard]] std::pair<float, float> GetRingRadii(
-            float centerRadius,
-            float strokeWidth
-        ) const;
+        [[nodiscard]] std::pair<float, float> GetRingRadii(float centerRadius, float strokeWidth) const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Color Calculation
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        [[nodiscard]] Color CalculateRingColor(
-            float magnitude,
-            float distanceFactor
-        ) const;
-
+        [[nodiscard]] Color CalculateRingColor(float magnitude, float distanceFactor) const;
         [[nodiscard]] Color CalculateGlowColor(const Color& baseColor) const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Data Extraction
+        // Data Processing
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         [[nodiscard]] int GetEffectiveRingCount(const SpectrumData& spectrum) const;
-
-        [[nodiscard]] static float GetRingMagnitude(
-            const SpectrumData& spectrum,
-            int ringIndex,
-            int ringCount
-        );
+        [[nodiscard]] static float GetRingMagnitude(const SpectrumData& spectrum, int ringIndex, int ringCount);
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Validation Helpers
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         [[nodiscard]] bool IsRingVisible(float magnitude) const;
-
-        [[nodiscard]] bool IsRingInBounds(
-            float radius,
-            float maxRadius
-        ) const;
-
-        [[nodiscard]] bool CanRenderRingShape(
-            float innerRadius,
-            float outerRadius
-        ) const;
-
+        [[nodiscard]] bool IsRingInBounds(float radius, float maxRadius) const;
+        [[nodiscard]] bool CanRenderRingShape(float innerRadius, float outerRadius) const;
         [[nodiscard]] bool ShouldRenderGlow(float magnitude) const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Member Variables
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        QualitySettings m_settings;
+        Settings m_settings;
         float m_angle;
         float m_waveTime;
     };

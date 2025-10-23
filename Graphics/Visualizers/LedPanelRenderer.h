@@ -18,9 +18,11 @@
 // - All rendering methods are const (state in m_smoothedValues, m_peakValues)
 // - Grid recreation on resize/quality change
 // - Batch rendering for performance (inactive LEDs in single call)
+// - Uses GeometryHelpers for all geometric calculations
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Graphics/Base/BaseRenderer.h"
+#include "Graphics/Visualizers/Settings/QualityTraits.h"
 #include <vector>
 
 namespace Spectrum {
@@ -72,20 +74,14 @@ namespace Spectrum {
         // Settings & Data Structures
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        struct QualitySettings
-        {
-            bool usePeakHold;
-            int maxRows;
-            float smoothingMultiplier;
-        };
+        using Settings = Settings::LedPanelSettings;
 
         struct GridData
         {
             int rows = 0;
             int columns = 0;
             float cellSize = 0.0f;
-            float startX = 0.0f;
-            float startY = 0.0f;
+            Point gridStart = { 0.0f, 0.0f };
         };
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -143,8 +139,8 @@ namespace Spectrum {
         [[nodiscard]] int CalculateActiveLedCount(float value) const;
         [[nodiscard]] int CalculatePeakRow(float peakValue) const;
         [[nodiscard]] size_t GetLedIndex(int col, int row) const;
-        [[nodiscard]] float GetGridStartX(float gridWidth) const;
-        [[nodiscard]] float GetGridStartY(float gridHeight) const;
+        [[nodiscard]] Point GetGridCenter() const;
+        [[nodiscard]] Rect GetGridBounds() const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Color Calculation
@@ -184,7 +180,7 @@ namespace Spectrum {
         // Member Variables
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        QualitySettings m_settings;
+        Settings m_settings;
         GridData m_grid;
 
         std::vector<float> m_smoothedValues;

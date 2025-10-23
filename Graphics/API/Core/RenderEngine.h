@@ -2,36 +2,35 @@
 #define SPECTRUM_CPP_RENDER_ENGINE_H
 
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// Defines the RenderEngine, the central manager for graphics resources.
+// Defines the main facade for the entire rendering system
 //
-// This class is responsible for the entire lifecycle of Direct2D/DirectWrite
-// resources, including creation, resizing, and handling device-lost scenarios.
-// It acts as a factory for the Canvas object, which provides the actual
-// drawing API.
+// Responsibilities:
+// - Provides the single public entry point for all rendering tasks
+// - Owns and orchestrates all core graphics subsystems
+// - Creates and provides access to the Canvas for drawing operations
+// - Delegates complex logic to specialized managers to keep API simple
 //
-// Key responsibilities:
-// - Direct2D/DirectWrite resource lifecycle management
-// - Device lost scenario handling and recovery
-// - Creating and providing access to the Canvas drawing facade
+// Implementation details:
+// - Delegates all resource logic to the DeviceResourceManager
+// - Delegates all drawing state logic to the DrawStateController
+// - Manages object lifetimes with std::unique_ptr for automatic cleanup
+// - Declares member variables in specific order to ensure safe destruction
+// - Keeps all implementation in .cpp file to reduce application build times
 //
-// Design notes:
-// - All drawing operations have been moved to Canvas
-// - RenderEngine now focuses purely on resource management
-// - Uses unique_ptr for sub-components (ownership)
-// - Non-owning HWND pointer (lifetime managed by OS)
-//
-// Architecture pattern: Resource Manager + Factory
+// Architecture pattern:
+// - Facade: Hides complex subsystem interactions behind a simple API
+// - Coordinator: Manages the lifecycle and interaction of subsystems
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Common/Common.h"
-#include "Graphics/API/Core/IRenderComponent.h"
 #include <memory>
-#include <vector>
 
 namespace Spectrum {
 
-    // Forward-declarations to improve compile times
+    // Forward declarations
     class Canvas;
+    class DeviceResourceManager;
+    class DrawStateController;
     class ResourceCache;
     class GeometryBuilder;
     class PrimitiveRenderer;
@@ -50,32 +49,22 @@ namespace Spectrum {
         class DrawScope final
         {
         public:
-            explicit DrawScope(RenderEngine& engine)
-                : m_engine(engine)
-            {
-                m_engine.BeginDraw();
-            }
-
-            ~DrawScope() noexcept
-            {
-                (void)m_engine.EndDraw();
-            }
+            explicit DrawScope(RenderEngine& engine);
+            ~DrawScope() noexcept;
 
             DrawScope(const DrawScope&) = delete;
             DrawScope& operator=(const DrawScope&) = delete;
 
         private:
             RenderEngine& m_engine;
+            bool m_begun;
         };
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Lifecycle Management
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        explicit RenderEngine(
-            HWND hwnd,
-            bool isOverlay = false
-        );
+        explicit RenderEngine(HWND hwnd, bool isOverlay = false);
         ~RenderEngine();
 
         RenderEngine(const RenderEngine&) = delete;
@@ -85,41 +74,41 @@ namespace Spectrum {
         void Resize(int width, int height);
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Drawing Control
+        // Drawing Control (Delegates to DrawStateController)
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        void BeginDraw();
+        [[nodiscard]] bool BeginDraw();
         [[nodiscard]] HRESULT EndDraw();
-        [[nodiscard]] DrawScope CreateDrawScope() { return DrawScope(*this); }
-        void Clear(const Color& color) const;
+        [[nodiscard]] DrawScope CreateDrawScope();
+        void Clear(const Color& color);
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Canvas Access (Primary API for Drawing)
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        [[nodiscard]] Canvas& GetCanvas() { return *m_canvas; }
-        [[nodiscard]] const Canvas& GetCanvas() const { return *m_canvas; }
+        [[nodiscard]] Canvas& GetCanvas();
+        [[nodiscard]] const Canvas& GetCanvas() const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Resource Access (for internal use or advanced scenarios)
+        // Resource & State Access (for internal use or advanced scenarios)
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        [[nodiscard]] ID2D1HwndRenderTarget* GetRenderTarget() const noexcept;
-        [[nodiscard]] int GetWidth() const noexcept;
-        [[nodiscard]] int GetHeight() const noexcept;
+        [[nodiscard]] ID2D1RenderTarget* GetRenderTarget() const;
+        [[nodiscard]] int GetWidth() const noexcept { return m_width; }
+        [[nodiscard]] int GetHeight() const noexcept { return m_height; }
+        [[nodiscard]] bool IsDrawing() const noexcept;
 
     private:
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Private Implementation
+        // Private Implementation - Initialization
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        [[nodiscard]] bool CreateD2DFactory();
-        [[nodiscard]] bool CreateDWriteFactory();
-        [[nodiscard]] bool CreateDeviceResources();
-        [[nodiscard]] bool CreateHwndRenderTarget();
-
-        void DiscardDeviceResources();
-        void RegisterComponent(IRenderComponent* component);
+        [[nodiscard]] bool InitializeManagers();
+        [[nodiscard]] bool InitializeComponents();
+        void CreateCoreComponents();
+        void CreateRenderers();
+        void CreateCanvas();
+        void RegisterAllComponents();
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Member Variables
@@ -130,12 +119,14 @@ namespace Spectrum {
         int m_height;
         bool m_isOverlay;
 
-        // D2D core resources
-        wrl::ComPtr<ID2D1Factory> m_d2dFactory;
-        wrl::ComPtr<IDWriteFactory> m_writeFactory;
-        wrl::ComPtr<ID2D1HwndRenderTarget> m_renderTarget;
+        //
+        // The order of declaration here is CRITICAL for correct destruction.
+        // Components must be declared BEFORE managers that use them.
+        // Destruction happens in reverse order of declaration.
+        //
 
-        // Owned sub-components (worker classes)
+        // Rendering components (owned)
+        // These are declared first so they are destroyed last.
         std::unique_ptr<ResourceCache> m_resourceCache;
         std::unique_ptr<GeometryBuilder> m_geometryBuilder;
         std::unique_ptr<PrimitiveRenderer> m_primitiveRenderer;
@@ -144,11 +135,14 @@ namespace Spectrum {
         std::unique_ptr<TransformManager> m_transformManager;
         std::unique_ptr<SpectrumRenderer> m_spectrumRenderer;
 
-        // The drawing facade, owned by the engine
+        // Drawing facade (owned)
         std::unique_ptr<Canvas> m_canvas;
 
-        // Polymorphic list of all device-dependent components
-        std::vector<IRenderComponent*> m_components;
+        // Core managers (owned)
+        // These are declared last so they are destroyed first.
+        // Their destructors might need to access the components above.
+        std::unique_ptr<DeviceResourceManager> m_resourceManager;
+        std::unique_ptr<DrawStateController> m_drawStateController;
     };
 
 } // namespace Spectrum

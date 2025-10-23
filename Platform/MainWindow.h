@@ -6,6 +6,8 @@
 // including class registration, window creation, and cleanup. It delegates
 // application-specific message handling to a MessageHandler instance via a
 // static WndProc, serving as a pure resource management class.
+//
+// Refactored to follow SRP and DRY principles with small, focused functions.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #ifndef SPECTRUM_CPP_MAINWINDOW_H
@@ -81,23 +83,82 @@ namespace Spectrum::Platform {
             int h;
         };
 
+        struct WindowIcons {
+            HICON largeIcon;   // Renamed from 'large' to avoid conflicts
+            HICON smallIcon;   // Renamed from 'small' to avoid Windows macro conflict
+        };
+
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Private Implementation / Internal Helpers
+        // Initialization - High Level
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        [[nodiscard]] bool RegisterWindowClass();
-        [[nodiscard]] WNDCLASSEXW CreateWindowClass() const;
-
-        [[nodiscard]] bool CreateAndConfigureWindow(
+        bool ValidateInitializationParams(int width, int height, MessageHandler* handler) const;
+        void StoreWindowDimensions(int width, int height) noexcept;
+        void SetupWindowConfiguration(bool isOverlay);
+        bool RegisterWindowClass();
+        bool CreateAndConfigureWindow(
             const std::wstring& title,
             int width,
             int height,
             MessageHandler* messageHandler
         );
 
-        [[nodiscard]] WindowRectParams CalculateWindowRect(int width, int height, DWORD style, DWORD exStyle) const;
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Window Class Registration
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] WNDCLASSEXW CreateWindowClass() const;
+        void ConfigureWindowClassBase(WNDCLASSEXW& wcex) const;
+        void SetWindowClassStyle(WNDCLASSEXW& wcex) const;
+        void SetWindowClassBackground(WNDCLASSEXW& wcex) const;
+        [[nodiscard]] WindowIcons LoadWindowIcons() const;
+        void ApplyWindowIcons(WNDCLASSEXW& wcex, const WindowIcons& icons) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Window Creation
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] HWND CreateWindowHandle(
+            const std::wstring& title,
+            const WindowRectParams& params,
+            DWORD style,
+            DWORD exStyle,
+            MessageHandler* messageHandler
+        );
+        bool ValidateWindowHandle(HWND hwnd) const;
+        void ConfigureNewWindow();
+        [[nodiscard]] WindowRectParams CalculateWindowRect(
+            int width,
+            int height,
+            DWORD style,
+            DWORD exStyle
+        ) const;
+        [[nodiscard]] WindowRectParams CalculateOverlayRect(int width, int height) const;
+        [[nodiscard]] WindowRectParams CalculateNormalRect(
+            int width,
+            int height,
+            DWORD style,
+            DWORD exStyle
+        ) const;
         void ApplyPostCreationStyles() const;
+        void ApplyOverlayTransparency() const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Cleanup
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         void Cleanup() noexcept;
+        void DestroyWindowSafe() noexcept;
+        void UnregisterClassSafe() noexcept;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Validation
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] bool ValidateHInstance() const noexcept;
+        [[nodiscard]] bool ValidateDimensions(int width, int height) const noexcept;
+        [[nodiscard]] bool ValidateMessageHandler(MessageHandler* handler) const noexcept;
+        [[nodiscard]] bool ValidateClassName() const noexcept;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Win32 Message Handling
@@ -106,6 +167,23 @@ namespace Spectrum::Platform {
         static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
         static void StoreMessageHandlerPointer(HWND hwnd, LPARAM lParam);
         static MessageHandler* GetMessageHandlerFromHwnd(HWND hwnd);
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Helpers - Static to avoid const issues
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] std::wstring GenerateClassName(bool isOverlay) const;
+        [[nodiscard]] static HICON LoadApplicationIcon(HINSTANCE hInstance, bool isSmallIcon);
+        [[nodiscard]] static HICON LoadDefaultIcon(bool isSmallIcon);
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Logging
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        void LogInitialization(const std::wstring& title, int width, int height) const;
+        void LogWindowCreated() const;
+        void LogCleanup() const;
+        void LogError(const char* operation) const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Member Variables

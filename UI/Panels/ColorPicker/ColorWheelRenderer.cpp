@@ -10,9 +10,29 @@
 #include "UI/Panels/ColorPicker/ColorWheelRenderer.h"
 #include "Graphics/API/Canvas.h"
 #include "Graphics/API/Structs/Paint.h"
-#include "Common/MathUtils.h"
+#include "Graphics/API/Helpers/Math/MathHelpers.h"
 
 namespace Spectrum {
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Anonymous namespace for internal constants
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    namespace {
+        constexpr float kPreviewSize = 24.0f;
+        constexpr float kPreviewOffset = 4.0f;
+        constexpr float kBorderOffset = 2.0f;
+        constexpr float kBorderMinAlpha = 0.3f;
+        constexpr float kBorderHoveredAlpha = 1.0f;
+        constexpr float kBorderUnhoveredAlpha = 0.6f;
+        constexpr float kBorderMinThickness = 1.0f;
+        constexpr float kBorderMaxThickness = 2.0f;
+        constexpr float kBorderGray = 0.5f;
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Public Drawing Methods
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     void ColorWheelRenderer::DrawWheel(
         Canvas& canvas,
@@ -24,7 +44,7 @@ namespace Spectrum {
             return;
         }
 
-        ID2D1HwndRenderTarget* rt = canvas.GetRenderTarget();
+        ID2D1RenderTarget* rt = canvas.GetRenderTarget();
         if (!rt) {
             return;
         }
@@ -45,30 +65,15 @@ namespace Spectrum {
         bool isHovered,
         float animationProgress
     ) {
-        const Point center = {
-            bounds.x + bounds.width * 0.5f,
-            bounds.y + bounds.height * 0.5f
-        };
+        const Point center = CalculateCenter(bounds);
+        const float radius = CalculateRadius(bounds);
+        const float alpha = CalculateBorderAlpha(isHovered, animationProgress);
+        const float thickness = CalculateBorderThickness(animationProgress);
 
-        const float radius = bounds.width * 0.5f;
-
-        const float baseAlpha = isHovered ? 1.0f : 0.6f;
-        const float alpha = Utils::Lerp(
-            0.3f,
-            baseAlpha,
-            animationProgress
-        );
-
-        const float thickness = Utils::Lerp(
-            1.0f,
-            2.0f,
-            animationProgress
-        );
-
-        const Color borderColor = Color(0.5f, 0.5f, 0.5f, alpha);
+        const Color borderColor = Color(kBorderGray, kBorderGray, kBorderGray, alpha);
         const Paint paint = Paint::Stroke(borderColor, thickness);
 
-        canvas.DrawCircle(center, radius + 2.0f, paint);
+        canvas.DrawCircle(center, radius + kBorderOffset, paint);
     }
 
     void ColorWheelRenderer::DrawHoverPreview(
@@ -77,35 +82,70 @@ namespace Spectrum {
         const Color& hoverColor,
         float animationProgress
     ) {
-        constexpr float previewSize = 24.0f;
-        const float radius = bounds.width * 0.5f;
+        const float scale = Helpers::Math::EaseOutBack(animationProgress);
+        const float actualSize = kPreviewSize * scale;
 
-        const float scale = Utils::EaseOutBack(animationProgress);
-        const float actualSize = previewSize * scale;
+        const Rect previewRect = CalculatePreviewRect(bounds, actualSize);
 
-        const float x = bounds.x + radius - actualSize * 0.5f;
-        const float y = bounds.y - actualSize - 4.0f;
-
+        // Draw preview color
         Color previewColor = hoverColor;
         previewColor.a *= animationProgress;
 
-        const Rect r(x, y, actualSize, actualSize);
         const Paint fillPaint = Paint::Fill(previewColor);
-        canvas.DrawRectangle(r, fillPaint);
+        canvas.DrawRectangle(previewRect, fillPaint);
 
+        // Draw border
         const Rect border(
-            x - 1.0f,
-            y - 1.0f,
+            previewRect.x - 1.0f,
+            previewRect.y - 1.0f,
             actualSize + 2.0f,
             actualSize + 2.0f
         );
 
         const Paint strokePaint = Paint::Stroke(
-            Color(0.5f, 0.5f, 0.5f, animationProgress),
+            Color(kBorderGray, kBorderGray, kBorderGray, animationProgress),
             1.0f
         );
 
         canvas.DrawRectangle(border, strokePaint);
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Calculation Helpers
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    [[nodiscard]] Point ColorWheelRenderer::CalculateCenter(const Rect& bounds) {
+        return {
+            bounds.x + bounds.width * 0.5f,
+            bounds.y + bounds.height * 0.5f
+        };
+    }
+
+    [[nodiscard]] float ColorWheelRenderer::CalculateRadius(const Rect& bounds) {
+        return bounds.width * 0.5f;
+    }
+
+    [[nodiscard]] float ColorWheelRenderer::CalculateBorderAlpha(
+        bool isHovered,
+        float animationProgress
+    ) {
+        const float baseAlpha = isHovered ? kBorderHoveredAlpha : kBorderUnhoveredAlpha;
+        return Helpers::Math::Lerp(kBorderMinAlpha, baseAlpha, animationProgress);
+    }
+
+    [[nodiscard]] float ColorWheelRenderer::CalculateBorderThickness(float animationProgress) {
+        return Helpers::Math::Lerp(kBorderMinThickness, kBorderMaxThickness, animationProgress);
+    }
+
+    [[nodiscard]] Rect ColorWheelRenderer::CalculatePreviewRect(
+        const Rect& bounds,
+        float actualSize
+    ) {
+        const float radius = CalculateRadius(bounds);
+        const float x = bounds.x + radius - actualSize * 0.5f;
+        const float y = bounds.y - actualSize - kPreviewOffset;
+
+        return Rect(x, y, actualSize, actualSize);
     }
 
 } // namespace Spectrum

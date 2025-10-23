@@ -1,4 +1,3 @@
-// EffectsRenderer.h
 #ifndef SPECTRUM_CPP_EFFECTS_RENDERER_H
 #define SPECTRUM_CPP_EFFECTS_RENDERER_H
 
@@ -16,7 +15,7 @@
 // Design notes:
 // - All render methods are const (stateless rendering)
 // - Uses RAII wrappers from D2DHelpers for state management
-// - Non-owning pointers to render resources (lifetime managed externally)
+// - Uses ComPtr for safe resource lifetime management
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Common/Common.h"
@@ -36,8 +35,7 @@ namespace Spectrum {
         EffectsRenderer(const EffectsRenderer&) = delete;
         EffectsRenderer& operator=(const EffectsRenderer&) = delete;
 
-        // IRenderComponent implementation
-        void OnRenderTargetChanged(ID2D1RenderTarget* renderTarget) override;
+        void OnRenderTargetChanged(const wrl::ComPtr<ID2D1RenderTarget>& renderTarget) override;
         void OnDeviceLost() override;
 
         void SetSolidBrush(ID2D1SolidColorBrush* brush);
@@ -46,8 +44,20 @@ namespace Spectrum {
         // Effect Rendering
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        void DrawWithShadow(std::function<void()> drawCallback, const Point& offset, float blur, const Color& shadowColor) const;
-        void DrawGlow(const Point& center, float radius, const Color& glowColor, float intensity = 1.0f) const;
+        void DrawWithShadow(
+            std::function<void()> drawCallback,
+            const Point& offset,
+            float blur,
+            const Color& shadowColor
+        ) const;
+
+        void DrawGlow(
+            const Point& center,
+            float radius,
+            const Color& glowColor,
+            float intensity = 1.0f
+        ) const;
+
         void BeginOpacityLayer(float opacity) const;
         void EndOpacityLayer() const;
         void PushClipRect(const Rect& rect) const;
@@ -55,11 +65,38 @@ namespace Spectrum {
 
     private:
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Glow Effect Helpers (SRP)
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] int CalculateGlowLayerCount() const noexcept;
+
+        [[nodiscard]] wrl::ComPtr<ID2D1GradientStopCollection> CreateGlowGradientStops(
+            const Color& glowColor,
+            float layerT,
+            float intensity
+        ) const;
+
+        [[nodiscard]] wrl::ComPtr<ID2D1RadialGradientBrush> CreateGlowBrush(
+            const Point& center,
+            float radius,
+            ID2D1GradientStopCollection* stopCollection
+        ) const;
+
+        void DrawGlowLayer(
+            const Point& center,
+            const Color& glowColor,
+            float radius,
+            float layerT,
+            float intensity
+        ) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Member Variables
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        ID2D1RenderTarget* m_renderTarget;
+        wrl::ComPtr<ID2D1RenderTarget> m_renderTarget;
         ID2D1SolidColorBrush* m_brush;
+        mutable wrl::ComPtr<ID2D1Layer> m_activeLayer;
     };
 
 } // namespace Spectrum

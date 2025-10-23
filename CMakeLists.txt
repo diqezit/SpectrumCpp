@@ -41,19 +41,17 @@ target_sources(${PROJECT_NAME} PRIVATE
     Audio/Sources/AnimatedAudioSource.h
     Audio/Sources/IAudioSource.h
     Audio/Sources/RealtimeAudioSource.h
-    Common/ColorUtils.h
+    
+    # ⭐ COMMON - Minimized Core Foundation
     Common/Common.h
     Common/EventBus.h
     Common/Logger.h
-    Common/MathUtils.h
-    Common/Random.h
     Common/SpectrumTypes.h
-    Common/StringUtils.h
-    Common/TemplateUtils.h
-    Common/Timer.h
     Common/Types.h
+    
     Graphics/IRenderer.h
     Graphics/RendererManager.h
+    Graphics/RenderersController.h
     Graphics/API/Canvas.h
     Graphics/API/D2DHelpers.h
     Graphics/API/Brushes/GradientStop.h
@@ -61,22 +59,41 @@ target_sources(${PROJECT_NAME} PRIVATE
     Graphics/API/Brushes/LinearGradientBrush.h
     Graphics/API/Brushes/RadialGradientBrush.h
     Graphics/API/Brushes/SolidColorBrush.h
+    
+    # ⭐ UPDATED - Core with new refactored files
+    Graphics/API/Core/DeviceResourceManager.h      # NEW
+    Graphics/API/Core/DrawStateController.h         # NEW
     Graphics/API/Core/GeometryBuilder.h
     Graphics/API/Core/IRenderComponent.h
     Graphics/API/Core/RenderEngine.h
     Graphics/API/Core/ResourceCache.h
     Graphics/API/Core/TransformManager.h
+    
     Graphics/API/Enums/PaintEnums.h
     Graphics/API/Enums/RenderEnums.h
     Graphics/API/Enums/TextEnums.h
-    Graphics/API/Helpers/D2DScopes.h
-    Graphics/API/Helpers/EnumConversion.h
-    Graphics/API/Helpers/HResultHelpers.h
-    Graphics/API/Helpers/MathConstants.h
-    Graphics/API/Helpers/Sanitization.h
-    Graphics/API/Helpers/TypeConversion.h
-    Graphics/API/Helpers/Validation.h
+    
+    # ⭐ HELPERS - Hierarchical Structure (v2.0)
+    Graphics/API/Helpers/Core/HResultHelpers.h
+    Graphics/API/Helpers/Core/Sanitization.h
+    Graphics/API/Helpers/Core/Validation.h
+    Graphics/API/Helpers/Math/MathHelpers.h
+    Graphics/API/Helpers/Conversion/EnumConversion.h
+    Graphics/API/Helpers/Conversion/TypeConversion.h
+    Graphics/API/Helpers/Geometry/ColorHelpers.h
+    Graphics/API/Helpers/Geometry/GeometryHelpers.h
+    Graphics/API/Helpers/Platform/GdiHelpers.h
+    Graphics/API/Helpers/Platform/WindowHelpers.h
+    Graphics/API/Helpers/D2D/D2DScopes.h
+    Graphics/API/Helpers/D2D/RenderTargetHelpers.h
+    Graphics/API/Helpers/Rendering/RenderHelpers.h
+    Graphics/API/Helpers/Utils/Random.h
+    Graphics/API/Helpers/Utils/StringUtils.h
+    Graphics/API/Helpers/Utils/TemplateUtils.h
+    Graphics/API/Helpers/Utils/Timer.h
+    
     Graphics/API/Renderers/EffectsRenderer.h
+    Graphics/API/Renderers/GradientRenderer.h
     Graphics/API/Renderers/PrimitiveRenderer.h
     Graphics/API/Renderers/SpectrumRenderer.h
     Graphics/API/Renderers/TextRenderer.h
@@ -85,6 +102,11 @@ target_sources(${PROJECT_NAME} PRIVATE
     Graphics/API/Structs/TextStyle.h
     Graphics/Base/BaseRenderer.h
     Graphics/Base/RenderUtils.h
+    
+    # ⭐ VISUALIZERS - Quality Settings (NEW)
+    Graphics/Visualizers/Settings/QualityTraits.h
+    Graphics/Visualizers/Settings/QualityPresets.h
+    
     Graphics/Visualizers/BarsRenderer.h
     Graphics/Visualizers/CircularWaveRenderer.h
     Graphics/Visualizers/CubesRenderer.h
@@ -97,6 +119,7 @@ target_sources(${PROJECT_NAME} PRIVATE
     Graphics/Visualizers/PolylineWaveRenderer.h
     Graphics/Visualizers/SphereRenderer.h
     Graphics/Visualizers/WaveRenderer.h
+    
     Platform/Input/IKeyboard.h
     Platform/Input/InputManager.h
     Platform/Input/Win32Keyboard.h
@@ -107,6 +130,7 @@ target_sources(${PROJECT_NAME} PRIVATE
     Resources/Resource.h
     UI/Common/UILayout.h
     UI/Components/UIButton.h
+    UI/Components/UIButtonColors.h
     UI/Components/UISlider.h
     UI/Core/UIManager.h
     UI/Panels/PanelAnimator.h
@@ -132,18 +156,29 @@ target_sources(${PROJECT_NAME} PRIVATE
     Audio/Processing/SpectrumPostProcessor.cpp
     Audio/Sources/AnimatedAudioSource.cpp
     Audio/Sources/RealtimeAudioSource.cpp
-    Common/ColorUtils.cpp
-    Common/Random.cpp
-    Common/StringUtils.cpp
-    Common/Timer.cpp
+    
+    # ⭐ HELPERS - Implementation Files
+    Graphics/API/Helpers/Geometry/ColorHelpers.cpp
+    Graphics/API/Helpers/Rendering/RenderHelpers.cpp
+    Graphics/API/Helpers/Utils/Random.cpp
+    Graphics/API/Helpers/Utils/StringUtils.cpp
+    Graphics/API/Helpers/Utils/Timer.cpp
+    
     Graphics/RendererManager.cpp
+    Graphics/RenderersController.cpp
     Graphics/API/Canvas.cpp
     Graphics/API/Structs/Paint.cpp
+    
+    # ⭐ UPDATED - Core implementations with new files
+    Graphics/API/Core/DeviceResourceManager.cpp     # NEW
+    Graphics/API/Core/DrawStateController.cpp       # NEW
     Graphics/API/Core/GeometryBuilder.cpp
     Graphics/API/Core/RenderEngine.cpp
     Graphics/API/Core/ResourceCache.cpp
     Graphics/API/Core/TransformManager.cpp
+    
     Graphics/API/Renderers/EffectsRenderer.cpp
+    Graphics/API/Renderers/GradientRenderer.cpp
     Graphics/API/Renderers/PrimitiveRenderer.cpp
     Graphics/API/Renderers/SpectrumRenderer.cpp
     Graphics/API/Renderers/TextRenderer.cpp
@@ -216,26 +251,18 @@ source_group("Audio\\Sources" FILES
     Audio/Sources/RealtimeAudioSource.h)
 
 source_group("Common" FILES
-    Common/ColorUtils.cpp 
-    Common/ColorUtils.h 
     Common/Common.h 
     Common/EventBus.h
     Common/Logger.h 
-    Common/MathUtils.h 
-    Common/Random.cpp
-    Common/Random.h 
     Common/SpectrumTypes.h 
-    Common/StringUtils.cpp
-    Common/StringUtils.h 
-    Common/TemplateUtils.h 
-    Common/Timer.cpp
-    Common/Timer.h 
     Common/Types.h)
 
 source_group("Graphics" FILES
     Graphics/IRenderer.h 
     Graphics/RendererManager.cpp 
-    Graphics/RendererManager.h)
+    Graphics/RendererManager.h
+    Graphics/RenderersController.cpp
+    Graphics/RenderersController.h)
 
 source_group("Graphics\\API" FILES
     Graphics/API/Canvas.cpp 
@@ -249,7 +276,12 @@ source_group("Graphics\\API\\Brushes" FILES
     Graphics/API/Brushes/RadialGradientBrush.h
     Graphics/API/Brushes/SolidColorBrush.h)
 
+# ⭐ UPDATED - Core group with new files
 source_group("Graphics\\API\\Core" FILES
+    Graphics/API/Core/DeviceResourceManager.cpp     # NEW
+    Graphics/API/Core/DeviceResourceManager.h       # NEW
+    Graphics/API/Core/DrawStateController.cpp       # NEW
+    Graphics/API/Core/DrawStateController.h         # NEW
     Graphics/API/Core/GeometryBuilder.cpp 
     Graphics/API/Core/GeometryBuilder.h
     Graphics/API/Core/IRenderComponent.h
@@ -265,18 +297,49 @@ source_group("Graphics\\API\\Enums" FILES
     Graphics/API/Enums/RenderEnums.h
     Graphics/API/Enums/TextEnums.h)
 
-source_group("Graphics\\API\\Helpers" FILES
-    Graphics/API/Helpers/D2DScopes.h
-    Graphics/API/Helpers/EnumConversion.h
-    Graphics/API/Helpers/HResultHelpers.h
-    Graphics/API/Helpers/MathConstants.h
-    Graphics/API/Helpers/Sanitization.h
-    Graphics/API/Helpers/TypeConversion.h
-    Graphics/API/Helpers/Validation.h)
+source_group("Graphics\\API\\Helpers\\Core" FILES
+    Graphics/API/Helpers/Core/HResultHelpers.h
+    Graphics/API/Helpers/Core/Sanitization.h
+    Graphics/API/Helpers/Core/Validation.h)
+
+source_group("Graphics\\API\\Helpers\\Math" FILES
+    Graphics/API/Helpers/Math/MathHelpers.h)
+
+source_group("Graphics\\API\\Helpers\\Conversion" FILES
+    Graphics/API/Helpers/Conversion/EnumConversion.h
+    Graphics/API/Helpers/Conversion/TypeConversion.h)
+
+source_group("Graphics\\API\\Helpers\\Geometry" FILES
+    Graphics/API/Helpers/Geometry/ColorHelpers.cpp
+    Graphics/API/Helpers/Geometry/ColorHelpers.h
+    Graphics/API/Helpers/Geometry/GeometryHelpers.h)
+
+source_group("Graphics\\API\\Helpers\\Platform" FILES
+    Graphics/API/Helpers/Platform/GdiHelpers.h
+    Graphics/API/Helpers/Platform/WindowHelpers.h)
+
+source_group("Graphics\\API\\Helpers\\D2D" FILES
+    Graphics/API/Helpers/D2D/D2DScopes.h
+    Graphics/API/Helpers/D2D/RenderTargetHelpers.h)
+
+source_group("Graphics\\API\\Helpers\\Rendering" FILES
+    Graphics/API/Helpers/Rendering/RenderHelpers.cpp
+    Graphics/API/Helpers/Rendering/RenderHelpers.h)
+
+source_group("Graphics\\API\\Helpers\\Utils" FILES
+    Graphics/API/Helpers/Utils/Random.cpp
+    Graphics/API/Helpers/Utils/Random.h
+    Graphics/API/Helpers/Utils/StringUtils.cpp
+    Graphics/API/Helpers/Utils/StringUtils.h
+    Graphics/API/Helpers/Utils/TemplateUtils.h
+    Graphics/API/Helpers/Utils/Timer.cpp
+    Graphics/API/Helpers/Utils/Timer.h)
 
 source_group("Graphics\\API\\Renderers" FILES
     Graphics/API/Renderers/EffectsRenderer.cpp 
     Graphics/API/Renderers/EffectsRenderer.h
+    Graphics/API/Renderers/GradientRenderer.cpp
+    Graphics/API/Renderers/GradientRenderer.h
     Graphics/API/Renderers/PrimitiveRenderer.cpp 
     Graphics/API/Renderers/PrimitiveRenderer.h
     Graphics/API/Renderers/SpectrumRenderer.cpp 
@@ -295,6 +358,11 @@ source_group("Graphics\\Base" FILES
     Graphics/Base/BaseRenderer.h
     Graphics/Base/RenderUtils.cpp 
     Graphics/Base/RenderUtils.h)
+
+# ⭐ NEW - Visualizers Settings Group
+source_group("Graphics\\Visualizers\\Settings" FILES
+    Graphics/Visualizers/Settings/QualityTraits.h
+    Graphics/Visualizers/Settings/QualityPresets.h)
 
 source_group("Graphics\\Visualizers" FILES
     Graphics/Visualizers/BarsRenderer.cpp 
@@ -350,6 +418,7 @@ source_group("UI\\Common" FILES
 source_group("UI\\Components" FILES
     UI/Components/UIButton.cpp 
     UI/Components/UIButton.h
+    UI/Components/UIButtonColors.h
     UI/Components/UISlider.cpp 
     UI/Components/UISlider.h)
 
@@ -385,7 +454,6 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
     NOMINMAX
 )
 
-# Add a definition to show the console only for RelWithDebInfo builds
 target_compile_definitions(${PROJECT_NAME} PRIVATE
     $<$<CONFIG:RelWithDebInfo>:SHOW_CONSOLE=1>
 )
@@ -408,7 +476,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 )
 
 # ==============================================================================
-# Include Directories - SIMPLIFIED AND CORRECTED APPROACH
+# Include Directories
 # ==============================================================================
 target_include_directories(${PROJECT_NAME} PRIVATE
     "${CMAKE_SOURCE_DIR}"

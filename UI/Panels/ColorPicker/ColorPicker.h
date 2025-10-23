@@ -49,9 +49,43 @@ namespace Spectrum {
         void SetOnColorSelectedCallback(ColorSelectedCallback cb);
 
     private:
-        bool IsInHitbox(Point mousePos) const;
-        Color CalculateColorFromPosition(int x, int y) const;
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Update Helpers
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        void UpdateVisibility();
+        void UpdateHoverState(Point mousePos);
+        void UpdateHoverAnimation(float deltaTime);
+        void UpdateHoverColor(Point mousePos);
+        void HandleMouseClick(bool isMouseDown);
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Drawing Helpers
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        void EnsureResourcesCreated(Canvas& canvas) const;
+        void DrawColorWheel(Canvas& canvas, float alpha) const;
+        void DrawBorderIfNeeded(Canvas& canvas, float alpha) const;
+        void DrawHoverPreviewIfNeeded(Canvas& canvas, float alpha) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Calculation Helpers
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] bool IsInHitbox(Point mousePos) const;
+        [[nodiscard]] Color CalculateColorFromPosition(int x, int y) const;
+        [[nodiscard]] float CalculateTargetHoverProgress() const;
+        [[nodiscard]] float CalculateAnimatedAlpha(float baseAlpha) const;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Resource Management
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
         bool CreateD2DResource(Canvas& canvas);
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Member Variables
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         Rect m_bounds;
         bool m_isVisible;
@@ -60,7 +94,7 @@ namespace Spectrum {
         float m_hoverAnimationProgress;
         Color m_hoverColor;
 
-        wrl::ComPtr<ID2D1Bitmap> m_colorWheelBitmap;
+        mutable wrl::ComPtr<ID2D1Bitmap> m_colorWheelBitmap;
         ColorSelectedCallback m_onColorSelected;
     };
 

@@ -22,6 +22,11 @@ namespace Spectrum
     class UISlider;
     class ControllerCore;
     class Canvas;
+    class AudioManager;
+
+    namespace Platform {
+        class WindowManager;
+    }
 
     class AudioSettingsPanel final
     {
@@ -83,12 +88,59 @@ namespace Spectrum
             std::function<std::wstring(float)> formatter;
         };
 
+        struct SliderDefinition
+        {
+            std::wstring label;
+            float min;
+            float max;
+            float step;
+            std::function<float()> getter;
+            std::function<void(float)> setter;
+            std::function<std::wstring(float)> formatter;
+        };
+
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Private Implementation / Internal Helpers
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void CreateWidgets();
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Widget Creation Helpers
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] Rect CalculatePanelRect(
+            Platform::WindowManager* windowManager
+        ) const;
+
+        [[nodiscard]] std::vector<SliderDefinition> CreateSliderDefinitions(
+            AudioManager* audioManager
+        ) const;
+
+        void CreateSliders(
+            const std::vector<SliderDefinition>& sliderDefs,
+            float sliderX
+        );
+
+        void CreateCloseButton();
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Update Helpers
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        void UpdateAnimation(float deltaTime);
+        void UpdateSliders(const Point& mousePos, bool isMouseDown, float deltaTime);
+        void UpdateCloseButton(const Point& mousePos, bool isMouseDown, float deltaTime);
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Drawing Helpers
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        void DrawPanelContent(Canvas& canvas, float progress) const;
         void DrawSliders(Canvas& canvas) const;
+        void DrawTitle(Canvas& canvas, const Point& center, float progress) const;
+        void DrawCloseButton(Canvas& canvas) const;
+
         void HandleClickOutside(const Point& mousePos, bool isMouseDown);
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=

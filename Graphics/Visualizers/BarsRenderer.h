@@ -4,23 +4,28 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // Defines the BarsRenderer, a classic vertical bar spectrum visualizer.
 //
-// This renderer displays frequency spectrum as vertical bars with optional
-// shadows, highlights, and gradient effects based on quality settings.
+// This renderer displays spectrum data as vertical bars with optional
+// shadows and highlights. Creates a classic equalizer effect with smooth
+// color transitions based on audio magnitude.
 //
 // Key features:
-// - Quality-dependent effects (shadows, highlights, corner radius)
-// - Magnitude-based color variation
-// - Smooth gradient bars with rounded corners
-// - Single Responsibility: each method handles one aspect of bar rendering
+// - Vertical bars with configurable spacing
+// - Optional rounded corners for modern look
+// - Optional shadow rendering for depth
+// - Optional highlight overlay on bar tops
+// - Brightness modulation based on magnitude
+// - Uses GeometryHelpers for all geometric calculations
 //
 // Design notes:
 // - All rendering methods are const (stateless rendering)
-// - Settings struct holds quality-dependent configuration
-// - SRP pattern: separate methods for shadow, main bar, highlight
+// - Shadow renders once per bar
+// - Highlight only on top portion of bar
+// - Color brightness increases with magnitude
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Graphics/Base/BaseRenderer.h"
 #include "Graphics/Base/RenderUtils.h"
+#include "Graphics/Visualizers/Settings/QualityTraits.h"
 
 namespace Spectrum {
 
@@ -63,16 +68,10 @@ namespace Spectrum {
         // Settings
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        struct Settings
-        {
-            float barSpacing;
-            float cornerRadius;
-            bool useShadow;
-            bool useHighlight;
-        };
+        using Settings = Settings::BarsSettings;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Single Bar Rendering (SRP)
+        // Rendering Components (SRP)
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void RenderBar(

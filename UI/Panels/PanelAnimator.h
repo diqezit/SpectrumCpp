@@ -9,7 +9,7 @@
 // compared to linear or quadratic curves.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "Common/MathUtils.h"
+#include "Graphics/API/Helpers/Math/MathHelpers.h"
 #include <algorithm>
 
 namespace Spectrum
@@ -29,10 +29,10 @@ namespace Spectrum
         // Lifecycle Management
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        explicit PanelAnimator(float speed = 8.0f) noexcept :
-            m_state(AnimationState::Closed),
-            m_progress(0.0f),
-            m_speed(speed)
+        explicit PanelAnimator(float speed = 8.0f) noexcept
+            : m_state(AnimationState::Closed)
+            , m_progress(0.0f)
+            , m_speed(speed)
         {
         }
 
@@ -42,29 +42,23 @@ namespace Spectrum
 
         void Open() noexcept
         {
-            if (m_state == AnimationState::Open || m_state == AnimationState::Opening) return;
-            m_state = AnimationState::Opening;
+            if (ShouldIgnoreOpenRequest()) return;
+            TransitionToOpening();
         }
 
         void Close() noexcept
         {
-            if (m_state == AnimationState::Closed || m_state == AnimationState::Closing) return;
-            m_state = AnimationState::Closing;
+            if (ShouldIgnoreCloseRequest()) return;
+            TransitionToClosing();
         }
 
         void Update(float deltaTime) noexcept
         {
-            const float step = m_speed * deltaTime;
-
-            if (m_state == AnimationState::Opening)
-            {
-                m_progress = std::min(1.0f, m_progress + step);
-                if (m_progress >= 1.0f) m_state = AnimationState::Open;
+            if (IsOpening()) {
+                UpdateOpeningAnimation(deltaTime);
             }
-            else if (m_state == AnimationState::Closing)
-            {
-                m_progress = std::max(0.0f, m_progress - step);
-                if (m_progress <= 0.0f) m_state = AnimationState::Closed;
+            else if (IsClosing()) {
+                UpdateClosingAnimation(deltaTime);
             }
         }
 
@@ -72,12 +66,157 @@ namespace Spectrum
         // State Queries
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        [[nodiscard]] bool IsVisible() const noexcept { return m_state != AnimationState::Closed; }
-        [[nodiscard]] float GetProgress() const noexcept { return Utils::EaseInOutCubic(m_progress); }
-        [[nodiscard]] float GetRawProgress() const noexcept { return m_progress; }
-        [[nodiscard]] AnimationState GetState() const noexcept { return m_state; }
+        [[nodiscard]] bool IsVisible() const noexcept
+        {
+            return !IsClosed();
+        }
+
+        [[nodiscard]] bool IsClosed() const noexcept
+        {
+            return m_state == AnimationState::Closed;
+        }
+
+        [[nodiscard]] bool IsOpening() const noexcept
+        {
+            return m_state == AnimationState::Opening;
+        }
+
+        [[nodiscard]] bool IsOpen() const noexcept
+        {
+            return m_state == AnimationState::Open;
+        }
+
+        [[nodiscard]] bool IsClosing() const noexcept
+        {
+            return m_state == AnimationState::Closing;
+        }
+
+        [[nodiscard]] bool IsFullyOpen() const noexcept
+        {
+            return m_progress >= 1.0f;
+        }
+
+        [[nodiscard]] bool IsFullyClosed() const noexcept
+        {
+            return m_progress <= 0.0f;
+        }
+
+        [[nodiscard]] float GetProgress() const noexcept
+        {
+            return ApplyEasing(m_progress);
+        }
+
+        [[nodiscard]] float GetRawProgress() const noexcept
+        {
+            return m_progress;
+        }
+
+        [[nodiscard]] AnimationState GetState() const noexcept
+        {
+            return m_state;
+        }
 
     private:
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // State Transition Guards
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] bool ShouldIgnoreOpenRequest() const noexcept
+        {
+            return IsOpen() || IsOpening();
+        }
+
+        [[nodiscard]] bool ShouldIgnoreCloseRequest() const noexcept
+        {
+            return IsClosed() || IsClosing();
+        }
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // State Transitions
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        void TransitionToOpening() noexcept
+        {
+            m_state = AnimationState::Opening;
+        }
+
+        void TransitionToClosing() noexcept
+        {
+            m_state = AnimationState::Closing;
+        }
+
+        void TransitionToOpen() noexcept
+        {
+            m_state = AnimationState::Open;
+        }
+
+        void TransitionToClosed() noexcept
+        {
+            m_state = AnimationState::Closed;
+        }
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Animation Updates
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        void UpdateOpeningAnimation(float deltaTime) noexcept
+        {
+            IncreaseProgress(deltaTime);
+
+            if (IsFullyOpen()) {
+                TransitionToOpen();
+            }
+        }
+
+        void UpdateClosingAnimation(float deltaTime) noexcept
+        {
+            DecreaseProgress(deltaTime);
+
+            if (IsFullyClosed()) {
+                TransitionToClosed();
+            }
+        }
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Progress Manipulation
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        void IncreaseProgress(float deltaTime) noexcept
+        {
+            const float step = CalculateAnimationStep(deltaTime);
+            m_progress = ClampProgressToMax(m_progress + step);
+        }
+
+        void DecreaseProgress(float deltaTime) noexcept
+        {
+            const float step = CalculateAnimationStep(deltaTime);
+            m_progress = ClampProgressToMin(m_progress - step);
+        }
+
+        [[nodiscard]] float CalculateAnimationStep(float deltaTime) const noexcept
+        {
+            return m_speed * deltaTime;
+        }
+
+        [[nodiscard]] static float ClampProgressToMax(float progress) noexcept
+        {
+            return std::min(1.0f, progress);
+        }
+
+        [[nodiscard]] static float ClampProgressToMin(float progress) noexcept
+        {
+            return std::max(0.0f, progress);
+        }
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Easing
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        [[nodiscard]] static float ApplyEasing(float rawProgress) noexcept
+        {
+            return Helpers::Math::EaseInOutCubic(rawProgress);
+        }
+
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Member Variables
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=

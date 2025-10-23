@@ -13,17 +13,11 @@
 // - Stack overflow protection
 //
 // Design notes:
-// - All transform operations are const (modify render target state, not manager)
+// - All transform operations modify render target state
 // - Stack depth limited to prevent overflow (kMaxStackDepth)
 // - RAII TransformScope for automatic push/pop
-// - Non-owning pointer to render target (lifetime managed externally)
+// - Uses ComPtr for render target lifetime management
 //
-// Usage pattern:
-//   {
-//       auto scope = transformManager.CreateScope();
-//       transformManager.RotateAt(center, 45.0f);
-//       DrawComplexShape();
-//   } // Automatic transform restoration
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #ifndef SPECTRUM_CPP_TRANSFORM_MANAGER_H
@@ -47,22 +41,29 @@ namespace Spectrum {
         class TransformScope final
         {
         public:
-            explicit TransformScope(TransformManager& manager)
-                : m_manager(manager)
-            {
-                m_manager.PushTransform();
-            }
+            explicit TransformScope(
+                TransformManager& manager
+            );
 
-            ~TransformScope() noexcept
-            {
-                m_manager.PopTransform();
-            }
+            TransformScope(
+                TransformScope&& other
+            ) noexcept;
+
+            TransformScope& operator=(
+                TransformScope&& other
+                ) noexcept;
+
+            ~TransformScope() noexcept;
+
+            void Release() noexcept;
+            void Reset() noexcept;
 
             TransformScope(const TransformScope&) = delete;
             TransformScope& operator=(const TransformScope&) = delete;
 
         private:
-            TransformManager& m_manager;
+            TransformManager* m_manager;
+            bool m_active;
         };
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -75,44 +76,77 @@ namespace Spectrum {
         TransformManager& operator=(const TransformManager&) = delete;
 
         // IRenderComponent implementation
-        void OnRenderTargetChanged(ID2D1RenderTarget* renderTarget) override;
+        void OnRenderTargetChanged(
+            const wrl::ComPtr<ID2D1RenderTarget>& renderTarget
+        ) override;
+
         void OnDeviceLost() override;
+
+        Priority GetPriority() const override;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Transform Stack Management
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        void PushTransform() const;
-        void PopTransform() const;
-        [[nodiscard]] TransformScope CreateScope() { return TransformScope(*this); }
+        void PushTransform();
+
+        void PopTransform();
+
+        [[nodiscard]] TransformScope CreateScope();
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Transform Operations
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        void RotateAt(const Point& center, float angleDegrees) const;
-        void ScaleAt(const Point& center, float scaleX, float scaleY) const;
-        void TranslateBy(float dx, float dy) const;
+        void RotateAt(
+            const Point& center,
+            float angleDegrees
+        );
 
-        void SetTransform(const D2D1_MATRIX_3X2_F& transform) const;
-        void ResetTransform() const;
+        void ScaleAt(
+            const Point& center,
+            float scaleX,
+            float scaleY
+        );
+
+        void TranslateBy(
+            float dx,
+            float dy
+        );
+
+        void SetTransform(
+            const D2D1_MATRIX_3X2_F& transform
+        );
+
+        void ResetTransform();
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // State Queries
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        [[nodiscard]] size_t GetStackDepth() const noexcept { return m_transformStack.size(); }
-        [[nodiscard]] bool IsStackEmpty() const noexcept { return m_transformStack.empty(); }
+        [[nodiscard]] size_t GetStackDepth() const noexcept;
+
+        [[nodiscard]] bool IsStackEmpty() const noexcept;
 
     private:
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Helper Methods (DRY)
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        void ApplyRelativeTransform(
+            const D2D1_MATRIX_3X2_F& transform
+        );
+
+        void ClearTransformStack();
+
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Member Variables
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        ID2D1RenderTarget* m_renderTarget;
-        mutable std::stack<D2D1_MATRIX_3X2_F> m_transformStack;
+        wrl::ComPtr<ID2D1RenderTarget> m_renderTarget;
+        std::stack<D2D1_MATRIX_3X2_F> m_transformStack;
     };
 
 } // namespace Spectrum
 
-#endif
+#endif // SPECTRUM_CPP_TRANSFORM_MANAGER_H

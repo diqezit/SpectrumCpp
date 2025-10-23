@@ -2,30 +2,23 @@
 #define SPECTRUM_CPP_PARTICLES_RENDERER_H
 
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// Defines the ParticlesRenderer for particle-based spectrum visualization.
+// Defines the ParticlesRenderer for particle-based spectrum visualization
 //
-// This renderer creates a physics-based particle system where particles
-// spawn from the bottom based on spectrum intensity and rise upward with
-// realistic motion simulation, creating a fountain-like effect.
+// Physics-based particle system with fountain-like effect from bottom
+// Optimized for zero memory leaks with efficient batch rendering
+// Uses GeometryHelpers for all geometric calculations
 //
-// Key features:
-// - Physics-based particle movement with velocity and decay
-// - Lifetime management with smooth alpha curves
-// - Quality-dependent particle count and batch rendering
-// - Pre-calculated lookup tables for performance
-// - Particle grouping by visual properties for batch drawing
-//
-// Design notes:
-// - All rendering methods are const (state in m_particles)
-// - High particle density with low rise height for dense effect
-// - Batch rendering groups particles to minimize draw calls
-// - Pre-calculated curves cached for smooth animation
+// Performance optimizations:
+// - Reusable batch buffers (no per-frame allocations)
+// - Pre-calculated lookup tables for alpha/velocity
+// - Direct-indexed batching (no map allocations)
+// - Particle pooling with reserve strategy
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Graphics/Base/BaseRenderer.h"
+#include "Graphics/Visualizers/Settings/QualityTraits.h"
 #include <vector>
 #include <random>
-#include <map>
 
 namespace Spectrum {
 
@@ -72,21 +65,18 @@ namespace Spectrum {
 
     private:
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Settings
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+        using Settings = Settings::ParticlesSettings;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Data Structures
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        struct QualitySettings
-        {
-            int maxParticles;
-            float spawnRate;
-            float particleDetail;
-            bool useBatchRendering;
-        };
-
         struct Particle
         {
-            float x = 0.0f;
-            float y = 0.0f;
+            Point position = { 0.0f, 0.0f };
             float velocity = 0.0f;
             float size = 0.0f;
             float life = 0.0f;
@@ -98,125 +88,100 @@ namespace Spectrum {
             std::vector<Point> positions;
             float size = 0.0f;
             Color color;
+
+            void Clear()
+            {
+                positions.clear();
+            }
         };
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Initialization Components
+        // Initialization
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void EnsureInitialized();
         void InitializeLookupTables();
         void InitializeAlphaCurve();
         void InitializeVelocityLookup();
+        void InitializeBatchBuffers();
 
         [[nodiscard]] bool IsInitialized() const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Main Update Components (SRP)
+        // Update Logic
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void UpdateParticles(float deltaTime);
         void SpawnParticles(const SpectrumData& spectrum);
         void RemoveDeadParticles();
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Particle Lifecycle
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        void UpdateSingleParticle(Particle& particle, float deltaTime);
+        void SpawnParticleAt(size_t spectrumIndex, float magnitude, float barWidth);
 
-        void UpdateSingleParticle(
-            Particle& particle,
-            float deltaTime
-        );
-
-        void SpawnParticleAt(
-            size_t spectrumIndex,
-            float magnitude,
-            float barWidth
-        );
-
-        [[nodiscard]] Particle CreateParticle(
-            float x,
-            float intensity
-        ) const;
-
+        [[nodiscard]] Particle CreateParticle(const Point& spawnPos, float intensity) const;
         [[nodiscard]] bool IsParticleAlive(const Particle& particle) const;
         [[nodiscard]] bool ShouldSpawnParticle(float magnitude) const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Particle Physics
+        // Physics
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        void UpdateParticlePosition(
-            Particle& particle,
-            float deltaTime
-        ) const;
-
-        void UpdateParticleLife(
-            Particle& particle,
-            float deltaTime
-        ) const;
-
+        void UpdateParticlePosition(Particle& particle, float deltaTime) const;
+        void UpdateParticleLife(Particle& particle, float deltaTime) const;
         void UpdateParticleSize(Particle& particle) const;
         void UpdateParticleAlpha(Particle& particle) const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Main Rendering Components (SRP)
+        // Rendering
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void RenderAllParticles(Canvas& canvas) const;
         void RenderParticlesBatched(Canvas& canvas) const;
         void RenderParticlesIndividual(Canvas& canvas) const;
-
-        void RenderSingleParticle(
-            Canvas& canvas,
-            const Particle& particle
-        ) const;
+        void RenderSingleParticle(Canvas& canvas, const Particle& particle) const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Batch Optimization
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        [[nodiscard]] std::vector<ParticleBatch> GroupParticlesIntoBatches() const;
+        void PrepareParticleBatches() const;
+        void ClearAllBatches() const;
 
+        [[nodiscard]] int CalculateBatchIndex(const Particle& particle) const;
         [[nodiscard]] int CalculateSizeBucket(float size) const;
         [[nodiscard]] int CalculateAlphaBucket(float alpha) const;
-        [[nodiscard]] int CalculateBatchKey(
-            int sizeBucket,
-            int alphaBucket
-        ) const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Calculation Helpers
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        [[nodiscard]] float CalculateParticleX(
+        [[nodiscard]] Point CalculateSpawnPosition(
             size_t spectrumIndex,
             float barWidth
         ) const;
 
         [[nodiscard]] float CalculateParticleVelocity(float intensity) const;
         [[nodiscard]] float CalculateParticleSize(float intensity) const;
-
         [[nodiscard]] Color CalculateParticleColor(const Particle& particle) const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Geometry Helpers
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        [[nodiscard]] float GetSpawnY() const;
-        [[nodiscard]] float GetUpperBound() const;
+        [[nodiscard]] Point GetSpawnPosition() const;
+        [[nodiscard]] Point GetUpperBoundPosition() const;
         [[nodiscard]] float GetBarWidth(const SpectrumData& spectrum) const;
+        [[nodiscard]] Rect GetParticleBounds() const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Alpha & Velocity Helpers
+        // Lookup Tables
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         [[nodiscard]] float GetAlphaFromCurve(float lifeRatio) const;
-        [[nodiscard]] float CalculateAlphaFallback(float lifeRatio) const;
         [[nodiscard]] float GetRandomVelocity() const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Configuration Helpers
+        // Configuration
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         [[nodiscard]] float GetSpawnThreshold() const;
@@ -224,7 +189,7 @@ namespace Spectrum {
         [[nodiscard]] float GetIntensityMultiplier(float magnitude) const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Validation Helpers
+        // Validation
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         [[nodiscard]] bool CanSpawnParticles() const;
@@ -232,7 +197,7 @@ namespace Spectrum {
         [[nodiscard]] bool IsParticleInBounds(const Particle& particle) const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Random Number Generation
+        // Random Generation
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         [[nodiscard]] float GetRandomNormalized() const;
@@ -241,10 +206,13 @@ namespace Spectrum {
         // Member Variables
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        QualitySettings m_settings;
+        Settings m_settings;
+
         std::vector<Particle> m_particles;
         std::vector<float> m_alphaCurve;
         std::vector<float> m_velocityLookup;
+
+        mutable std::vector<ParticleBatch> m_batchBuffer;
         mutable std::mt19937 m_randomEngine;
         mutable std::uniform_real_distribution<float> m_distribution;
     };

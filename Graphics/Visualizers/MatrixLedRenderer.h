@@ -14,6 +14,7 @@
 // - Peak hold indicators with fade-out (quality-dependent)
 // - Gradient color mapping (green to red) with external color blending
 // - Batch rendering for optimal performance
+// - Uses GeometryHelpers for all geometric calculations
 //
 // Design notes:
 // - All rendering methods are const (state in m_smoothedValues, m_peakValues)
@@ -23,6 +24,7 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Graphics/Base/BaseRenderer.h"
+#include "Graphics/Visualizers/Settings/QualityTraits.h"
 #include <vector>
 #include <map>
 
@@ -72,23 +74,21 @@ namespace Spectrum {
 
     private:
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Data Structures
+        // Settings
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        struct QualitySettings
-        {
-            bool usePeakHold;
-            int maxRows;
-            float smoothingMultiplier;
-        };
+        using Settings = Settings::MatrixLedSettings;
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Data Structures
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         struct GridData
         {
             int rows = 0;
             int columns = 0;
             float cellSize = 0.0f;
-            float startX = 0.0f;
-            float startY = 0.0f;
+            Point gridStart = { 0.0f, 0.0f };
             bool isOverlay = false;
         };
 
@@ -103,6 +103,8 @@ namespace Spectrum {
 
         [[nodiscard]] GridData CalculateGridLayout(size_t requiredColumns) const;
         [[nodiscard]] bool RequiresGridUpdate(size_t requiredColumns) const;
+        [[nodiscard]] Point CalculateLedCenter(int column, int row) const;
+        [[nodiscard]] Rect GetGridBounds() const;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Animation Updates
@@ -181,7 +183,7 @@ namespace Spectrum {
         // Member Variables
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        QualitySettings m_settings;
+        Settings m_settings;
         GridData m_grid;
 
         std::vector<float> m_smoothedValues;

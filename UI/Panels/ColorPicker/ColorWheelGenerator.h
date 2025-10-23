@@ -2,12 +2,19 @@
 #define SPECTRUM_CPP_COLOR_WHEEL_GENERATOR_H
 
 #include "Common/Common.h"
-#include "Common/MathUtils.h"
-#include "Common/ColorUtils.h"
+#include "Graphics/API/Helpers/Math/MathHelpers.h"
+#include "Graphics/API/Helpers/Geometry/ColorHelpers.h"
 #include <vector>
 #include <cmath>
 
 namespace Spectrum {
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // ColorWheelGenerator - Static utility for generating color wheel bitmaps
+    //
+    // This class generates HSV color wheel data as ARGB pixels for use with
+    // Direct2D bitmaps.
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     class ColorWheelGenerator {
     public:
@@ -40,9 +47,9 @@ namespace Spectrum {
 
             const float hue = (std::atan2(dy, dx) / PI + 1.0f) * 0.5f;
             const float sat = dist / radius;
-            const Color rgb = Utils::HSVtoRGB({ hue, sat, 1.0f });
+            const Color rgb = Helpers::Color::HSVtoRGB({ hue, sat, 1.0f });
 
-            return Utils::ColorToARGB(rgb);
+            return Helpers::Color::ColorToARGB(rgb);
         }
     };
 

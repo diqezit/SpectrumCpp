@@ -2,21 +2,41 @@
 #define SPECTRUM_CPP_GRAPHICS_API_HELPERS_SANITIZATION_H
 
 #include <algorithm>
+#include <cmath>
 
 namespace Spectrum::Helpers::Sanitize {
 
     [[nodiscard]] inline float PositiveFloat(float value, float defaultValue = 0.0f) noexcept
     {
-        return (value > 0.0f) ? value : defaultValue;
+        if (value > 0.0f) {
+            return value;
+        }
+
+        if (value == 0.0f) {
+            return 0.0f;
+        }
+
+        return defaultValue;
     }
 
     [[nodiscard]] inline float NonNegativeFloat(float value) noexcept
     {
-        return std::max(value, 0.0f);
+        if (value >= 0.0f || (value == 0.0f && !std::signbit(value))) {
+            return value;
+        }
+        return 0.0f;
     }
 
     [[nodiscard]] inline float NormalizedFloat(float value) noexcept
     {
+        if (std::isnan(value)) {
+            return 0.0f;
+        }
+
+        if (std::isinf(value)) {
+            return value > 0.0f ? 1.0f : 0.0f;
+        }
+
         return std::clamp(value, 0.0f, 1.0f);
     }
 

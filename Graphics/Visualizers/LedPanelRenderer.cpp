@@ -7,6 +7,7 @@
 // - Attack/decay smoothing creates realistic LED response
 // - Peak indicators fade with timer (hold + decay)
 // - Row colors pre-calculated from gradient for efficiency
+// - Uses GeometryHelpers for all geometric operations
 //
 // Rendering pipeline:
 // 1. Render all inactive LEDs in single batch (background grid)
@@ -17,15 +18,19 @@
 #include "Graphics/Visualizers/LedPanelRenderer.h"
 #include "Graphics/API/D2DHelpers.h"
 #include "Graphics/API/Structs/Paint.h"
-#include "Common/MathUtils.h"
-#include "Common/ColorUtils.h"
+#include "Graphics/API/Helpers/Geometry/GeometryHelpers.h"
+#include "Graphics/API/Helpers/Math/MathHelpers.h"
+#include "Graphics/API/Helpers/Geometry/ColorHelpers.h"
 #include "Graphics/Base/RenderUtils.h"
 #include "Graphics/API/Canvas.h"
+#include "Graphics/Visualizers/Settings/QualityPresets.h"
 #include <algorithm>
 
 namespace Spectrum {
 
-    using namespace D2DHelpers;
+    using namespace Helpers::Sanitize;
+    using namespace Helpers::Geometry;
+    using namespace Helpers::Math;
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Constants
@@ -55,8 +60,6 @@ namespace Spectrum {
 
         constexpr int kMinGridSize = 10;
         constexpr int kMaxColumns = 64;
-
-        constexpr float kCenterOffset = 0.5f;
 
         const std::vector<Color> kSpectrumGradient = {
             Color::FromRGB(0, 200, 100),
@@ -99,35 +102,7 @@ namespace Spectrum {
 
     void LedPanelRenderer::UpdateSettings()
     {
-        if (m_isOverlay) {
-            switch (m_quality) {
-            case RenderQuality::Low:
-                m_settings = { true, 8, 1.2f };
-                break;
-            case RenderQuality::High:
-                m_settings = { true, 16, 1.0f };
-                break;
-            case RenderQuality::Medium:
-            default:
-                m_settings = { true, 12, 1.1f };
-                break;
-            }
-        }
-        else {
-            switch (m_quality) {
-            case RenderQuality::Low:
-                m_settings = { false, 16, 1.0f };
-                break;
-            case RenderQuality::High:
-                m_settings = { true, 32, 0.8f };
-                break;
-            case RenderQuality::Medium:
-            default:
-                m_settings = { true, 24, 0.9f };
-                break;
-            }
-        }
-
+        m_settings = QualityPresets::Get<LedPanelRenderer>(m_quality, m_isOverlay);
         m_grid.columns = 0;
     }
 
@@ -229,12 +204,16 @@ namespace Spectrum {
         const float gridWidth = cols * cellSize;
         const float gridHeight = rows * cellSize;
 
+        const Point viewportCenter = GetViewportCenter(m_width, m_height);
+
         GridData grid;
         grid.rows = rows;
         grid.columns = cols;
         grid.cellSize = cellSize;
-        grid.startX = GetGridStartX(gridWidth);
-        grid.startY = GetGridStartY(gridHeight);
+        grid.gridStart = {
+            viewportCenter.x - gridWidth * 0.5f,
+            viewportCenter.y - gridHeight * 0.5f
+        };
 
         return grid;
     }
@@ -304,14 +283,14 @@ namespace Spectrum {
         int row
     ) const
     {
-        const float halfCell = m_grid.cellSize * kCenterOffset;
+        const float halfCell = m_grid.cellSize * 0.5f;
 
-        const float x = m_grid.startX + col * m_grid.cellSize + halfCell;
-        const float y = m_grid.startY
-            + (m_grid.rows - 1 - row) * m_grid.cellSize
-            + halfCell;
+        const Point cellOffset = {
+            col * m_grid.cellSize + halfCell,
+            (m_grid.rows - 1 - row) * m_grid.cellSize + halfCell
+        };
 
-        return { x, y };
+        return Add(m_grid.gridStart, cellOffset);
     }
 
     size_t LedPanelRenderer::CalculateTotalLedCount() const
@@ -389,7 +368,7 @@ namespace Spectrum {
     ) const
     {
         const float rate = GetSmoothingRate(current, target);
-        return Utils::Lerp(current, target, rate);
+        return Helpers::Math::Lerp(current, target, rate);
     }
 
     float LedPanelRenderer::GetSmoothingRate(
@@ -459,7 +438,7 @@ namespace Spectrum {
             const bool isTopLed = (row == activeLeds - 1);
             const float ledBrightness = CalculateLedBrightness(brightness, isTopLed);
 
-            const Color ledColor = GetLedColor(row, Utils::Saturate(ledBrightness));
+            const Color ledColor = GetLedColor(row, Saturate(ledBrightness));
             const size_t ledIndex = GetLedIndex(col, row);
 
             RenderSingleLed(canvas, ledIndex, ledColor);
@@ -520,14 +499,28 @@ namespace Spectrum {
         return static_cast<size_t>(col) * m_grid.rows + row;
     }
 
-    float LedPanelRenderer::GetGridStartX(float gridWidth) const
+    Point LedPanelRenderer::GetGridCenter() const
     {
-        return (m_width - gridWidth) * kCenterOffset;
+        const float gridWidth = m_grid.columns * m_grid.cellSize;
+        const float gridHeight = m_grid.rows * m_grid.cellSize;
+
+        const Point gridSize = { gridWidth, gridHeight };
+        const Point halfSize = Multiply(gridSize, 0.5f);
+
+        return Add(m_grid.gridStart, halfSize);
     }
 
-    float LedPanelRenderer::GetGridStartY(float gridHeight) const
+    Rect LedPanelRenderer::GetGridBounds() const
     {
-        return (m_height - gridHeight) * kCenterOffset;
+        const float gridWidth = m_grid.columns * m_grid.cellSize;
+        const float gridHeight = m_grid.rows * m_grid.cellSize;
+
+        return {
+            m_grid.gridStart.x,
+            m_grid.gridStart.y,
+            gridWidth,
+            gridHeight
+        };
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -551,7 +544,7 @@ namespace Spectrum {
 
     Color LedPanelRenderer::GetRowBaseColor(int row) const
     {
-        const int rowIndex = std::min(row, static_cast<int>(m_rowColors.size()) - 1);
+        const int rowIndex = Helpers::Math::Clamp(row, 0, static_cast<int>(m_rowColors.size()) - 1);
 
         if (!IsRowIndexValid(rowIndex)) return {};
 
@@ -586,7 +579,7 @@ namespace Spectrum {
 
     float LedPanelRenderer::CalculateBrightness(float value) const
     {
-        return Utils::Lerp(kMinActiveBrightness, 1.0f, value);
+        return Helpers::Math::Lerp(kMinActiveBrightness, 1.0f, value);
     }
 
     float LedPanelRenderer::CalculateLedBrightness(
@@ -611,7 +604,7 @@ namespace Spectrum {
         float t
     ) const
     {
-        const auto blend = [](float ext, float grad, float t_) {
+        const auto blend = [&](float ext, float grad, float t_) {
             return ext * kExternalColorBlend +
                 grad * (1.0f - kExternalColorBlend) * t_;
             };
@@ -640,7 +633,7 @@ namespace Spectrum {
             return kSpectrumGradient.back();
         }
 
-        return Utils::InterpolateColor(
+        return Helpers::Color::InterpolateColor(
             kSpectrumGradient[index],
             kSpectrumGradient[index + 1],
             fraction

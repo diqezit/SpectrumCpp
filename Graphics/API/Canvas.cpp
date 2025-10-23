@@ -6,6 +6,7 @@
 // - All methods are simple delegation calls to the appropriate renderer
 // - Paint and TextStyle classes are used to simplify method signatures
 // - Null-checks ensure safe operation even if a renderer is missing
+// - Works with base ID2D1RenderTarget for overlay and normal window compatibility
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Graphics/API/Canvas.h"
@@ -40,24 +41,24 @@ namespace Spectrum {
     }
 
     void Canvas::OnRenderTargetChanged(
-        ID2D1RenderTarget* renderTarget
+        const wrl::ComPtr<ID2D1RenderTarget>& renderTarget
     )
     {
-        m_renderTarget = static_cast<ID2D1HwndRenderTarget*>(renderTarget);
+        m_renderTarget = renderTarget;
     }
 
     void Canvas::OnDeviceLost()
     {
-        m_renderTarget = nullptr;
+        m_renderTarget.Reset();
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Resource Access
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    ID2D1HwndRenderTarget* Canvas::GetRenderTarget() const noexcept
+    ID2D1RenderTarget* Canvas::GetRenderTarget() const noexcept
     {
-        return m_renderTarget;
+        return m_renderTarget.Get();
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -68,6 +69,10 @@ namespace Spectrum {
         const Rect& rect,
         const Paint& paint
     ) const {
+        if (!m_renderTarget) {
+            LOG_WARNING("Canvas::DrawRectangle called with null render target");
+            return;
+        }
         if (m_primitiveRenderer) {
             m_primitiveRenderer->DrawRectangle(rect, paint);
         }
@@ -78,6 +83,10 @@ namespace Spectrum {
         float radius,
         const Paint& paint
     ) const {
+        if (!m_renderTarget) {
+            LOG_WARNING("Canvas::DrawRoundedRectangle called with null render target");
+            return;
+        }
         if (m_primitiveRenderer) {
             m_primitiveRenderer->DrawRoundedRectangle(rect, radius, paint);
         }
@@ -88,6 +97,10 @@ namespace Spectrum {
         float radius,
         const Paint& paint
     ) const {
+        if (!m_renderTarget) {
+            LOG_WARNING("Canvas::DrawCircle called with null render target");
+            return;
+        }
         if (m_primitiveRenderer) {
             m_primitiveRenderer->DrawCircle(center, radius, paint);
         }
@@ -99,6 +112,10 @@ namespace Spectrum {
         float radiusY,
         const Paint& paint
     ) const {
+        if (!m_renderTarget) {
+            LOG_WARNING("Canvas::DrawEllipse called with null render target");
+            return;
+        }
         if (m_primitiveRenderer) {
             m_primitiveRenderer->DrawEllipse(center, radiusX, radiusY, paint);
         }
@@ -109,6 +126,10 @@ namespace Spectrum {
         const Point& end,
         const Paint& paint
     ) const {
+        if (!m_renderTarget) {
+            LOG_WARNING("Canvas::DrawLine called with null render target");
+            return;
+        }
         if (m_primitiveRenderer) {
             m_primitiveRenderer->DrawLine(start, end, paint);
         }
@@ -118,6 +139,10 @@ namespace Spectrum {
         const std::vector<Point>& points,
         const Paint& paint
     ) const {
+        if (!m_renderTarget) {
+            LOG_WARNING("Canvas::DrawPolyline called with null render target");
+            return;
+        }
         if (m_primitiveRenderer) {
             m_primitiveRenderer->DrawPolyline(points, paint);
         }
@@ -127,6 +152,10 @@ namespace Spectrum {
         const std::vector<Point>& points,
         const Paint& paint
     ) const {
+        if (!m_renderTarget) {
+            LOG_WARNING("Canvas::DrawPolygon called with null render target");
+            return;
+        }
         if (m_primitiveRenderer) {
             m_primitiveRenderer->DrawPolygon(points, paint);
         }
@@ -139,6 +168,10 @@ namespace Spectrum {
         float sweepAngle,
         const Paint& paint
     ) const {
+        if (!m_renderTarget) {
+            LOG_WARNING("Canvas::DrawArc called with null render target");
+            return;
+        }
         if (m_primitiveRenderer) {
             m_primitiveRenderer->DrawArc(center, radius, startAngle, sweepAngle, paint);
         }
@@ -150,6 +183,10 @@ namespace Spectrum {
         float outerRadius,
         const Paint& paint
     ) const {
+        if (!m_renderTarget) {
+            LOG_WARNING("Canvas::DrawRing called with null render target");
+            return;
+        }
         if (m_primitiveRenderer) {
             m_primitiveRenderer->DrawRing(center, innerRadius, outerRadius, paint);
         }
@@ -162,6 +199,10 @@ namespace Spectrum {
         float sweepAngle,
         const Paint& paint
     ) const {
+        if (!m_renderTarget) {
+            LOG_WARNING("Canvas::DrawSector called with null render target");
+            return;
+        }
         if (m_primitiveRenderer) {
             m_primitiveRenderer->DrawSector(center, radius, startAngle, sweepAngle, paint);
         }
@@ -174,6 +215,10 @@ namespace Spectrum {
         float rotation,
         const Paint& paint
     ) const {
+        if (!m_renderTarget) {
+            LOG_WARNING("Canvas::DrawRegularPolygon called with null render target");
+            return;
+        }
         if (m_primitiveRenderer) {
             m_primitiveRenderer->DrawRegularPolygon(center, radius, sides, rotation, paint);
         }
@@ -186,6 +231,10 @@ namespace Spectrum {
         int points,
         const Paint& paint
     ) const {
+        if (!m_renderTarget) {
+            LOG_WARNING("Canvas::DrawStar called with null render target");
+            return;
+        }
         if (m_primitiveRenderer) {
             m_primitiveRenderer->DrawStar(center, outerRadius, innerRadius, points, paint);
         }
@@ -197,6 +246,10 @@ namespace Spectrum {
         int cols,
         const Paint& paint
     ) const {
+        if (!m_renderTarget) {
+            LOG_WARNING("Canvas::DrawGrid called with null render target");
+            return;
+        }
         if (m_primitiveRenderer) {
             m_primitiveRenderer->DrawGrid(bounds, rows, cols, paint);
         }
@@ -207,6 +260,10 @@ namespace Spectrum {
         float radius,
         const Paint& paint
     ) const {
+        if (!m_renderTarget) {
+            LOG_WARNING("Canvas::DrawCircleBatch called with null render target");
+            return;
+        }
         if (m_primitiveRenderer) {
             m_primitiveRenderer->DrawCircleBatch(centers, radius, paint);
         }
@@ -216,6 +273,10 @@ namespace Spectrum {
         const std::vector<Rect>& rects,
         const Paint& paint
     ) const {
+        if (!m_renderTarget) {
+            LOG_WARNING("Canvas::DrawRectangleBatch called with null render target");
+            return;
+        }
         if (m_primitiveRenderer) {
             m_primitiveRenderer->DrawRectangleBatch(rects, paint);
         }
@@ -231,6 +292,10 @@ namespace Spectrum {
         float blur,
         const Color& shadowColor
     ) const {
+        if (!m_renderTarget) {
+            LOG_WARNING("Canvas::DrawWithShadow called with null render target");
+            return;
+        }
         if (m_effectsRenderer) {
             m_effectsRenderer->DrawWithShadow(drawCallback, offset, blur, shadowColor);
         }
@@ -242,30 +307,50 @@ namespace Spectrum {
         const Color& glowColor,
         float intensity
     ) const {
+        if (!m_renderTarget) {
+            LOG_WARNING("Canvas::DrawGlow called with null render target");
+            return;
+        }
         if (m_effectsRenderer) {
             m_effectsRenderer->DrawGlow(center, radius, glowColor, intensity);
         }
     }
 
     void Canvas::BeginOpacityLayer(float opacity) const {
+        if (!m_renderTarget) {
+            LOG_WARNING("Canvas::BeginOpacityLayer called with null render target");
+            return;
+        }
         if (m_effectsRenderer) {
             m_effectsRenderer->BeginOpacityLayer(opacity);
         }
     }
 
     void Canvas::EndOpacityLayer() const {
+        if (!m_renderTarget) {
+            LOG_WARNING("Canvas::EndOpacityLayer called with null render target");
+            return;
+        }
         if (m_effectsRenderer) {
             m_effectsRenderer->EndOpacityLayer();
         }
     }
 
     void Canvas::PushClipRect(const Rect& rect) const {
+        if (!m_renderTarget) {
+            LOG_WARNING("Canvas::PushClipRect called with null render target");
+            return;
+        }
         if (m_effectsRenderer) {
             m_effectsRenderer->PushClipRect(rect);
         }
     }
 
     void Canvas::PopClipRect() const {
+        if (!m_renderTarget) {
+            LOG_WARNING("Canvas::PopClipRect called with null render target");
+            return;
+        }
         if (m_effectsRenderer) {
             m_effectsRenderer->PopClipRect();
         }
@@ -276,12 +361,20 @@ namespace Spectrum {
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     void Canvas::PushTransform() const {
+        if (!m_renderTarget) {
+            LOG_WARNING("Canvas::PushTransform called with null render target");
+            return;
+        }
         if (m_transformManager) {
             m_transformManager->PushTransform();
         }
     }
 
     void Canvas::PopTransform() const {
+        if (!m_renderTarget) {
+            LOG_WARNING("Canvas::PopTransform called with null render target");
+            return;
+        }
         if (m_transformManager) {
             m_transformManager->PopTransform();
         }
@@ -291,6 +384,10 @@ namespace Spectrum {
         const Point& center,
         float angleDegrees
     ) const {
+        if (!m_renderTarget) {
+            LOG_WARNING("Canvas::RotateAt called with null render target");
+            return;
+        }
         if (m_transformManager) {
             m_transformManager->RotateAt(center, angleDegrees);
         }
@@ -301,6 +398,10 @@ namespace Spectrum {
         float scaleX,
         float scaleY
     ) const {
+        if (!m_renderTarget) {
+            LOG_WARNING("Canvas::ScaleAt called with null render target");
+            return;
+        }
         if (m_transformManager) {
             m_transformManager->ScaleAt(center, scaleX, scaleY);
         }
@@ -310,18 +411,30 @@ namespace Spectrum {
         float dx,
         float dy
     ) const {
+        if (!m_renderTarget) {
+            LOG_WARNING("Canvas::TranslateBy called with null render target");
+            return;
+        }
         if (m_transformManager) {
             m_transformManager->TranslateBy(dx, dy);
         }
     }
 
     void Canvas::SetTransform(const D2D1_MATRIX_3X2_F& transform) const {
+        if (!m_renderTarget) {
+            LOG_WARNING("Canvas::SetTransform called with null render target");
+            return;
+        }
         if (m_transformManager) {
             m_transformManager->SetTransform(transform);
         }
     }
 
     void Canvas::ResetTransform() const {
+        if (!m_renderTarget) {
+            LOG_WARNING("Canvas::ResetTransform called with null render target");
+            return;
+        }
         if (m_transformManager) {
             m_transformManager->ResetTransform();
         }
@@ -336,6 +449,10 @@ namespace Spectrum {
         const Rect& layoutRect,
         const TextStyle& style
     ) const {
+        if (!m_renderTarget) {
+            LOG_WARNING("Canvas::DrawText called with null render target");
+            return;
+        }
         if (m_textRenderer) {
             m_textRenderer->DrawText(text, layoutRect, style);
         }
@@ -346,6 +463,10 @@ namespace Spectrum {
         const Point& position,
         const TextStyle& style
     ) const {
+        if (!m_renderTarget) {
+            LOG_WARNING("Canvas::DrawText called with null render target");
+            return;
+        }
         if (m_textRenderer) {
             m_textRenderer->DrawText(text, position, style);
         }
@@ -361,6 +482,10 @@ namespace Spectrum {
         const BarStyle& style,
         const Color& color
     ) const {
+        if (!m_renderTarget) {
+            LOG_WARNING("Canvas::DrawSpectrumBars called with null render target");
+            return;
+        }
         if (m_spectrumRenderer) {
             m_spectrumRenderer->DrawSpectrumBars(spectrum, bounds, style, color);
         }
@@ -372,8 +497,13 @@ namespace Spectrum {
         const Paint& paint,
         bool mirror
     ) const {
+        if (!m_renderTarget) {
+            LOG_WARNING("Canvas::DrawWaveform called with null render target");
+            return;
+        }
         if (m_spectrumRenderer) {
             m_spectrumRenderer->DrawWaveform(spectrum, bounds, paint, mirror);
         }
     }
-}
+
+} // namespace Spectrum

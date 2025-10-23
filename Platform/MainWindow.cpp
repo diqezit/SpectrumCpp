@@ -1,4 +1,4 @@
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+﻿// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // Implements the MainWindow class, providing a complete RAII wrapper
 // around Win32 window management.
 //
@@ -6,28 +6,43 @@
 // registration, creation, and message processing. The static WndProc acts
 // as the entry point for all window messages, delegating them to the
 // associated MessageHandler instance.
+//
+// Refactored to follow SRP and DRY principles with small, focused functions.
+// Each function has a single, clear responsibility.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "MainWindow.h"
 #include "Resources/Resource.h"
 #include "MessageHandler.h"
 #include "Win32Utils.h"
+#include "Graphics/API/Helpers/Platform/WindowHelpers.h"
 
 namespace Spectrum::Platform {
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Constants
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    namespace {
+        constexpr int kMinWindowWidth = 320;
+        constexpr int kMinWindowHeight = 240;
+        constexpr int kMaxWindowWidth = 7680;
+        constexpr int kMaxWindowHeight = 4320;
+    }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Lifecycle Management
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    MainWindow::MainWindow(HINSTANCE hInstance) :
-        m_hInstance(hInstance),
-        m_hwnd(nullptr),
-        m_className(),
-        m_running(false),
-        m_isOverlay(false),
-        m_classRegistered(false),
-        m_width(0),
-        m_height(0)
+    MainWindow::MainWindow(HINSTANCE hInstance)
+        : m_hInstance(hInstance)
+        , m_hwnd(nullptr)
+        , m_className()
+        , m_running(false)
+        , m_isOverlay(false)
+        , m_classRegistered(false)
+        , m_width(0)
+        , m_height(0)
     {
     }
 
@@ -44,15 +59,28 @@ namespace Spectrum::Platform {
         MessageHandler* messageHandler
     )
     {
-        m_width = width;
-        m_height = height;
-        m_isOverlay = isOverlay;
-        m_className = isOverlay ? L"SpectrumOverlayClass" : L"SpectrumMainClass";
+        LogInitialization(title, width, height);
 
-        if (!RegisterWindowClass()) return false;
-        if (!CreateAndConfigureWindow(title, width, height, messageHandler)) return false;
+        if (!ValidateInitializationParams(width, height, messageHandler)) {
+            LogError("validation");
+            return false;
+        }
+
+        StoreWindowDimensions(width, height);
+        SetupWindowConfiguration(isOverlay);
+
+        if (!RegisterWindowClass()) {
+            LogError("window class registration");
+            return false;
+        }
+
+        if (!CreateAndConfigureWindow(title, width, height, messageHandler)) {
+            LogError("window creation");
+            return false;
+        }
 
         m_running = true;
+        LogWindowCreated();
         return true;
     }
 
@@ -81,19 +109,24 @@ namespace Spectrum::Platform {
 
     void MainWindow::Show(int cmdShow) const
     {
-        if (!m_hwnd) return;
+        if (!m_hwnd) {
+            return;
+        }
+
         ShowWindow(m_hwnd, cmdShow);
         UpdateWindow(m_hwnd);
     }
 
     void MainWindow::Hide() const
     {
-        if (m_hwnd) ShowWindow(m_hwnd, SW_HIDE);
+        Helpers::Window::HideWindow(m_hwnd);
     }
 
     void MainWindow::Close()
     {
-        if (m_running && m_hwnd) PostMessage(m_hwnd, WM_CLOSE, 0, 0);
+        if (m_running && m_hwnd) {
+            PostMessage(m_hwnd, WM_CLOSE, 0, 0);
+        }
     }
 
     void MainWindow::SetRunning(bool running) noexcept
@@ -130,38 +163,65 @@ namespace Spectrum::Platform {
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Private Implementation / Internal Helpers
+    // Initialization - High Level
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    [[nodiscard]] bool MainWindow::RegisterWindowClass()
+    bool MainWindow::ValidateInitializationParams(
+        int width,
+        int height,
+        MessageHandler* handler
+    ) const
     {
-        WNDCLASSEXW wcex = CreateWindowClass();
-        if (RegisterClassExW(&wcex) == 0) return false;
+        if (!ValidateHInstance()) {
+            LOG_ERROR("MainWindow: Invalid HINSTANCE");
+            return false;
+        }
 
-        m_classRegistered = true;
+        if (!ValidateDimensions(width, height)) {
+            LOG_ERROR("MainWindow: Invalid dimensions: " << width << "x" << height);
+            return false;
+        }
+
+        if (!ValidateMessageHandler(handler)) {
+            LOG_ERROR("MainWindow: MessageHandler is null");
+            return false;
+        }
+
         return true;
     }
 
-    [[nodiscard]] WNDCLASSEXW MainWindow::CreateWindowClass() const
+    void MainWindow::StoreWindowDimensions(int width, int height) noexcept
     {
-        WNDCLASSEXW wcex{};
-        wcex.cbSize = sizeof(WNDCLASSEXW);
-        wcex.style = CS_HREDRAW | CS_VREDRAW;
-        wcex.lpfnWndProc = WndProc;
-        wcex.hInstance = m_hInstance;
-        wcex.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-        wcex.lpszClassName = m_className.c_str();
-        wcex.hIcon = LoadIconW(m_hInstance, MAKEINTRESOURCEW(IDI_APP_ICON));
-        wcex.hIconSm = LoadIconW(m_hInstance, MAKEINTRESOURCEW(IDI_APP_ICON));
-        wcex.hbrBackground = m_isOverlay ? nullptr : reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
-
-        if (!wcex.hIcon) wcex.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
-        if (!wcex.hIconSm) wcex.hIconSm = LoadIconW(nullptr, IDI_APPLICATION);
-
-        return wcex;
+        m_width = width;
+        m_height = height;
     }
 
-    [[nodiscard]] bool MainWindow::CreateAndConfigureWindow(
+    void MainWindow::SetupWindowConfiguration(bool isOverlay)
+    {
+        m_isOverlay = isOverlay;
+        m_className = GenerateClassName(isOverlay);
+    }
+
+    bool MainWindow::RegisterWindowClass()
+    {
+        if (!ValidateClassName()) {
+            LOG_ERROR("MainWindow: Invalid class name");
+            return false;
+        }
+
+        WNDCLASSEXW wcex = CreateWindowClass();
+
+        if (RegisterClassExW(&wcex) == 0) {
+            LOG_ERROR("MainWindow: Failed to register window class");
+            return false;
+        }
+
+        m_classRegistered = true;
+        LOG_INFO("MainWindow: Window class registered: " << (m_isOverlay ? "Overlay" : "Normal"));
+        return true;
+    }
+
+    bool MainWindow::CreateAndConfigureWindow(
         const std::wstring& title,
         int width,
         int height,
@@ -171,21 +231,114 @@ namespace Spectrum::Platform {
         const auto styles = Win32Utils::MakeStyles(m_isOverlay);
         const auto params = CalculateWindowRect(width, height, styles.style, styles.exStyle);
 
-        m_hwnd = CreateWindowExW(
-            styles.exStyle,
+        m_hwnd = CreateWindowHandle(title, params, styles.style, styles.exStyle, messageHandler);
+
+        if (!ValidateWindowHandle(m_hwnd)) {
+            LOG_ERROR("MainWindow: Failed to create window");
+            return false;
+        }
+
+        ConfigureNewWindow();
+        return true;
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Window Class Registration
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    [[nodiscard]] WNDCLASSEXW MainWindow::CreateWindowClass() const
+    {
+        WNDCLASSEXW wcex{};
+
+        ConfigureWindowClassBase(wcex);
+        SetWindowClassStyle(wcex);
+        SetWindowClassBackground(wcex);
+
+        WindowIcons icons = LoadWindowIcons();
+        ApplyWindowIcons(wcex, icons);
+
+        return wcex;
+    }
+
+    void MainWindow::ConfigureWindowClassBase(WNDCLASSEXW& wcex) const
+    {
+        wcex.cbSize = sizeof(WNDCLASSEXW);
+        wcex.lpfnWndProc = WndProc;
+        wcex.hInstance = m_hInstance;
+        wcex.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+        wcex.lpszClassName = m_className.c_str();
+    }
+
+    void MainWindow::SetWindowClassStyle(WNDCLASSEXW& wcex) const
+    {
+        wcex.style = CS_HREDRAW | CS_VREDRAW;
+    }
+
+    void MainWindow::SetWindowClassBackground(WNDCLASSEXW& wcex) const
+    {
+        wcex.hbrBackground = m_isOverlay
+            ? nullptr
+            : reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+    }
+
+    [[nodiscard]] MainWindow::WindowIcons MainWindow::LoadWindowIcons() const
+    {
+        WindowIcons icons{};
+
+        icons.largeIcon = LoadApplicationIcon(m_hInstance, false);
+        icons.smallIcon = LoadApplicationIcon(m_hInstance, true);
+
+        // Fallback to default icons if application icons not found
+        if (!icons.largeIcon) {
+            icons.largeIcon = LoadDefaultIcon(false);
+        }
+
+        if (!icons.smallIcon) {
+            icons.smallIcon = LoadDefaultIcon(true);
+        }
+
+        return icons;
+    }
+
+    void MainWindow::ApplyWindowIcons(WNDCLASSEXW& wcex, const WindowIcons& icons) const
+    {
+        wcex.hIcon = icons.largeIcon;
+        wcex.hIconSm = icons.smallIcon;
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Window Creation
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    [[nodiscard]] HWND MainWindow::CreateWindowHandle(
+        const std::wstring& title,
+        const WindowRectParams& params,
+        DWORD style,
+        DWORD exStyle,
+        MessageHandler* messageHandler
+    )
+    {
+        return CreateWindowExW(
+            exStyle,
             m_className.c_str(),
             title.c_str(),
-            styles.style,
+            style,
             params.x, params.y,
             params.w, params.h,
-            nullptr, nullptr, m_hInstance,
-            messageHandler // Pass handler pointer to WM_NCCREATE
+            nullptr, nullptr,
+            m_hInstance,
+            messageHandler
         );
+    }
 
-        if (!m_hwnd) return false;
+    bool MainWindow::ValidateWindowHandle(HWND hwnd) const
+    {
+        return hwnd != nullptr;
+    }
 
+    void MainWindow::ConfigureNewWindow()
+    {
         ApplyPostCreationStyles();
-        return true;
     }
 
     [[nodiscard]] MainWindow::WindowRectParams MainWindow::CalculateWindowRect(
@@ -195,13 +348,34 @@ namespace Spectrum::Platform {
         DWORD exStyle
     ) const
     {
-        if (m_isOverlay) return { 0, 0, width, height };
+        if (m_isOverlay) {
+            return CalculateOverlayRect(width, height);
+        }
 
+        return CalculateNormalRect(width, height, style, exStyle);
+    }
+
+    [[nodiscard]] MainWindow::WindowRectParams MainWindow::CalculateOverlayRect(
+        int width,
+        int height
+    ) const
+    {
+        return { 0, 0, width, height };
+    }
+
+    [[nodiscard]] MainWindow::WindowRectParams MainWindow::CalculateNormalRect(
+        int width,
+        int height,
+        DWORD style,
+        DWORD exStyle
+    ) const
+    {
         RECT rect{ 0, 0, width, height };
         Win32Utils::AdjustRectForStyles(rect, { style, exStyle });
 
         return {
-            CW_USEDEFAULT, CW_USEDEFAULT,
+            CW_USEDEFAULT,
+            CW_USEDEFAULT,
             rect.right - rect.left,
             rect.bottom - rect.top
         };
@@ -209,27 +383,79 @@ namespace Spectrum::Platform {
 
     void MainWindow::ApplyPostCreationStyles() const
     {
-        if (!m_isOverlay) return;
+        if (m_isOverlay) {
+            ApplyOverlayTransparency();
+        }
+    }
 
-        // For a click-through overlay, we apply transparency effects
-        SetLayeredWindowAttributes(m_hwnd, RGB(0, 0, 0), 0, LWA_COLORKEY);
+    void MainWindow::ApplyOverlayTransparency() const
+    {
         LONG_PTR currentExStyle = GetWindowLongPtr(m_hwnd, GWL_EXSTYLE);
         SetWindowLongPtr(m_hwnd, GWL_EXSTYLE, currentExStyle | WS_EX_TRANSPARENT);
     }
 
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Cleanup
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
     void MainWindow::Cleanup() noexcept
+    {
+        LogCleanup();
+
+        DestroyWindowSafe();
+        UnregisterClassSafe();
+    }
+
+    void MainWindow::DestroyWindowSafe() noexcept
     {
         if (m_hwnd)
         {
             DestroyWindow(m_hwnd);
             m_hwnd = nullptr;
+            LOG_INFO("MainWindow: Window destroyed");
         }
+    }
 
+    void MainWindow::UnregisterClassSafe() noexcept
+    {
         if (m_classRegistered && !m_className.empty())
         {
             UnregisterClassW(m_className.c_str(), m_hInstance);
             m_classRegistered = false;
+            LOG_INFO("MainWindow: Window class unregistered");
         }
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Validation
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    [[nodiscard]] bool MainWindow::ValidateHInstance() const noexcept
+    {
+        return m_hInstance != nullptr;
+    }
+
+    [[nodiscard]] bool MainWindow::ValidateDimensions(int width, int height) const noexcept
+    {
+        if (width < kMinWindowWidth || width > kMaxWindowWidth) {
+            return false;
+        }
+
+        if (height < kMinWindowHeight || height > kMaxWindowHeight) {
+            return false;
+        }
+
+        return true;
+    }
+
+    [[nodiscard]] bool MainWindow::ValidateMessageHandler(MessageHandler* handler) const noexcept
+    {
+        return handler != nullptr;
+    }
+
+    [[nodiscard]] bool MainWindow::ValidateClassName() const noexcept
+    {
+        return !m_className.empty();
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -238,7 +464,9 @@ namespace Spectrum::Platform {
 
     LRESULT CALLBACK MainWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
     {
-        if (msg == WM_NCCREATE) StoreMessageHandlerPointer(hwnd, lParam);
+        if (msg == WM_NCCREATE) {
+            StoreMessageHandlerPointer(hwnd, lParam);
+        }
 
         if (MessageHandler* handler = GetMessageHandlerFromHwnd(hwnd))
         {
@@ -261,6 +489,61 @@ namespace Spectrum::Platform {
     MessageHandler* MainWindow::GetMessageHandlerFromHwnd(HWND hwnd)
     {
         return reinterpret_cast<MessageHandler*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Helpers - Static to avoid const issues
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    [[nodiscard]] std::wstring MainWindow::GenerateClassName(bool isOverlay) const
+    {
+        return isOverlay ? L"SpectrumOverlayClass" : L"SpectrumMainClass";
+    }
+
+    [[nodiscard]] HICON MainWindow::LoadApplicationIcon(HINSTANCE hInstance, bool isSmallIcon)
+    {
+        const int resourceId = isSmallIcon ? IDI_APP_ICON : IDI_APP_ICON;
+        return LoadIconW(hInstance, MAKEINTRESOURCEW(resourceId));
+    }
+
+    [[nodiscard]] HICON MainWindow::LoadDefaultIcon(bool isSmallIcon)
+    {
+        return LoadIconW(nullptr, isSmallIcon ? IDI_APPLICATION : IDI_APPLICATION);
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Logging
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    void MainWindow::LogInitialization(
+        const std::wstring& title,
+        int width,
+        int height
+    ) const
+    {
+        char titleBuffer[256] = { 0 };
+        WideCharToMultiByte(CP_UTF8, 0, title.c_str(), -1,
+            titleBuffer, sizeof(titleBuffer) - 1, nullptr, nullptr);
+
+        LOG_INFO("MainWindow: Initializing window '" << titleBuffer
+            << "' (" << width << "x" << height << ")");
+    }
+
+    void MainWindow::LogWindowCreated() const
+    {
+        LOG_INFO("MainWindow: Window created successfully (HWND: "
+            << m_hwnd << ", " << (m_isOverlay ? "Overlay" : "Normal") << ")");
+    }
+
+    void MainWindow::LogCleanup() const
+    {
+        LOG_INFO("MainWindow: Starting cleanup");
+    }
+
+    void MainWindow::LogError(const char* operation) const
+    {
+        (void)operation; // Suppress warning
+        LOG_ERROR("MainWindow: Failed during " << operation);
     }
 
 } // namespace Spectrum::Platform

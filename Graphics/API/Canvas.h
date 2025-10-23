@@ -14,6 +14,7 @@
 // - Is completely stateless regarding D2D resources; it only delegates calls.
 // - Uses the 'Paint' and 'TextStyle' classes to simplify method signatures.
 // - Does not manage resource lifetimes; it borrows non-owning pointers from RenderEngine.
+// - Works with base ID2D1RenderTarget interface for compatibility with different render targets
 //
 // Architecture pattern: Facade
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -54,7 +55,7 @@ namespace Spectrum {
 
         // IRenderComponent implementation
         void OnRenderTargetChanged(
-            ID2D1RenderTarget* renderTarget
+            const wrl::ComPtr<ID2D1RenderTarget>& renderTarget
         ) override;
 
         void OnDeviceLost() override;
@@ -63,7 +64,7 @@ namespace Spectrum {
         // Resource Access
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        [[nodiscard]] ID2D1HwndRenderTarget* GetRenderTarget() const noexcept;
+        [[nodiscard]] ID2D1RenderTarget* GetRenderTarget() const noexcept;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Primitives
@@ -254,7 +255,7 @@ namespace Spectrum {
         // Member Variables (Non-owning pointers)
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        ID2D1HwndRenderTarget* m_renderTarget;
+        wrl::ComPtr<ID2D1RenderTarget> m_renderTarget;
         PrimitiveRenderer* m_primitiveRenderer;
         TextRenderer* m_textRenderer;
         EffectsRenderer* m_effectsRenderer;

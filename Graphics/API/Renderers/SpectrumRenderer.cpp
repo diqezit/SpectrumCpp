@@ -22,6 +22,12 @@ namespace Spectrum {
     using namespace Helpers::Validate;
     using namespace Helpers::Sanitize;
 
+    namespace {
+        constexpr float kMinVisibleBarHeight = 1.0f;
+        constexpr float kMirrorOpacityFactor = 0.6f;
+        constexpr size_t kMinWaveformPoints = 2;
+    }
+
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Lifecycle Management
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -36,6 +42,179 @@ namespace Spectrum {
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Validation Helpers (DRY)
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    bool SpectrumRenderer::ValidateRendererDependencies() const noexcept
+    {
+        return m_primitiveRenderer != nullptr && m_geometryBuilder != nullptr;
+    }
+
+    bool SpectrumRenderer::ValidateSpectrumData(
+        const SpectrumData& spectrum
+    ) const noexcept {
+        return !spectrum.empty();
+    }
+
+    bool SpectrumRenderer::ValidateWaveformData(
+        const SpectrumData& spectrum
+    ) const noexcept {
+        return spectrum.size() >= kMinWaveformPoints;
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Bar Rendering Helpers (SRP)
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    SpectrumRenderer::BarDimensions SpectrumRenderer::CalculateBarDimensions(
+        const Rect& bounds,
+        size_t barCount,
+        float spacing
+    ) const noexcept {
+        const float totalWidth = bounds.width / static_cast<float>(barCount);
+        const float barWidth = totalWidth - spacing;
+
+        return { totalWidth, barWidth };
+    }
+
+    bool SpectrumRenderer::IsBarVisible(float barWidth) const noexcept
+    {
+        return barWidth > 0.0f;
+    }
+
+    bool SpectrumRenderer::IsBarHeightVisible(float height) const noexcept
+    {
+        return height >= kMinVisibleBarHeight;
+    }
+
+    Rect SpectrumRenderer::CalculateBarRect(
+        const Rect& bounds,
+        const BarDimensions& dims,
+        size_t index,
+        float height,
+        float spacing
+    ) const noexcept {
+        return {
+            bounds.x + index * dims.totalWidth + spacing * 0.5f,
+            bounds.y + bounds.height - height,
+            dims.barWidth,
+            height
+        };
+    }
+
+    void SpectrumRenderer::DrawBar(
+        const Rect& barRect,
+        const BarStyle& style,
+        const Color& color
+    ) const {
+        if (!m_primitiveRenderer) return;
+
+        Paint paint = CreateBarPaint(barRect, style, color);
+
+        m_primitiveRenderer->DrawRoundedRectangle(
+            barRect,
+            style.cornerRadius,
+            paint
+        );
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Paint Creation Helpers (SRP)
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    Paint SpectrumRenderer::CreateBarPaint(
+        const Rect& barRect,
+        const BarStyle& style,
+        const Color& color
+    ) const {
+        if (style.useGradient && !style.gradientStops.empty()) {
+            return CreateGradientPaint(barRect, style);
+        }
+        return CreateSolidPaint(color);
+    }
+
+    Paint SpectrumRenderer::CreateGradientPaint(
+        const Rect& barRect,
+        const BarStyle& style
+    ) const {
+        std::vector<GradientStop> stops = ConvertGradientStops(style.gradientStops);
+
+        return Paint::LinearGradient(
+            { barRect.x, barRect.y },
+            { barRect.x, barRect.GetBottom() },
+            stops
+        );
+    }
+
+    Paint SpectrumRenderer::CreateSolidPaint(const Color& color) const
+    {
+        return Paint::Fill(color);
+    }
+
+    std::vector<GradientStop> SpectrumRenderer::ConvertGradientStops(
+        const std::vector<D2D1_GRADIENT_STOP>& d2dStops
+    ) const {
+        std::vector<GradientStop> stops;
+        stops.reserve(d2dStops.size());
+
+        for (const auto& d2dStop : d2dStops) {
+            stops.push_back({
+                d2dStop.position,
+                Color(
+                    d2dStop.color.r,
+                    d2dStop.color.g,
+                    d2dStop.color.b,
+                    d2dStop.color.a
+                )
+                });
+        }
+
+        return stops;
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Waveform Rendering Helpers (SRP)
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    void SpectrumRenderer::DrawWaveformLine(
+        const std::vector<Point>& points,
+        const Paint& paint
+    ) const {
+        if (!m_primitiveRenderer || points.empty()) return;
+
+        m_primitiveRenderer->DrawPolyline(points, paint);
+    }
+
+    void SpectrumRenderer::DrawMirroredWaveform(
+        std::vector<Point> points,
+        const Rect& bounds,
+        const Paint& paint
+    ) const {
+        const float midline = bounds.y + bounds.height * 0.5f;
+
+        MirrorPointsVertically(points, midline);
+
+        const float mirrorOpacity = CalculateMirrorOpacity(paint.GetAlpha());
+        Paint mirroredPaint = paint.WithAlpha(mirrorOpacity);
+
+        DrawWaveformLine(points, mirroredPaint);
+    }
+
+    void SpectrumRenderer::MirrorPointsVertically(
+        std::vector<Point>& points,
+        float centerY
+    ) const {
+        for (auto& point : points) {
+            point.y = 2.0f * centerY - point.y;
+        }
+    }
+
+    float SpectrumRenderer::CalculateMirrorOpacity(float originalOpacity) const noexcept
+    {
+        return originalOpacity * kMirrorOpacityFactor;
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Spectrum Visualization
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
@@ -44,34 +223,33 @@ namespace Spectrum {
         const Rect& bounds,
         const BarStyle& style,
         const Color& color
-    ) const
-    {
-        if (spectrum.empty()) return;
+    ) const {
+        if (!ValidateSpectrumData(spectrum)) return;
 
         const size_t barCount = spectrum.size();
-        if (barCount == 0) return;
+        const BarDimensions dims = CalculateBarDimensions(
+            bounds,
+            barCount,
+            style.spacing
+        );
 
-        const float totalBarWidth = bounds.width / static_cast<float>(barCount);
-        const float barWidth = totalBarWidth - style.spacing;
-
-        if (barWidth <= 0.0f) return;
-
-        constexpr float kMinVisibleHeight = 1.0f;
+        if (!IsBarVisible(dims.barWidth)) return;
 
         for (size_t i = 0; i < barCount; ++i) {
             const float normalizedHeight = NormalizedFloat(spectrum[i]);
             const float height = normalizedHeight * bounds.height;
 
-            if (height < kMinVisibleHeight) continue;
+            if (!IsBarHeightVisible(height)) continue;
 
-            const Rect barRect = {
-                bounds.x + i * totalBarWidth + style.spacing * 0.5f,
-                bounds.y + bounds.height - height,
-                barWidth,
-                height
-            };
+            const Rect barRect = CalculateBarRect(
+                bounds,
+                dims,
+                i,
+                height,
+                style.spacing
+            );
 
-            DrawSingleBar(barRect, style, color);
+            DrawBar(barRect, style, color);
         }
     }
 
@@ -80,75 +258,17 @@ namespace Spectrum {
         const Rect& bounds,
         const Paint& paint,
         bool mirror
-    ) const
-    {
-        if (!m_geometryBuilder || !m_primitiveRenderer) return;
-        if (spectrum.size() < 2) return;
+    ) const {
+        if (!ValidateRendererDependencies()) return;
+        if (!ValidateWaveformData(spectrum)) return;
 
         auto points = m_geometryBuilder->GenerateWaveformPoints(spectrum, bounds);
         if (points.empty()) return;
 
-        m_primitiveRenderer->DrawPolyline(
-            points,
-            paint
-        );
+        DrawWaveformLine(points, paint);
 
-        if (!mirror) return;
-
-        const float midline = bounds.y + bounds.height * 0.5f;
-
-        for (auto& point : points) {
-            point.y = 2.0f * midline - point.y;
-        }
-
-        m_primitiveRenderer->DrawPolyline(
-            points,
-            paint.WithAlpha(paint.GetAlpha() * 0.6f)
-        );
-    }
-
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Private Implementation
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-    void SpectrumRenderer::DrawSingleBar(
-        const Rect& barRect,
-        const BarStyle& style,
-        const Color& color
-    ) const
-    {
-        if (!m_primitiveRenderer) {
-            return;
-        }
-
-        if (style.useGradient && !style.gradientStops.empty()) {
-            std::vector<GradientStop> stops;
-            stops.reserve(style.gradientStops.size());
-            for (const auto& d2dStop : style.gradientStops) {
-                stops.push_back({
-                    d2dStop.position,
-                    Color(d2dStop.color.r, d2dStop.color.g, d2dStop.color.b, d2dStop.color.a)
-                    });
-            }
-
-            Paint gradPaint = Paint::LinearGradient(
-                { barRect.x, barRect.y },
-                { barRect.x, barRect.GetBottom() },
-                stops
-            );
-
-            m_primitiveRenderer->DrawRoundedRectangle(
-                barRect,
-                style.cornerRadius,
-                gradPaint
-            );
-        }
-        else {
-            m_primitiveRenderer->DrawRoundedRectangle(
-                barRect,
-                style.cornerRadius,
-                Paint::Fill(color)
-            );
+        if (mirror) {
+            DrawMirroredWaveform(points, bounds, paint);
         }
     }
 
