@@ -35,20 +35,13 @@ namespace Spectrum::Platform::Win32Utils {
     // Window Creation & Styling
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-    [[nodiscard]] inline Styles MakeStyles(bool isOverlay)
-    {
-        if (isOverlay)
-        {
-            return {
-                WS_POPUP,
-                WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW
-            };
-        }
-        return { WS_OVERLAPPEDWINDOW, WS_EX_APPWINDOW };
+    [[nodiscard]] inline Styles MakeStyles(bool isOverlay) {
+        return isOverlay
+            ? Styles{ WS_POPUP, WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW }
+        : Styles{ WS_OVERLAPPEDWINDOW, WS_EX_APPWINDOW };
     }
 
-    inline void AdjustRectForStyles(RECT& rect, const Styles& styles)
-    {
+    inline void AdjustRectForStyles(RECT& rect, const Styles& styles) {
         AdjustWindowRectEx(&rect, styles.style, FALSE, styles.exStyle);
     }
 
@@ -56,13 +49,11 @@ namespace Spectrum::Platform::Win32Utils {
     // Geometry Calculations
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-    [[nodiscard]] inline Size GetScreenSize()
-    {
+    [[nodiscard]] inline Size GetScreenSize() {
         return { GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN) };
     }
 
-    [[nodiscard]] inline Pos CalculateCenterPosition(const Size& windowSize, const Size& screenSize)
-    {
+    [[nodiscard]] inline Pos CalculateCenterPosition(const Size& windowSize, const Size& screenSize) {
         return {
             (screenSize.w - windowSize.w) / 2,
             (screenSize.h - windowSize.h) / 2
@@ -73,14 +64,12 @@ namespace Spectrum::Platform::Win32Utils {
     // Message & Parameter Extraction
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-    inline void ExtractMousePos(LPARAM lParam, int& x, int& y)
-    {
+    inline void ExtractMousePos(LPARAM lParam, int& x, int& y) {
         x = GET_X_LPARAM(lParam);
         y = GET_Y_LPARAM(lParam);
     }
 
-    inline void ExtractSize(LPARAM lParam, int& w, int& h)
-    {
+    inline void ExtractSize(LPARAM lParam, int& w, int& h) {
         w = LOWORD(lParam);
         h = HIWORD(lParam);
     }

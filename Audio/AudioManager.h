@@ -22,6 +22,7 @@ namespace Spectrum {
         AudioManager& operator=(AudioManager&&) = delete;
 
         [[nodiscard]] bool Initialize();
+        void Shutdown();
 
         void Update(float deltaTime);
         [[nodiscard]] SpectrumData GetSpectrum();
@@ -49,8 +50,8 @@ namespace Spectrum {
         [[nodiscard]] std::string_view GetSpectrumScaleName() const noexcept;
         [[nodiscard]] std::string_view GetFFTWindowName() const noexcept;
 
-        [[nodiscard]] std::vector<std::string> GetAvailableFFTWindows() const;
-        [[nodiscard]] std::vector<std::string> GetAvailableSpectrumScales() const;
+        [[nodiscard]] const std::vector<std::string>& GetAvailableFFTWindows() const;
+        [[nodiscard]] const std::vector<std::string>& GetAvailableSpectrumScales() const;
 
     private:
         void SubscribeToEvents(EventBus* bus);
@@ -74,6 +75,6 @@ namespace Spectrum {
         bool m_isAnimating;
     };
 
-} // namespace Spectrum
+}
 
-#endif // SPECTRUM_CPP_AUDIO_MANAGER_H
+#endif

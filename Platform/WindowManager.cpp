@@ -1,16 +1,16 @@
-﻿// WindowManager.cpp
-#include "WindowManager.h"
+﻿#include "WindowManager.h"
 
 #include "App/ControllerCore.h"
+#include "Audio/AudioManager.h"
 #include "Graphics/API/GraphicsHelpers.h"
 #include "Graphics/IRenderer.h"
 #include "Graphics/RendererManager.h"
 #include "MainWindow.h"
-#include "UIWindow.h"
 #include "MessageHandler.h"
-#include "UIMessageHandler.h"
-#include "Win32Utils.h"
 #include "UI/Core/UIManager.h"
+#include "UIMessageHandler.h"
+#include "UIWindow.h"
+#include "Win32Utils.h"
 
 #include <stdexcept>
 
@@ -43,385 +43,277 @@ namespace Spectrum::Platform {
         , m_lastWidth(0)
         , m_lastHeight(0)
         , m_lastUIWidth(0)
-        , m_lastUIHeight(0)
-    {
+        , m_lastUIHeight(0) {
         LOG_INFO("WindowManager: Initializing dual-window architecture...");
 
-        if (!ValidateDependencies())
-        {
+        if (!Pointer(m_controller, "Controller", "WindowManager")) {
             throw std::invalid_argument("WindowManager: Controller dependency cannot be null.");
         }
 
         m_uiManager = std::make_unique<UIManager>(m_controller, this);
-        if (!Pointer(m_uiManager.get(), "UIManager", "WindowManager"))
-        {
+        if (!Pointer(m_uiManager.get(), "UIManager", "WindowManager")) {
             throw std::runtime_error("WindowManager: Failed to create UIManager.");
         }
 
-        m_messageHandler = std::make_unique<MessageHandler>(controller, this, nullptr, bus);
-        if (!Pointer(m_messageHandler.get(), "MessageHandler", "WindowManager"))
-        {
+        m_messageHandler = std::make_unique<MessageHandler>(controller, this, bus);
+        if (!Pointer(m_messageHandler.get(), "MessageHandler", "WindowManager")) {
             throw std::runtime_error("WindowManager: Failed to create main MessageHandler.");
         }
 
         m_uiMessageHandler = std::make_unique<UIMessageHandler>(controller, this, m_uiManager.get(), bus);
-        if (!Pointer(m_uiMessageHandler.get(), "UIMessageHandler", "WindowManager"))
-        {
+        if (!Pointer(m_uiMessageHandler.get(), "UIMessageHandler", "WindowManager")) {
             throw std::runtime_error("WindowManager: Failed to create UI MessageHandler.");
         }
 
         LOG_INFO("WindowManager: Construction completed.");
     }
 
-    WindowManager::~WindowManager() noexcept
-    {
+    WindowManager::~WindowManager() noexcept {
         LOG_INFO("WindowManager: Shutting down...");
 
         HideUIWindow();
-
-        if (m_isOverlay)
-        {
-            HideWindow(m_overlayWnd.get());
-        }
-        else
-        {
-            HideWindow(m_mainWnd.get());
-        }
+        HideWindow(m_isOverlay ? m_overlayWnd.get() : m_mainWnd.get());
 
         LOG_INFO("WindowManager: Shutdown complete.");
     }
 
-    bool WindowManager::Initialize()
-    {
+    bool WindowManager::Initialize() {
         LOG_INFO("WindowManager: Starting initialization sequence...");
 
-        if (!InitializeWindows())
-        {
+        if (!InitializeWindows()) {
             LOG_ERROR("WindowManager: Window initialization failed.");
             return false;
         }
 
-        if (!InitializeGraphics())
-        {
+        if (!InitializeGraphics()) {
             LOG_ERROR("WindowManager: Graphics initialization failed.");
             return false;
         }
 
-        if (!InitializeUI())
-        {
+        if (!InitializeUI()) {
             LOG_ERROR("WindowManager: UI initialization failed.");
             return false;
         }
 
-        if (m_mainWnd)
-        {
-            if (!Helpers::Window::CenterWindow(m_mainWnd->GetHwnd()))
-            {
+        if (m_mainWnd) {
+            if (!Helpers::Window::CenterWindow(m_mainWnd->GetHwnd())) {
                 LOG_WARNING("WindowManager: Failed to center main window.");
             }
             ShowWindow(m_mainWnd.get());
         }
 
         ShowUIWindow();
+
+        if (m_controller) {
+            if (auto* audioMgr = m_controller->GetAudioManager()) {
+                audioMgr->Update(0.016f);
+            }
+        }
+
+        WarmupUI();
+
         ForceUIRender();
 
         LOG_INFO("WindowManager: Initialization completed successfully.");
         return true;
     }
 
-    bool WindowManager::HandleVisualizationResize(int width, int height, bool recreateContext)
-    {
-        LOG_INFO("WindowManager: Handling visualization resize ("
-            << width << "x" << height << ", recreate=" << recreateContext << ")");
-
-        if (!Helpers::Window::IsValidSize(width, height))
-        {
-            LOG_ERROR("WindowManager: Invalid dimensions for visualization resize.");
-            return false;
-        }
-
-        if (recreateContext)
-        {
-            if (!RecreateVisualizationContext(GetCurrentHwnd()))
-            {
-                LOG_ERROR("WindowManager: Visualization context recreation failed.");
-                return false;
-            }
-        }
-
-        if (m_engine)
-        {
-            m_engine->Resize(width, height);
-        }
-
-        if (m_controller)
-        {
-            m_controller->OnResize(width, height);
-        }
-
-        LOG_INFO("WindowManager: Visualization resize handled successfully.");
-        return true;
-    }
-
-    bool WindowManager::HandleUIResize(int width, int height, bool recreateContext)
-    {
-        LOG_INFO("WindowManager: Handling UI resize ("
-            << width << "x" << height << ", recreate=" << recreateContext << ")");
-
-        if (!Helpers::Window::IsValidSize(width, height))
-        {
-            LOG_ERROR("WindowManager: Invalid dimensions for UI resize.");
-            return false;
-        }
-
-        if (recreateContext)
-        {
-            if (!m_uiWnd)
-            {
-                LOG_ERROR("WindowManager: UI window not available for context recreation.");
-                return false;
-            }
-
-            if (!RecreateUIContext(m_uiWnd->GetHwnd()))
-            {
-                LOG_ERROR("WindowManager: UI context recreation failed.");
-                return false;
-            }
-
-            if (m_uiManager)
-            {
-                LOG_INFO("WindowManager: Re-initializing UIManager after context recreation.");
-                m_uiManager->Shutdown();
-
-                if (!m_uiManager->Initialize())
-                {
-                    LOG_ERROR("WindowManager: Failed to re-initialize UIManager.");
-                    return false;
+    bool WindowManager::HandleVisualizationResize(int width, int height, bool recreateContext) {
+        return HandleResizeInternal(
+            m_engine,
+            width, height,
+            recreateContext,
+            "visualization",
+            [this] { return RecreateVisualizationContext(GetCurrentHwnd()); },
+            [this](int w, int h) {
+                if (m_controller) {
+                    m_controller->OnResize(w, h);
                 }
             }
-        }
-
-        if (m_uiEngine)
-        {
-            m_uiEngine->Resize(width, height);
-        }
-
-        if (m_controller)
-        {
-            m_controller->OnUIResize(width, height);
-        }
-
-        LOG_INFO("WindowManager: UI resize handled successfully.");
-        return true;
+        );
     }
 
-    void WindowManager::OnResizeStart()
-    {
+    bool WindowManager::HandleUIResize(int width, int height, bool recreateContext) {
+        return HandleResizeInternal(
+            m_uiEngine,
+            width, height,
+            recreateContext,
+            "UI",
+            [this] {
+                if (!m_uiWnd) {
+                    LOG_ERROR("WindowManager: UI window not available for context recreation.");
+                    return false;
+                }
+
+                if (!RecreateUIContext(m_uiWnd->GetHwnd())) {
+                    LOG_ERROR("WindowManager: UI context recreation failed.");
+                    return false;
+                }
+
+                if (m_uiManager) {
+                    LOG_INFO("WindowManager: Re-initializing UIManager after context recreation.");
+                    m_uiManager->Shutdown();
+
+                    if (!m_uiManager->Initialize()) {
+                        LOG_ERROR("WindowManager: Failed to re-initialize UIManager.");
+                        return false;
+                    }
+                }
+                return true;
+            },
+            [this](int w, int h) {
+                if (m_controller) {
+                    m_controller->OnUIResize(w, h);
+                }
+            }
+        );
+    }
+
+    void WindowManager::OnResizeStart() {
         m_isResizing = true;
         LOG_INFO("WindowManager: Main resize started.");
     }
 
-    void WindowManager::OnUIResizeStart()
-    {
+    void WindowManager::OnResizeEnd(HWND hwnd) {
+        OnResizeEndInternal(
+            hwnd,
+            m_isResizing,
+            "main",
+            [this](int w, int h) { return HandleVisualizationResize(w, h, false); }
+        );
+    }
+
+    void WindowManager::OnResize(HWND hwnd, int width, int height) {
+        if (ShouldSkipResize(width, height)) {
+            return;
+        }
+
+        OnResizeInternal(
+            hwnd, width, height,
+            m_lastWidth, m_lastHeight,
+            m_isResizing,
+            m_engine.get(),
+            [this](int w, int h) { return HandleVisualizationResize(w, h, false); }
+        );
+    }
+
+    void WindowManager::OnUIResizeStart() {
         m_isUIResizing = true;
         LOG_INFO("WindowManager: UI resize started.");
     }
 
-    void WindowManager::OnResizeEnd(HWND hwnd)
-    {
-        m_isResizing = false;
+    void WindowManager::OnUIResizeEnd(HWND hwnd) {
+        OnResizeEndInternal(
+            hwnd,
+            m_isUIResizing,
+            "UI",
+            [this](int w, int h) { return HandleUIResize(w, h, false); }
+        );
+    }
 
-        auto clientRect = Helpers::Window::GetClientRect(hwnd);
-        if (!clientRect)
-        {
-            LOG_WARNING("WindowManager: Cannot get main window dimensions on resize end.");
+    void WindowManager::OnUIResize(HWND hwnd, int width, int height) {
+        if (width == m_lastUIWidth && height == m_lastUIHeight) {
             return;
         }
 
-        const int width = clientRect->Width();
-        const int height = clientRect->Height();
-
-        if (!HandleVisualizationResize(width, height, false))
-        {
-            LOG_ERROR("WindowManager: Failed to handle main window resize end.");
-        }
-
-        LOG_INFO("WindowManager: Main resize completed at " << width << "x" << height);
+        OnResizeInternal(
+            hwnd, width, height,
+            m_lastUIWidth, m_lastUIHeight,
+            m_isUIResizing,
+            m_uiEngine.get(),
+            [this](int w, int h) { return HandleUIResize(w, h, false); }
+        );
     }
 
-    void WindowManager::OnUIResizeEnd(HWND hwnd)
-    {
-        m_isUIResizing = false;
-
-        auto clientRect = Helpers::Window::GetClientRect(hwnd);
-        if (!clientRect)
-        {
-            LOG_WARNING("WindowManager: Cannot get UI window dimensions on resize end.");
-            return;
-        }
-
-        const int width = clientRect->Width();
-        const int height = clientRect->Height();
-
-        if (!HandleUIResize(width, height, false))
-        {
-            LOG_ERROR("WindowManager: Failed to handle UI window resize end.");
-        }
-
-        LOG_INFO("WindowManager: UI resize completed at " << width << "x" << height);
-    }
-
-    void WindowManager::OnResize(HWND hwnd, int width, int height)
-    {
-        if (ShouldSkipResize(width, height))
-        {
-            return;
-        }
-
-        m_lastWidth = width;
-        m_lastHeight = height;
-
-        if (m_isResizing && m_engine)
-        {
-            m_engine->Resize(width, height);
-        }
-        else if (!HandleVisualizationResize(width, height, false))
-        {
-            LOG_ERROR("WindowManager: Failed to handle main window resize.");
-        }
-    }
-
-    void WindowManager::OnUIResize(HWND hwnd, int width, int height)
-    {
-        if (width == m_lastUIWidth && height == m_lastUIHeight)
-        {
-            return;
-        }
-
-        m_lastUIWidth = width;
-        m_lastUIHeight = height;
-
-        if (m_isUIResizing && m_uiEngine)
-        {
-            m_uiEngine->Resize(width, height);
-        }
-        else if (!HandleUIResize(width, height, false))
-        {
-            LOG_ERROR("WindowManager: Failed to handle UI window resize.");
-        }
-    }
-
-    void WindowManager::ToggleOverlay()
-    {
+    void WindowManager::ToggleOverlay() {
         m_isOverlay = !m_isOverlay;
-
         LOG_INFO("WindowManager: Switching to " << (m_isOverlay ? "OVERLAY" : "NORMAL") << " mode.");
 
-        if (m_isOverlay)
-        {
-            SwitchActiveWindow(m_mainWnd.get(), m_overlayWnd.get());
-        }
-        else
-        {
-            SwitchActiveWindow(m_overlayWnd.get(), m_mainWnd.get());
-        }
+        MainWindow* windowToHide = m_isOverlay ? m_mainWnd.get() : m_overlayWnd.get();
+        MainWindow* windowToShow = m_isOverlay ? m_overlayWnd.get() : m_mainWnd.get();
 
+        SwitchActiveWindow(windowToHide, windowToShow);
         NotifyRendererOfModeChange();
+
         LOG_INFO("WindowManager: Mode switch completed.");
     }
 
-    void WindowManager::ShowUIWindow() const
-    {
-        if (m_uiWnd)
-        {
+    void WindowManager::ShowUIWindow() const {
+        if (m_uiWnd) {
             m_uiWnd->Show();
         }
     }
 
-    void WindowManager::HideUIWindow() const
-    {
-        if (m_uiWnd)
-        {
+    void WindowManager::HideUIWindow() const {
+        if (m_uiWnd) {
             m_uiWnd->Hide();
         }
     }
 
-    void WindowManager::ForceUIRender()
-    {
-        if (m_uiManager && m_uiEngine && m_uiWnd && IsUIWindowVisible())
-        {
-            m_uiEngine->ClearD3D11(Color(0.05f, 0.05f, 0.10f, 1.0f));
-            m_uiManager->BeginFrame();
-            m_uiManager->Render();
-            m_uiManager->EndFrame();
-            m_uiEngine->Present();
+    void WindowManager::ForceUIRender() {
+        if (!m_uiManager || !m_uiEngine || !m_uiWnd || !IsUIWindowVisible()) {
+            return;
         }
+
+        m_uiEngine->ClearD3D11(kUIBackgroundColor);
+        m_uiManager->BeginFrame();
+        m_uiManager->Render();
+        m_uiManager->EndFrame();
+        m_uiEngine->Present();
     }
 
-    bool WindowManager::IsRunning() const
-    {
+    bool WindowManager::IsRunning() const {
         return m_mainWnd && m_mainWnd->IsRunning();
     }
 
-    bool WindowManager::IsOverlayMode() const noexcept
-    {
+    bool WindowManager::IsOverlayMode() const noexcept {
         return m_isOverlay;
     }
 
-    bool WindowManager::IsActive() const
-    {
+    bool WindowManager::IsActive() const {
         return IsRunning() && Helpers::Window::IsActiveAndVisible(GetCurrentHwnd());
     }
 
-    bool WindowManager::IsResizing() const noexcept
-    {
+    bool WindowManager::IsResizing() const noexcept {
         return m_isResizing || m_isUIResizing;
     }
 
-    bool WindowManager::IsUIWindowVisible() const
-    {
+    bool WindowManager::IsUIWindowVisible() const {
         return m_uiWnd && IsWindowVisible(m_uiWnd->GetHwnd());
     }
 
-    RenderEngine* WindowManager::GetVisualizationEngine() const noexcept
-    {
+    RenderEngine* WindowManager::GetVisualizationEngine() const noexcept {
         return m_engine.get();
     }
 
-    RenderEngine* WindowManager::GetUIEngine() const noexcept
-    {
+    RenderEngine* WindowManager::GetUIEngine() const noexcept {
         return m_uiEngine.get();
     }
 
-    UIManager* WindowManager::GetUIManager() const noexcept
-    {
+    UIManager* WindowManager::GetUIManager() const noexcept {
         return m_uiManager.get();
     }
 
-    MessageHandler* WindowManager::GetMessageHandler() const noexcept
-    {
+    MessageHandler* WindowManager::GetMessageHandler() const noexcept {
         return m_messageHandler.get();
     }
 
-    MainWindow* WindowManager::GetMainWindow() const noexcept
-    {
+    MainWindow* WindowManager::GetMainWindow() const noexcept {
         return m_mainWnd.get();
     }
 
-    UIWindow* WindowManager::GetUIWindow() const noexcept
-    {
+    UIWindow* WindowManager::GetUIWindow() const noexcept {
         return m_uiWnd.get();
     }
 
-    HWND WindowManager::GetCurrentHwnd() const
-    {
-        return m_isOverlay
-            ? (m_overlayWnd ? m_overlayWnd->GetHwnd() : nullptr)
-            : (m_mainWnd ? m_mainWnd->GetHwnd() : nullptr);
+    HWND WindowManager::GetCurrentHwnd() const {
+        if (m_isOverlay) {
+            return m_overlayWnd ? m_overlayWnd->GetHwnd() : nullptr;
+        }
+        return m_mainWnd ? m_mainWnd->GetHwnd() : nullptr;
     }
 
-    bool WindowManager::InitializeWindows()
-    {
+    bool WindowManager::InitializeWindows() {
         LOG_INFO("WindowManager: Creating all windows...");
 
         m_mainWnd = CreateMainWindowInstance(kMainWindowTitle, kMainWindowWidth, kMainWindowHeight, false);
@@ -438,20 +330,17 @@ namespace Spectrum::Platform {
         return true;
     }
 
-    bool WindowManager::InitializeGraphics()
-    {
+    bool WindowManager::InitializeGraphics() {
         LOG_INFO("WindowManager: Initializing graphics contexts...");
 
         VALIDATE_PTR_OR_RETURN_FALSE(m_mainWnd.get(), "WindowManager");
-        if (!RecreateVisualizationContext(m_mainWnd->GetHwnd()))
-        {
+        if (!RecreateVisualizationContext(m_mainWnd->GetHwnd())) {
             LOG_ERROR("WindowManager: Failed to create visualization context.");
             return false;
         }
 
         VALIDATE_PTR_OR_RETURN_FALSE(m_uiWnd.get(), "WindowManager");
-        if (!RecreateUIContext(m_uiWnd->GetHwnd()))
-        {
+        if (!RecreateUIContext(m_uiWnd->GetHwnd())) {
             LOG_ERROR("WindowManager: Failed to create UI context.");
             return false;
         }
@@ -460,14 +349,11 @@ namespace Spectrum::Platform {
         return true;
     }
 
-    bool WindowManager::InitializeUI()
-    {
+    bool WindowManager::InitializeUI() {
         LOG_INFO("WindowManager: Initializing UI components...");
 
         VALIDATE_PTR_OR_RETURN_FALSE(m_uiManager.get(), "WindowManager");
-
-        if (!m_uiManager->Initialize())
-        {
+        if (!m_uiManager->Initialize()) {
             LOG_ERROR("WindowManager: UIManager initialization failed.");
             return false;
         }
@@ -476,18 +362,26 @@ namespace Spectrum::Platform {
         return true;
     }
 
+    void WindowManager::WarmupUI() {
+        if (!m_uiManager || !m_uiEngine) {
+            return;
+        }
+
+        for (int i = 0; i < 2; ++i) {
+            m_uiManager->BeginFrame();
+            m_uiManager->Render();
+            m_uiManager->EndFrame();
+        }
+
+        LOG_INFO("WindowManager: UI warmup completed");
+    }
+
     std::unique_ptr<MainWindow> WindowManager::CreateMainWindowInstance(
-        const wchar_t* title,
-        int width,
-        int height,
-        bool isOverlay) const
-    {
+        const wchar_t* title, int width, int height, bool isOverlay) const {
         LOG_INFO("WindowManager: Creating main window: " << (isOverlay ? "overlay" : "normal"));
 
         auto window = std::make_unique<MainWindow>(m_hInstance);
-
-        if (!window->Initialize(title, width, height, isOverlay, m_messageHandler.get()))
-        {
+        if (!window->Initialize(title, width, height, isOverlay, m_messageHandler.get())) {
             LOG_ERROR("WindowManager: Failed to initialize main window instance.");
             return nullptr;
         }
@@ -496,14 +390,11 @@ namespace Spectrum::Platform {
         return window;
     }
 
-    std::unique_ptr<UIWindow> WindowManager::CreateUIWindowInstance() const
-    {
+    std::unique_ptr<UIWindow> WindowManager::CreateUIWindowInstance() const {
         LOG_INFO("WindowManager: Creating UI window...");
 
         auto window = std::make_unique<UIWindow>(m_hInstance);
-
-        if (!window->Initialize(kUIWindowTitle, kUIWindowWidth, kUIWindowHeight, m_uiMessageHandler.get()))
-        {
+        if (!window->Initialize(kUIWindowTitle, kUIWindowWidth, kUIWindowHeight, m_uiMessageHandler.get())) {
             LOG_ERROR("WindowManager: Failed to initialize UI window instance.");
             return nullptr;
         }
@@ -512,10 +403,8 @@ namespace Spectrum::Platform {
         return window;
     }
 
-    void WindowManager::SwitchActiveWindow(MainWindow* hide, MainWindow* show)
-    {
-        if (!hide || !show)
-        {
+    void WindowManager::SwitchActiveWindow(MainWindow* hide, MainWindow* show) {
+        if (!hide || !show) {
             LOG_WARNING("WindowManager: Invalid windows for switch.");
             return;
         }
@@ -523,59 +412,47 @@ namespace Spectrum::Platform {
         HideWindow(hide);
 
         auto clientRect = Helpers::Window::GetClientRect(show->GetHwnd());
-        if (!clientRect)
-        {
+        if (!clientRect) {
             LOG_ERROR("WindowManager: Cannot get window dimensions on switch.");
             return;
         }
 
-        if (!HandleVisualizationResize(clientRect->Width(), clientRect->Height(), true))
-        {
+        if (!HandleVisualizationResize(clientRect->Width(), clientRect->Height(), true)) {
             LOG_ERROR("WindowManager: Failed to switch active window.");
             return;
         }
 
-        if (m_isOverlay)
-        {
+        if (m_isOverlay) {
             PositionOverlayWindow();
         }
 
         ShowWindow(show);
     }
 
-    void WindowManager::ShowWindow(MainWindow* window) const
-    {
-        if (window)
-        {
+    void WindowManager::ShowWindow(MainWindow* window) const {
+        if (window) {
             Helpers::Window::ShowWindowState(window->GetHwnd());
         }
     }
 
-    void WindowManager::HideWindow(MainWindow* window) const
-    {
-        if (window)
-        {
+    void WindowManager::HideWindow(MainWindow* window) const {
+        if (window) {
             Helpers::Window::HideWindow(window->GetHwnd());
         }
     }
 
-    void WindowManager::PositionOverlayWindow() const
-    {
-        if (!m_overlayWnd)
-        {
+    void WindowManager::PositionOverlayWindow() const {
+        if (!m_overlayWnd) {
             return;
         }
 
-        if (!Helpers::Window::PositionAtBottom(m_overlayWnd->GetHwnd(), m_overlayWnd->GetHeight()))
-        {
+        if (!Helpers::Window::PositionAtBottom(m_overlayWnd->GetHwnd(), m_overlayWnd->GetHeight())) {
             LOG_WARNING("WindowManager: Failed to position overlay window.");
         }
     }
 
-    bool WindowManager::RecreateVisualizationContext(HWND hwnd)
-    {
-        if (!Helpers::Window::IsWindowValid(hwnd))
-        {
+    bool WindowManager::RecreateVisualizationContext(HWND hwnd) {
+        if (!Helpers::Window::IsWindowValid(hwnd)) {
             LOG_ERROR("WindowManager: Invalid HWND for visualization context.");
             return false;
         }
@@ -585,8 +462,7 @@ namespace Spectrum::Platform {
         m_engine = std::make_unique<RenderEngine>(hwnd, m_isOverlay, true);
         VALIDATE_PTR_OR_RETURN_FALSE(m_engine.get(), "WindowManager");
 
-        if (!m_engine->Initialize())
-        {
+        if (!m_engine->Initialize()) {
             LOG_ERROR("WindowManager: Visualization RenderEngine initialization failed.");
             return false;
         }
@@ -595,10 +471,8 @@ namespace Spectrum::Platform {
         return true;
     }
 
-    bool WindowManager::RecreateUIContext(HWND hwnd)
-    {
-        if (!Helpers::Window::IsWindowValid(hwnd))
-        {
+    bool WindowManager::RecreateUIContext(HWND hwnd) {
+        if (!Helpers::Window::IsWindowValid(hwnd)) {
             LOG_ERROR("WindowManager: Invalid HWND for UI context.");
             return false;
         }
@@ -608,8 +482,7 @@ namespace Spectrum::Platform {
         m_uiEngine = std::make_unique<RenderEngine>(hwnd, false, false);
         VALIDATE_PTR_OR_RETURN_FALSE(m_uiEngine.get(), "WindowManager");
 
-        if (!m_uiEngine->Initialize())
-        {
+        if (!m_uiEngine->Initialize()) {
             LOG_ERROR("WindowManager: UI RenderEngine initialization failed.");
             return false;
         }
@@ -618,36 +491,106 @@ namespace Spectrum::Platform {
         return true;
     }
 
-    void WindowManager::NotifyRendererOfModeChange() const
-    {
-        if (!m_controller)
-        {
+    void WindowManager::NotifyRendererOfModeChange() const {
+        if (!m_controller) {
             return;
         }
 
         auto* rendererManager = m_controller->GetRendererManager();
-        if (!rendererManager)
-        {
+        if (!rendererManager) {
             return;
         }
 
-        auto* renderer = rendererManager->GetCurrentRenderer();
-        if (renderer)
-        {
+        if (auto* renderer = rendererManager->GetCurrentRenderer()) {
             renderer->SetOverlayMode(m_isOverlay);
             LOG_INFO("WindowManager: Renderer notified of mode change.");
         }
     }
 
-    bool WindowManager::ShouldSkipResize(int width, int height) const noexcept
-    {
+    bool WindowManager::ShouldSkipResize(int width, int height) const noexcept {
         return !Helpers::Window::IsValidSize(width, height) ||
             (width == m_lastWidth && height == m_lastHeight);
     }
 
-    bool WindowManager::ValidateDependencies() const noexcept
-    {
-        return Pointer(m_controller, "Controller", "WindowManager");
+    template <typename TEngine>
+    bool WindowManager::HandleResizeInternal(
+        TEngine& engine,
+        int width, int height,
+        bool recreateContext,
+        const char* logContext,
+        const std::function<bool()>& recreateFunc,
+        const std::function<void(int, int)>& notifyFunc) {
+        LOG_INFO("WindowManager: Handling " << logContext << " resize ("
+            << width << "x" << height << ", recreate=" << recreateContext << ")");
+
+        if (!Helpers::Window::IsValidSize(width, height)) {
+            LOG_ERROR("WindowManager: Invalid dimensions for " << logContext << " resize.");
+            return false;
+        }
+
+        if (recreateContext && recreateFunc && !recreateFunc()) {
+            LOG_ERROR("WindowManager: " << logContext << " context recreation failed.");
+            return false;
+        }
+
+        if (engine) {
+            engine->Resize(width, height);
+        }
+
+        if (notifyFunc) {
+            notifyFunc(width, height);
+        }
+
+        LOG_INFO("WindowManager: " << logContext << " resize handled successfully.");
+        return true;
     }
 
-}  // namespace Spectrum::Platform
+    void WindowManager::OnResizeEndInternal(
+        HWND hwnd,
+        bool& isResizingFlag,
+        const char* logContext,
+        const std::function<bool(int, int)>& resizeHandler) {
+        isResizingFlag = false;
+
+        auto clientRect = Helpers::Window::GetClientRect(hwnd);
+        if (!clientRect) {
+            LOG_WARNING("WindowManager: Cannot get " << logContext << " window dimensions on resize end.");
+            return;
+        }
+
+        const int width = clientRect->Width();
+        const int height = clientRect->Height();
+
+        if (!resizeHandler(width, height)) {
+            LOG_ERROR("WindowManager: Failed to handle " << logContext << " window resize end.");
+        }
+
+        LOG_INFO("WindowManager: " << logContext << " resize completed at " << width << "x" << height);
+    }
+
+    void WindowManager::OnResizeInternal(
+        HWND hwnd,
+        int width, int height,
+        int& lastWidth, int& lastHeight,
+        bool isResizing,
+        RenderEngine* engine,
+        const std::function<bool(int, int)>& handler) {
+        if (width == lastWidth && height == lastHeight) {
+            return;
+        }
+
+        lastWidth = width;
+        lastHeight = height;
+
+        if (engine) {
+            engine->Resize(width, height);
+        }
+
+        if (!isResizing) {
+            if (!handler(width, height)) {
+                LOG_ERROR("WindowManager: Resize handler failed for " << width << "x" << height);
+            }
+        }
+    }
+
+}

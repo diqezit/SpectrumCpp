@@ -1,5 +1,4 @@
-﻿// UIManager.cpp
-#include "UI/Core/UIManager.h"
+﻿#include "UI/Core/UIManager.h"
 #include "UI/Core/ImGuiContext.h"
 #include "App/ControllerCore.h"
 #include "Audio/AudioManager.h"
@@ -54,7 +53,16 @@ namespace Spectrum {
             return false;
         }
 
-        m_imguiContext->SetRenderTargetView(uiEngine->GetD3D11RenderTargetView());
+        auto* rtv = uiEngine->GetD3D11RenderTargetView();
+        if (rtv)
+        {
+            m_imguiContext->SetRenderTargetView(rtv);
+        }
+        else
+        {
+            LOG_WARNING("UIManager: RenderTargetView not available at initialization");
+        }
+
         return true;
     }
 
@@ -312,7 +320,7 @@ namespace Spectrum {
         std::string currentFFT(audioMgr->GetFFTWindowName());
         if (ImGui::BeginCombo("##FFT", currentFFT.c_str()))
         {
-            const auto fftWindows = audioMgr->GetAvailableFFTWindows();
+            const auto& fftWindows = audioMgr->GetAvailableFFTWindows();
             for (const auto& name : fftWindows)
             {
                 bool isSelected = (currentFFT == name);
@@ -336,7 +344,7 @@ namespace Spectrum {
         std::string currentScale(audioMgr->GetSpectrumScaleName());
         if (ImGui::BeginCombo("##Scale", currentScale.c_str()))
         {
-            const auto scaleTypes = audioMgr->GetAvailableSpectrumScales();
+            const auto& scaleTypes = audioMgr->GetAvailableSpectrumScales();
             for (const auto& name : scaleTypes)
             {
                 bool isSelected = (currentScale == name);
@@ -360,7 +368,7 @@ namespace Spectrum {
             audioMgr->SetAmplification(1.0f);
             audioMgr->SetSmoothing(0.7f);
             audioMgr->SetBarCount(64);
-            audioMgr->SetFFTWindowByName("Hanning");
+            audioMgr->SetFFTWindowByName("Hann");
             audioMgr->SetSpectrumScaleByName("Linear");
         }
 
@@ -407,4 +415,4 @@ namespace Spectrum {
         ImGui::End();
     }
 
-} // namespace Spectrum
+}

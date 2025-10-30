@@ -125,19 +125,13 @@ namespace Spectrum
         bool ActivateInitialRenderer();
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Renderer Lifecycle - High Level
+        // Renderer Lifecycle
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         bool SwitchRenderer(RenderStyle newStyle);
-        void DeactivateCurrentRenderer() noexcept;
         bool ActivateNewRenderer(RenderStyle style);
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Renderer Lifecycle - Low Level (Transactional)
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
         bool PrepareActivationContext(RenderStyle style, ActivationContext& outContext) const;
-        bool TryActivateRenderer(ActivationContext& context) const noexcept;
+        bool TryActivateRenderer(const ActivationContext& context) const noexcept;
         void CommitRendererState(const ActivationContext& context) noexcept;
         bool AttemptRendererRecovery(RenderStyle fallbackStyle);
 
@@ -146,39 +140,26 @@ namespace Spectrum
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void SetQuality(RenderQuality quality);
-        bool ApplyQualityToRenderer(IRenderer* renderer, RenderQuality quality) noexcept;
         void ApplyQualityToAllRenderers(RenderQuality quality);
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Resize Handling
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-        bool HandleRendererResize(int width, int height);
-        bool RecoverFromResizeFailure();
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Domain-Specific Validation (kept local - not pointer validation)
+        // Helper Methods
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         [[nodiscard]] bool ValidateDimensions(int width, int height) const noexcept;
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Renderer Lookup
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
         [[nodiscard]] IRenderer* FindRenderer(RenderStyle style) const noexcept;
         [[nodiscard]] bool GetEngineDimensions(int& outWidth, int& outHeight) const noexcept;
+        void SafeDeactivateRenderer(IRenderer* renderer) const noexcept;
+        void SafeSetQuality(IRenderer* renderer, RenderQuality quality) const noexcept;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Logging Helpers
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void LogRendererSwitch(RenderStyle from, RenderStyle to) const;
-        void LogQualityChange(RenderQuality quality) const;
         void LogRendererCreation() const;
         void LogActivationSuccess(const ActivationContext& context) const;
         void LogActivationFailure(RenderStyle style, const char* reason) const;
-        void LogDeactivation(IRenderer* renderer) const noexcept;
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Member Variables

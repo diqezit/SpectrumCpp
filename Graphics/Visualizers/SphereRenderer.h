@@ -1,30 +1,7 @@
 #ifndef SPECTRUM_CPP_SPHERE_RENDERER_H
 #define SPECTRUM_CPP_SPHERE_RENDERER_H
 
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// Defines the SphereRenderer for orbital sphere visualization.
-//
-// This renderer displays spectrum data as a circle of spheres, with each
-// sphere's size and opacity driven by its corresponding frequency band.
-// Creates a planetary system effect with spheres orbiting the center.
-//
-// Key features:
-// - Spheres arranged in circular orbit pattern
-// - Size and alpha modulation based on audio magnitude
-// - Batch rendering by grouping similar alpha values
-// - Adaptive sphere count based on spectrum size
-// - Pre-calculated trigonometry for performance
-// - Uses GeometryHelpers for all geometric calculations
-//
-// Design notes:
-// - All rendering methods are const (state in m_currentAlphas)
-// - Quality settings control gradient effects and response speed
-// - Groups spheres by alpha to reduce draw calls
-// - Supports both solid and radial gradient rendering
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
 #include "Graphics/Base/BaseRenderer.h"
-#include "Graphics/API/GraphicsAPI.h"
 #include "Graphics/Visualizers/Settings/QualityTraits.h"
 #include <vector>
 
@@ -32,31 +9,21 @@ namespace Spectrum {
 
     class Canvas;
 
-    class SphereRenderer final : public BaseRenderer
+    class SphereRenderer final : public BaseRenderer<SphereRenderer>
     {
     public:
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Lifecycle Management
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
         SphereRenderer();
         ~SphereRenderer() override = default;
 
-        SphereRenderer(const SphereRenderer&) = delete;
-        SphereRenderer& operator=(const SphereRenderer&) = delete;
+        [[nodiscard]] RenderStyle GetStyle() const override {
+            return RenderStyle::Sphere;
+        }
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // IRenderer Implementation
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-        [[nodiscard]] RenderStyle GetStyle() const override { return RenderStyle::Sphere; }
-        [[nodiscard]] std::string_view GetName() const override { return "Sphere"; }
+        [[nodiscard]] std::string_view GetName() const override {
+            return "Sphere";
+        }
 
     protected:
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // BaseRenderer Overrides
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
         void UpdateSettings() override;
 
         void UpdateAnimation(
@@ -70,81 +37,52 @@ namespace Spectrum {
         ) override;
 
     private:
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Settings
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
         using Settings = Settings::SphereSettings;
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Data Structures
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        static constexpr float kMinAlpha = 0.1f;
+        static constexpr float kMinCircleSize = 2.0f;
+        static constexpr float kBaseRadius = 40.0f;
+        static constexpr float kBaseRadiusOverlay = 20.0f;
+        static constexpr float kAlphaMultiplier = 3.0f;
+        static constexpr int kMinSphereCount = 8;
+        static constexpr int kMaxSphereCount = 64;
 
-        struct AlphaGroup
-        {
-            size_t start;
-            size_t end;
-            float alpha;
+        struct SphereData {
+            Point position;
+            float radius;
+            Color color;
         };
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Main Rendering Components (SRP)
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        void UpdateConfiguration(size_t requiredCount);
 
-        void RenderSolidSpheres(
-            Canvas& canvas,
-            const std::vector<AlphaGroup>& groups
+        [[nodiscard]] std::vector<SphereData> CollectVisibleSpheres(
+            const SpectrumData& spectrum
         ) const;
 
-        void RenderGradientSpheres(
-            Canvas& canvas,
-            const std::vector<AlphaGroup>& groups
+        [[nodiscard]] size_t CalculateSphereCount(
+            const SpectrumData& spectrum
         ) const;
 
-        void RenderGroup(
-            Canvas& canvas,
-            const AlphaGroup& group,
-            const Paint& paint
-        ) const;
-
-        void RenderSingleSphere(
-            Canvas& canvas,
+        [[nodiscard]] Point CalculateSpherePosition(
             size_t index,
-            const Paint& paint
+            float orbitRadius
         ) const;
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Configuration Management
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        [[nodiscard]] float CalculateSphereSize(
+            float alpha
+        ) const;
 
-        void UpdateConfiguration(const SpectrumData& spectrum);
-        void UpdateAlphas(const SpectrumData& spectrum);
-        void EnsureArraysInitialized();
-        void PrecomputeTrigValues();
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Calculation Helpers
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-        [[nodiscard]] std::vector<AlphaGroup> GroupAlphas() const;
-        [[nodiscard]] Point GetSpherePosition(size_t index) const;
-        [[nodiscard]] float GetSphereSize(size_t index) const;
-        [[nodiscard]] float GetMaxRadius() const;
-        [[nodiscard]] Point GetOrbitCenter() const;
-        [[nodiscard]] float QuantizeAlphaForRendering(float alpha) const noexcept;
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Member Variables
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        [[nodiscard]] Color CalculateSphereColor(
+            float alpha
+        ) const;
 
         Settings m_settings;
         size_t m_sphereCount;
         float m_sphereRadius;
-        std::vector<float> m_cosValues;
-        std::vector<float> m_sinValues;
+        std::vector<Point> m_orbitPositions;
         std::vector<float> m_currentAlphas;
     };
 
 } // namespace Spectrum
 
-#endif // SPECTRUM_CPP_SPHERE_RENDERER_H
+#endif

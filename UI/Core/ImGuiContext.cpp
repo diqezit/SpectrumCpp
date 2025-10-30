@@ -1,5 +1,4 @@
-﻿// ImGuiContext.cpp
-#include "UI/Core/ImGuiContext.h"
+﻿#include "UI/Core/ImGuiContext.h"
 #include "imgui.h"
 #include "imgui_impl_win32.h"
 #include "imgui_impl_dx11.h"
@@ -27,8 +26,8 @@ namespace Spectrum {
     {
         if (m_initialized)
         {
-            LOG_WARNING("ImGuiContext: Already initialized");
-            return true;
+            LOG_WARNING("ImGuiContext: Already initialized, reinitializing...");
+            Shutdown();
         }
 
         if (!hwnd || !device || !deviceContext)
@@ -43,7 +42,7 @@ namespace Spectrum {
         ImGui::CreateContext();
         ImGuiIO& io = ImGui::GetIO();
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-        io.IniFilename = nullptr;  // Disable imgui.ini - prevents state issues
+        io.IniFilename = nullptr;
 
         if (!ImGui_ImplWin32_Init(hwnd))
         {
@@ -134,7 +133,7 @@ namespace Spectrum {
         m_renderTargetView = rtv;
     }
 
-    void ImGuiContext::SetupStyle()
+    void ImGuiContext::SetupStyle() const
     {
         ImGuiStyle& style = ImGui::GetStyle();
 
@@ -166,4 +165,4 @@ namespace Spectrum {
         colors[ImGuiCol_CheckMark] = ImVec4(0.60f, 0.60f, 0.80f, 1.00f);
     }
 
-} // namespace Spectrum
+}

@@ -159,11 +159,13 @@ target_sources(${PROJECT_NAME} PRIVATE
     Platform/MainWindow.h
     Platform/MessageHandler.cpp
     Platform/MessageHandler.h
-    Platform/UIWindow.cpp
-    Platform/UIWindow.h
+    Platform/MessageHandlerBase.h
     Platform/UIMessageHandler.cpp
     Platform/UIMessageHandler.h
+    Platform/UIWindow.cpp
+    Platform/UIWindow.h
     Platform/Win32Utils.h
+    Platform/WindowBase.h
     Platform/WindowManager.cpp
     Platform/WindowManager.h
     
@@ -298,11 +300,13 @@ source_group("Platform" FILES
     Platform/MainWindow.h
     Platform/MessageHandler.cpp
     Platform/MessageHandler.h
-    Platform/UIWindow.cpp
-    Platform/UIWindow.h
+    Platform/MessageHandlerBase.h
     Platform/UIMessageHandler.cpp
     Platform/UIMessageHandler.h
+    Platform/UIWindow.cpp
+    Platform/UIWindow.h
     Platform/Win32Utils.h
+    Platform/WindowBase.h
     Platform/WindowManager.cpp
     Platform/WindowManager.h
 )

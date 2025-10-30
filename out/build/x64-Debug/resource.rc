@@ -1,5 +1,0 @@
-// Resources/resource.rc
-
-#include "Resource.h"
-
-IDI_APP_ICON    ICON    "C:/Users/user/source/repos/SpectrumCpp/Resources/app.ico"

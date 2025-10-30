@@ -1,30 +1,22 @@
 ﻿#ifndef SPECTRUM_GRAPHICS_API_H
 #define SPECTRUM_GRAPHICS_API_H
 
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// Unified Graphics API Header - REFACTORED
-// Eliminates duplication, improves architecture, maintains single-file design
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
 #include "Common/Common.h"
 #include "Common/SpectrumTypes.h"
+
 #include <d2d1.h>
 #include <d3d11.h>
 #include <dwrite.h>
 #include <dxgi.h>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <stack>
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <mutex>
 
 namespace Spectrum {
-
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // SECTION 1: ENUMS & MODES
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     enum class PaintStyle : uint8_t {
         Fill = 0,
@@ -160,10 +152,6 @@ namespace Spectrum {
         return (static_cast<uint8_t>(a) & static_cast<uint8_t>(b)) != 0;
     }
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // SECTION 2: CONSTANTS
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
     namespace Constants {
         namespace Geometry {
             constexpr int kMinCircleSegments = 8;
@@ -197,11 +185,12 @@ namespace Spectrum {
             constexpr size_t kMaxGradientBrushes = 1000;
             constexpr size_t kMaxTextFormats = 100;
         }
-    }
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // SECTION 3: STRUCTS
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        namespace Text {
+            constexpr float kDefaultTextWidth = 1000.0f;
+            constexpr float kDefaultTextHeight = 100.0f;
+        }
+    }
 
     struct GradientStop {
         float position;
@@ -261,35 +250,49 @@ namespace Spectrum {
         float baseline = 0.0f;
 
         [[nodiscard]] TextStyle WithFont(const std::wstring& family) const {
-            TextStyle result = *this; result.fontFamily = family; return result;
+            TextStyle result = *this;
+            result.fontFamily = family;
+            return result;
         }
         [[nodiscard]] TextStyle WithSize(float size) const {
-            TextStyle result = *this; result.fontSize = std::max(1.0f, size); return result;
+            TextStyle result = *this;
+            result.fontSize = std::max(1.0f, size);
+            return result;
         }
         [[nodiscard]] TextStyle WithWeight(FontWeight w) const {
-            TextStyle result = *this; result.weight = w; return result;
+            TextStyle result = *this;
+            result.weight = w;
+            return result;
         }
         [[nodiscard]] TextStyle WithStyle(FontStyle s) const {
-            TextStyle result = *this; result.style = s; return result;
+            TextStyle result = *this;
+            result.style = s;
+            return result;
         }
         [[nodiscard]] TextStyle WithColor(const Color& c) const {
-            TextStyle result = *this; result.color = c; return result;
+            TextStyle result = *this;
+            result.color = c;
+            return result;
         }
         [[nodiscard]] TextStyle WithAlign(TextAlign align) const {
-            TextStyle result = *this; result.textAlign = align; return result;
+            TextStyle result = *this;
+            result.textAlign = align;
+            return result;
         }
         [[nodiscard]] TextStyle WithParagraphAlign(ParagraphAlign align) const {
-            TextStyle result = *this; result.paragraphAlign = align; return result;
+            TextStyle result = *this;
+            result.paragraphAlign = align;
+            return result;
         }
 
         [[nodiscard]] static TextStyle Default() { return {}; }
-        [[nodiscard]] static TextStyle Title() { return TextStyle{}.WithSize(24.0f).WithWeight(FontWeight::Bold); }
-        [[nodiscard]] static TextStyle Body() { return TextStyle{}.WithSize(14.0f).WithWeight(FontWeight::Normal); }
+        [[nodiscard]] static TextStyle Title() {
+            return TextStyle{}.WithSize(24.0f).WithWeight(FontWeight::Bold);
+        }
+        [[nodiscard]] static TextStyle Body() {
+            return TextStyle{}.WithSize(14.0f).WithWeight(FontWeight::Normal);
+        }
     };
-
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // SECTION 4: PAINT CLASS
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     class Paint {
     public:
@@ -337,10 +340,6 @@ namespace Spectrum {
         std::unique_ptr<Impl> m_impl;
     };
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // SECTION 5: GRAPHICS CORE
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
     class GraphicsCore final {
     public:
         class TransformScope {
@@ -351,6 +350,31 @@ namespace Spectrum {
             TransformScope& operator=(TransformScope&& other) noexcept;
             TransformScope(const TransformScope&) = delete;
             TransformScope& operator=(const TransformScope&) = delete;
+
+        private:
+            GraphicsCore* m_core;
+            bool m_active;
+        };
+
+        class OpacityLayerScope {
+        public:
+            OpacityLayerScope(GraphicsCore* core, float opacity);
+            ~OpacityLayerScope() noexcept;
+            OpacityLayerScope(const OpacityLayerScope&) = delete;
+            OpacityLayerScope& operator=(const OpacityLayerScope&) = delete;
+
+        private:
+            GraphicsCore* m_core;
+            bool m_active;
+        };
+
+        class ClipRectScope {
+        public:
+            ClipRectScope(GraphicsCore* core, const Rect& rect);
+            ~ClipRectScope() noexcept;
+            ClipRectScope(const ClipRectScope&) = delete;
+            ClipRectScope& operator=(const ClipRectScope&) = delete;
+
         private:
             GraphicsCore* m_core;
             bool m_active;
@@ -409,10 +433,6 @@ namespace Spectrum {
         std::unique_ptr<Impl> m_impl;
     };
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // SECTION 6: GEOMETRY BUILDER
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
     class GeometryBuilder final {
     public:
         explicit GeometryBuilder(ID2D1Factory* factory);
@@ -436,10 +456,6 @@ namespace Spectrum {
         ID2D1Factory* m_factory;
     };
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // SECTION 7: RENDER ENGINE
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
     class RenderEngine final {
     public:
         class DrawScope final {
@@ -451,6 +467,7 @@ namespace Spectrum {
             DrawScope(DrawScope&&) = delete;
             DrawScope& operator=(DrawScope&&) = delete;
             [[nodiscard]] bool IsActive() const noexcept;
+
         private:
             RenderEngine& m_engine;
             bool m_begun;
@@ -458,7 +475,6 @@ namespace Spectrum {
 
         explicit RenderEngine(HWND hwnd, WindowMode windowMode = WindowMode::Normal, RenderMode renderMode = RenderMode::Direct2D);
 
-        // Backward compatibility constructor
         explicit RenderEngine(HWND hwnd, bool isOverlay, bool useD2DOnly)
             : RenderEngine(hwnd,
                 isOverlay ? WindowMode::Overlay : WindowMode::Normal,
@@ -497,7 +513,6 @@ namespace Spectrum {
         [[nodiscard]] bool IsDrawing() const noexcept;
         [[nodiscard]] RenderMode GetRenderMode() const noexcept;
 
-        // Backward compatibility helpers
         [[nodiscard]] bool IsD2DMode() const noexcept { return GetRenderMode() == RenderMode::Direct2D; }
         [[nodiscard]] bool IsD3D11Mode() const noexcept { return GetRenderMode() == RenderMode::Direct3D11; }
 
@@ -505,10 +520,6 @@ namespace Spectrum {
         struct Impl;
         std::unique_ptr<Impl> m_impl;
     };
-
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // SECTION 8: RENDERER
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     class Renderer final {
     public:
@@ -532,8 +543,8 @@ namespace Spectrum {
         void DrawGeometry(ID2D1Geometry* geometry, const Paint& paint);
         void FillGeometry(ID2D1Geometry* geometry, const Paint& paint);
 
-        ID2D1Brush* GetBrush(const Paint& paint);
-        ID2D1SolidColorBrush* GetSolidBrush(const Color& color);
+        [[nodiscard]] wrl::ComPtr<ID2D1Brush> GetBrush(const Paint& paint);
+        [[nodiscard]] wrl::ComPtr<ID2D1SolidColorBrush> GetSolidBrush(const Color& color);
 
         [[nodiscard]] wrl::ComPtr<ID2D1PathGeometry> CreatePath(const std::vector<Point>& points, bool closed);
         [[nodiscard]] wrl::ComPtr<ID2D1PathGeometry> CreatePathFromLines(const std::vector<Point>& points);
@@ -547,10 +558,6 @@ namespace Spectrum {
         std::unique_ptr<Impl> m_impl;
     };
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // SECTION 9: CANVAS
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
     class Canvas final {
     public:
         Canvas(Renderer* renderer, GraphicsCore* core);
@@ -563,7 +570,6 @@ namespace Spectrum {
 
         [[nodiscard]] ID2D1RenderTarget* GetRenderTarget() const noexcept;
 
-        // Basic primitives
         void DrawRectangle(const Rect& rect, const Paint& paint) const;
         void DrawRoundedRectangle(const Rect& rect, float radius, const Paint& paint) const;
         void DrawCircle(const Point& center, float radius, const Paint& paint) const;
@@ -572,7 +578,6 @@ namespace Spectrum {
         void DrawPolyline(const std::vector<Point>& points, const Paint& paint) const;
         void DrawPolygon(const std::vector<Point>& points, const Paint& paint) const;
 
-        // Complex shapes
         void DrawArc(const Point& center, float radius, float startAngle, float sweepAngle, const Paint& paint) const;
         void DrawRing(const Point& center, float innerRadius, float outerRadius, const Paint& paint) const;
         void DrawSector(const Point& center, float radius, float startAngle, float sweepAngle, const Paint& paint) const;
@@ -580,23 +585,19 @@ namespace Spectrum {
         void DrawStar(const Point& center, float outerRadius, float innerRadius, int points, const Paint& paint) const;
         void DrawGrid(const Rect& bounds, int rows, int cols, const Paint& paint) const;
 
-        // Effects
         void DrawGlow(const Point& center, float radius, const Color& glowColor, float intensity = 1.0f, int layers = Constants::Effects::kDefaultGlowLayers) const;
         void DrawRectangleGlow(const Rect& rect, const Color& glowColor, float intensity = 1.0f, int layers = Constants::Effects::kDefaultGlowLayers) const;
         void DrawRoundedRectangleGlow(const Rect& rect, float cornerRadius, const Color& glowColor, float intensity = 1.0f, int layers = Constants::Effects::kDefaultGlowLayers) const;
-        void DrawWithShadow(std::function<void()> drawCallback, const Point& offset, float blur, const Color& shadowColor) const;
+        void DrawWithShadow(std::function<void()> drawCallback, const Point& offset, const Color& shadowColor) const;
 
-        // Batch rendering
         void DrawCircleBatch(const std::vector<Point>& centers, float radius, const Paint& paint) const;
         void DrawRectangleBatch(const std::vector<Rect>& rects, const Paint& paint) const;
 
-        // Layers and clipping
         void BeginOpacityLayer(float opacity) const;
         void EndOpacityLayer() const;
         void PushClipRect(const Rect& rect) const;
         void PopClipRect() const;
 
-        // Transforms
         void PushTransform() const;
         void PopTransform() const;
         void RotateAt(const Point& center, float angleDegrees) const;
@@ -605,11 +606,9 @@ namespace Spectrum {
         void SetTransform(const D2D1_MATRIX_3X2_F& transform) const;
         void ResetTransform() const;
 
-        // Text
         void DrawText(const std::wstring& text, const Rect& layoutRect, const TextStyle& style) const;
         void DrawText(const std::wstring& text, const Point& position, const TextStyle& style) const;
 
-        // Spectrum visualization
         void DrawSpectrumBars(const SpectrumData& spectrum, const Rect& bounds, const BarStyle& style, const Color& color) const;
         void DrawWaveform(const SpectrumData& spectrum, const Rect& bounds, const Paint& paint, bool mirror = false) const;
 
@@ -618,6 +617,6 @@ namespace Spectrum {
         GraphicsCore* m_core;
     };
 
-} // namespace Spectrum
+}
 
-#endif // SPECTRUM_GRAPHICS_API_H
+#endif

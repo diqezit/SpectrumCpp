@@ -63,7 +63,9 @@ namespace Spectrum
     {
         LOG_INFO("RendererManager: Shutting down...");
 
-        DeactivateCurrentRenderer();
+        if (m_currentState.renderer) {
+            SafeDeactivateRenderer(m_currentState.renderer);
+        }
 
         LOG_INFO("RendererManager: Destroyed " << m_renderers.size() << " renderer(s)");
     }
@@ -104,15 +106,19 @@ namespace Spectrum
 
         LOG_INFO("RendererManager: Resizing to " << width << "x" << height);
 
-        if (!m_currentState.isActive) {
+        if (!m_currentState.isActive || !m_currentState.renderer) {
             LOG_WARNING("RendererManager: No active renderer to resize");
             return;
         }
 
-        if (!HandleRendererResize(width, height)) {
+        try {
+            m_currentState.renderer->OnResize(width, height);
+            m_currentState.renderer->SetQuality(m_currentQuality);
+            LOG_INFO("RendererManager: Resize completed successfully");
+        }
+        catch (const std::exception&) {
             LOG_ERROR("RendererManager: Resize failed, attempting recovery");
-
-            if (!RecoverFromResizeFailure()) {
+            if (!AttemptRendererRecovery(m_currentState.style)) {
                 LOG_CRITICAL("RendererManager: Failed to recover from resize error!");
             }
         }
@@ -143,25 +149,19 @@ namespace Spectrum
     void RendererManager::SwitchToNextRenderer()
     {
         LOG_INFO("RendererManager: Cycling to next renderer");
-
-        const RenderStyle nextStyle = Helpers::Utils::CycleEnum(m_currentState.style, 1);
-        SetCurrentRenderer(nextStyle);
+        SetCurrentRenderer(Helpers::Utils::CycleEnum(m_currentState.style, 1));
     }
 
     void RendererManager::SwitchToPrevRenderer()
     {
         LOG_INFO("RendererManager: Cycling to previous renderer");
-
-        const RenderStyle prevStyle = Helpers::Utils::CycleEnum(m_currentState.style, -1);
-        SetCurrentRenderer(prevStyle);
+        SetCurrentRenderer(Helpers::Utils::CycleEnum(m_currentState.style, -1));
     }
 
     void RendererManager::CycleQuality(int direction)
     {
         LOG_INFO("RendererManager: Cycling quality (direction: " << direction << ")");
-
-        const RenderQuality nextQuality = Helpers::Utils::CycleEnum(m_currentQuality, direction);
-        SetQuality(nextQuality);
+        SetQuality(Helpers::Utils::CycleEnum(m_currentQuality, direction));
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -318,7 +318,7 @@ namespace Spectrum
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Renderer Lifecycle - High Level
+    // Renderer Lifecycle
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     bool RendererManager::SwitchRenderer(RenderStyle newStyle)
@@ -341,14 +341,7 @@ namespace Spectrum
 
         // Deactivate previous renderer (if any) after successful activation
         if (previousState.isActive && previousState.renderer) {
-            try {
-                LogDeactivation(previousState.renderer);
-                previousState.renderer->OnDeactivate();
-            }
-            catch (const std::exception&) {
-                LOG_ERROR("RendererManager: Exception during previous renderer deactivation");
-                // Continue - new renderer is already active
-            }
+            SafeDeactivateRenderer(previousState.renderer);
         }
 
         // Commit new state atomically
@@ -358,27 +351,6 @@ namespace Spectrum
         LogRendererSwitch(previousState.style, newStyle);
 
         return true;
-    }
-
-    void RendererManager::DeactivateCurrentRenderer() noexcept
-    {
-        if (!m_currentState.isActive || !m_currentState.renderer) {
-            return;
-        }
-
-        try {
-            LogDeactivation(m_currentState.renderer);
-            m_currentState.renderer->OnDeactivate();
-        }
-        catch (const std::exception&) {
-            LOG_ERROR("RendererManager: Exception during deactivation");
-        }
-        catch (...) {
-            LOG_ERROR("RendererManager: Unknown exception during deactivation");
-        }
-
-        // Always clear state after deactivation attempt
-        m_currentState.Clear();
     }
 
     bool RendererManager::ActivateNewRenderer(RenderStyle style)
@@ -400,32 +372,18 @@ namespace Spectrum
         return true;
     }
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Renderer Lifecycle - Low Level (Transactional)
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
     bool RendererManager::PrepareActivationContext(
         RenderStyle style,
         ActivationContext& outContext
     ) const
     {
         IRenderer* renderer = FindRenderer(style);
-        if (!Pointer(renderer, "Renderer", "RendererManager")) {
+        if (!renderer) {
             LogActivationFailure(style, "Renderer not found");
             return false;
         }
 
-        if (!Pointer(m_windowManager, "WindowManager", "RendererManager")) {
-            LogActivationFailure(style, "WindowManager validation failed");
-            return false;
-        }
-
-        auto* engine = m_windowManager->GetVisualizationEngine();
-        if (!Pointer(engine, "RenderEngine", "RendererManager")) {
-            LogActivationFailure(style, "RenderEngine validation failed");
-            return false;
-        }
-
+        // Get dimensions from engine
         int width = 0, height = 0;
         if (!GetEngineDimensions(width, height)) {
             LogActivationFailure(style, "Failed to get engine dimensions");
@@ -442,41 +400,18 @@ namespace Spectrum
         outContext.width = width;
         outContext.height = height;
 
-        if (!Pointer(outContext.renderer, "ActivationContext.renderer", "RendererManager")) {
-            return false;
-        }
-
-        if (!ValidateDimensions(outContext.width, outContext.height)) {
-            LOG_ERROR("RendererManager: Activation context has invalid dimensions");
-            return false;
-        }
-
         return true;
     }
 
-    bool RendererManager::TryActivateRenderer(ActivationContext& context) const noexcept
+    bool RendererManager::TryActivateRenderer(const ActivationContext& context) const noexcept
     {
-        if (!Pointer(context.renderer, "context.renderer", nullptr)) {
-            return false;
-        }
-
-        if (!ValidateDimensions(context.width, context.height)) {
-            return false;
-        }
-
         try {
             context.renderer->OnActivate(context.width, context.height);
-
             context.renderer->SetQuality(m_currentQuality);
-
             return true;
         }
         catch (const std::exception&) {
             LOG_ERROR("RendererManager: Exception during activation");
-            return false;
-        }
-        catch (...) {
-            LOG_ERROR("RendererManager: Unknown exception during activation");
             return false;
         }
     }
@@ -519,31 +454,6 @@ namespace Spectrum
         LOG_INFO("RendererManager: Setting quality to " << GetQualityName().data());
 
         ApplyQualityToAllRenderers(quality);
-
-        LogQualityChange(quality);
-    }
-
-    bool RendererManager::ApplyQualityToRenderer(
-        IRenderer* renderer,
-        RenderQuality quality
-    ) noexcept
-    {
-        if (!Pointer(renderer, "renderer", nullptr)) {
-            return false;
-        }
-
-        try {
-            renderer->SetQuality(quality);
-            return true;
-        }
-        catch (const std::exception&) {
-            LOG_ERROR("RendererManager: Failed to set quality for renderer");
-            return false;
-        }
-        catch (...) {
-            LOG_ERROR("RendererManager: Unknown exception while setting quality");
-            return false;
-        }
     }
 
     void RendererManager::ApplyQualityToAllRenderers(RenderQuality quality)
@@ -560,12 +470,8 @@ namespace Spectrum
                 continue;
             }
 
-            if (ApplyQualityToRenderer(renderer.get(), quality)) {
-                ++successCount;
-            }
-            else {
-                ++failCount;
-            }
+            SafeSetQuality(renderer.get(), quality);
+            ++successCount;
         }
 
         LOG_INFO("RendererManager: Quality update completed - "
@@ -573,49 +479,7 @@ namespace Spectrum
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Resize Handling
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-    bool RendererManager::HandleRendererResize(int width, int height)
-    {
-        VALIDATE_PTR_OR_RETURN_FALSE(m_currentState.renderer, "RendererManager");
-
-        try {
-            m_currentState.renderer->OnResize(width, height);
-            m_currentState.renderer->SetQuality(m_currentQuality);
-
-            LOG_INFO("RendererManager: Resize completed successfully");
-            return true;
-        }
-        catch (const std::exception&) {
-            LOG_ERROR("RendererManager: Resize failed");
-            return false;
-        }
-        catch (...) {
-            LOG_ERROR("RendererManager: Unknown exception during resize");
-            return false;
-        }
-    }
-
-    bool RendererManager::RecoverFromResizeFailure()
-    {
-        if (!m_currentState.isActive) {
-            return false;
-        }
-
-        LOG_INFO("RendererManager: Attempting to recover from resize failure");
-
-        // Try to reactivate current renderer
-        const RenderStyle currentStyle = m_currentState.style;
-
-        // Clear state before reactivation attempt
-        m_currentState.Clear();
-
-        return AttemptRendererRecovery(currentStyle);
-    }
-
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Domain-Specific Validation (NOT pointer validation - kept local)
+    // Helper Methods
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     [[nodiscard]] bool RendererManager::ValidateDimensions(
@@ -626,30 +490,16 @@ namespace Spectrum
         constexpr int kMinDimension = 1;
         constexpr int kMaxDimension = 16384;
 
-        if (width < kMinDimension || width > kMaxDimension ||
-            height < kMinDimension || height > kMaxDimension) {
-            return false;
-        }
-
-        return true;
+        return width >= kMinDimension && width <= kMaxDimension &&
+            height >= kMinDimension && height <= kMaxDimension;
     }
-
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Renderer Lookup
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     [[nodiscard]] IRenderer* RendererManager::FindRenderer(RenderStyle style) const noexcept
     {
         auto it = m_renderers.find(style);
 
-        if (it == m_renderers.end()) {
+        if (it == m_renderers.end() || !it->second) {
             LOG_ERROR("RendererManager: Renderer not found for style "
-                << static_cast<int>(style));
-            return nullptr;
-        }
-
-        if (!it->second) {
-            LOG_ERROR("RendererManager: Renderer instance is null for style "
                 << static_cast<int>(style));
             return nullptr;
         }
@@ -662,12 +512,12 @@ namespace Spectrum
         int& outHeight
     ) const noexcept
     {
-        if (!Pointer(m_windowManager, "m_windowManager", nullptr)) {
+        if (!m_windowManager) {
             return false;
         }
 
         auto* engine = m_windowManager->GetVisualizationEngine();
-        if (!Pointer(engine, "RenderEngine", nullptr)) {
+        if (!engine) {
             return false;
         }
 
@@ -682,6 +532,32 @@ namespace Spectrum
         }
     }
 
+    void RendererManager::SafeDeactivateRenderer(IRenderer* renderer) const noexcept
+    {
+        if (!renderer) return;
+
+        try {
+            LOG_INFO("RendererManager: Deactivating renderer: "
+                << renderer->GetName().data());
+            renderer->OnDeactivate();
+        }
+        catch (...) {
+            LOG_ERROR("RendererManager: Exception during deactivation");
+        }
+    }
+
+    void RendererManager::SafeSetQuality(IRenderer* renderer, RenderQuality quality) const noexcept
+    {
+        if (!renderer) return;
+
+        try {
+            renderer->SetQuality(quality);
+        }
+        catch (...) {
+            LOG_ERROR("RendererManager: Failed to set quality for renderer");
+        }
+    }
+
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Logging Helpers
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -690,12 +566,6 @@ namespace Spectrum
     {
         LOG_INFO("RendererManager: Renderer switched from "
             << static_cast<int>(from) << " to " << static_cast<int>(to));
-    }
-
-    void RendererManager::LogQualityChange(RenderQuality) const
-    {
-        // Quality name already logged in SetQuality
-        // This method kept for consistency with design
     }
 
     void RendererManager::LogRendererCreation() const
@@ -712,9 +582,7 @@ namespace Spectrum
 
     void RendererManager::LogActivationSuccess(const ActivationContext& context) const
     {
-        if (!Pointer(context.renderer, "context.renderer", nullptr)) {
-            return;
-        }
+        if (!context.renderer) return;
 
         try {
             LOG_INFO("RendererManager: Activated '"
@@ -733,23 +601,6 @@ namespace Spectrum
     {
         LOG_ERROR("RendererManager: Failed to activate renderer (style: "
             << static_cast<int>(style) << ") - " << reason);
-        (void)style;
-        (void)reason;
-    }
-
-    void RendererManager::LogDeactivation(IRenderer* renderer) const noexcept
-    {
-        if (!Pointer(renderer, "renderer", nullptr)) {
-            return;
-        }
-
-        try {
-            LOG_INFO("RendererManager: Deactivating renderer: "
-                << renderer->GetName().data());
-        }
-        catch (...) {
-            LOG_ERROR("RendererManager: Exception while logging deactivation");
-        }
     }
 
 } // namespace Spectrum

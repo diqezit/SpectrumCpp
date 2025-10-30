@@ -38,13 +38,13 @@ namespace Spectrum {
         [[nodiscard]] bool IsInitialized() const noexcept { return m_initialized; }
 
     private:
-        void SetupStyle();
+        void SetupStyle() const;
 
         bool m_initialized = false;
         wrl::ComPtr<ID3D11DeviceContext> m_deviceContext;
         wrl::ComPtr<ID3D11RenderTargetView> m_renderTargetView;
     };
 
-} // namespace Spectrum
+}
 
-#endif // SPECTRUM_CPP_IMGUI_CONTEXT_H
+#endif

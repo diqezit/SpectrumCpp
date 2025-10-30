@@ -39,15 +39,7 @@ namespace Spectrum {
 
     AudioManager::~AudioManager()
     {
-        LOG_INFO("AudioManager: Shutting down...");
-
-        if (m_isCapturing && m_realtimeSource) {
-            LOG_INFO("AudioManager: Stopping realtime capture...");
-            m_isCapturing = false;
-            m_realtimeSource->StopCapture();
-            LOG_INFO("AudioManager: Realtime capture stopped");
-        }
-
+        Shutdown();
         LOG_INFO("AudioManager: Destroyed");
     }
 
@@ -64,6 +56,21 @@ namespace Spectrum {
 
         LOG_INFO("AudioManager: Initialization completed successfully");
         return true;
+    }
+
+    void AudioManager::Shutdown()
+    {
+        LOG_INFO("AudioManager: Shutting down...");
+
+        if (m_isCapturing && m_realtimeSource) {
+            LOG_INFO("AudioManager: Stopping realtime capture...");
+            m_isCapturing = false;
+            m_realtimeSource->StopCapture();
+            LOG_INFO("AudioManager: Realtime capture stopped");
+        }
+
+        m_currentSource = nullptr;
+        LOG_INFO("AudioManager: Shutdown complete");
     }
 
     void AudioManager::Update(float deltaTime)
@@ -274,14 +281,20 @@ namespace Spectrum {
         return ToString(m_audioConfig.windowType);
     }
 
-    std::vector<std::string> AudioManager::GetAvailableFFTWindows() const
+    const std::vector<std::string>& AudioManager::GetAvailableFFTWindows() const
     {
-        return { "Hann", "Hamming", "Blackman", "Rectangular" };
+        static const std::vector<std::string> windows = {
+            "Hann", "Hamming", "Blackman", "Rectangular"
+        };
+        return windows;
     }
 
-    std::vector<std::string> AudioManager::GetAvailableSpectrumScales() const
+    const std::vector<std::string>& AudioManager::GetAvailableSpectrumScales() const
     {
-        return { "Linear", "Logarithmic", "Mel" };
+        static const std::vector<std::string> scales = {
+            "Linear", "Logarithmic", "Mel"
+        };
+        return scales;
     }
 
     void AudioManager::SubscribeToEvents(EventBus* bus)
@@ -331,10 +344,6 @@ namespace Spectrum {
         LOG_INFO("AudioManager: Initializing " << sourceName << "...");
 
         source = std::make_unique<TSource>(m_audioConfig);
-        if (!source) {
-            LOG_ERROR("AudioManager: Failed to create " << sourceName << " instance");
-            return false;
-        }
 
         if (!source->Initialize()) {
             LOG_ERROR("AudioManager: " << sourceName << " initialization failed");
@@ -362,4 +371,4 @@ namespace Spectrum {
         return SpectrumScale::Linear;
     }
 
-} // namespace Spectrum
+}

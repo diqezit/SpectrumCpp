@@ -1,414 +1,203 @@
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// Implements the CubesRenderer for 3D-style bar visualization.
-//
-// Implementation details:
-// - Each cube composed of three faces: front, top, and side
-// - Perspective effect achieved through offset calculations
-// - Face brightness varies to simulate 3D lighting
-// - Shadow rendered as single layer beneath all cubes
-// - Uses GeometryHelpers for all point and rect operations
-//
-// Rendering pipeline:
-// 1. Collect visible cubes with geometry pre-calculated
-// 2. Render shadow layer (if enabled)
-// 3. Render side faces (back to front for proper layering)
-// 4. Render top faces
-// 5. Render front faces (highest priority, rendered last)
-//
-// Visual design:
-// - Top face: brightest (simulates overhead light)
-// - Front face: medium brightness (base color)
-// - Side face: darkest (simulates shadow/depth)
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
 #include "Graphics/Visualizers/CubesRenderer.h"
 #include "Graphics/API/GraphicsHelpers.h"
 #include "Graphics/Base/RenderUtils.h"
-#include "Graphics/Visualizers/Settings/QualityPresets.h"
 
 namespace Spectrum {
 
     using namespace Helpers::Sanitize;
     using namespace Helpers::Geometry;
-    using namespace Helpers::Math;
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Constants
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-    namespace {
-
-        constexpr float kMinMagnitude = 0.01f;
-        constexpr float kSpacing = 2.0f;
-        constexpr float kHeightScale = 0.9f;
-
-        constexpr float kShadowOffsetX = 3.0f;
-        constexpr float kShadowOffsetY = 3.0f;
-        constexpr float kShadowBlurRadius = 0.0f;
-        constexpr float kShadowAlpha = 0.2f;
-
-        constexpr float kTopBrightness = 1.2f;
-
-        constexpr float kAlphaBase = 0.6f;
-        constexpr float kAlphaRange = 0.4f;
-
-    } // anonymous namespace
-
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Lifecycle Management
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-    CubesRenderer::CubesRenderer()
-    {
-        m_primaryColor = Color::FromRGB(200, 100, 255);
+    CubesRenderer::CubesRenderer() {
         UpdateSettings();
     }
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // BaseRenderer Overrides
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-    void CubesRenderer::UpdateSettings()
-    {
-        m_settings = QualityPresets::Get<CubesRenderer>(m_quality);
+    void CubesRenderer::UpdateSettings() {
+        m_settings = GetQualitySettings<Settings>();
     }
 
     void CubesRenderer::DoRender(
         Canvas& canvas,
         const SpectrumData& spectrum
-    )
-    {
-        if (spectrum.empty()) return;
-
-        const auto layout = RenderUtils::ComputeBarLayout(
-            spectrum.size(),
-            kSpacing,
-            m_width
-        );
-
+    ) {
+        const auto layout = CalculateBarLayout(spectrum.size(), kSpacing);
         if (layout.barWidth <= 0.0f) return;
 
-        std::vector<CubeGeometry> cubes;
-        cubes.reserve(spectrum.size());
-
-        CollectVisibleCubes(cubes, spectrum, layout);
-
-        if (AreCubesEmpty(cubes)) return;
+        const auto cubes = CollectVisibleCubes(spectrum, layout);
+        if (cubes.empty()) return;
 
         if (m_settings.useShadow) {
-            RenderCubesWithShadows(canvas, cubes);
+            RenderCubeShadows(canvas, cubes);
         }
-        else {
-            RenderCubes(canvas, cubes);
+
+        if (m_settings.useSideFace) {
+            RenderCubeSides(canvas, cubes);
         }
+
+        if (m_settings.useTopFace) {
+            RenderCubeTops(canvas, cubes);
+        }
+
+        RenderCubeFronts(canvas, cubes);
     }
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Geometry Calculation
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-    void CubesRenderer::CollectVisibleCubes(
-        std::vector<CubeGeometry>& cubes,
+    std::vector<CubesRenderer::CubeData> CubesRenderer::CollectVisibleCubes(
         const SpectrumData& spectrum,
-        const RenderUtils::BarLayout& layout
-    ) const
-    {
+        const BarLayout& layout
+    ) const {
+        std::vector<CubeData> cubes;
+        cubes.reserve(spectrum.size());
+
         for (size_t i = 0; i < spectrum.size(); ++i) {
             const float magnitude = NormalizedFloat(spectrum[i]);
 
-            if (!IsMagnitudeVisible(magnitude)) continue;
+            if (magnitude >= kMinMagnitude) {
+                cubes.push_back(CreateCubeData(i, magnitude, layout));
+            }
+        }
 
-            cubes.push_back(CalculateCubeGeometry(i, magnitude, layout));
+        return cubes;
+    }
+
+    void CubesRenderer::RenderCubeShadows(
+        Canvas& canvas,
+        const std::vector<CubeData>& cubes
+    ) const {
+        const Color shadowColor = AdjustAlpha(
+            Color::Black(),
+            kShadowAlpha
+        );
+        const Paint shadowPaint = Paint::Fill(shadowColor);
+
+        for (const auto& cube : cubes) {
+            Rect shadowRect = cube.frontFace;
+            shadowRect.x += kShadowOffsetX;
+            shadowRect.y += kShadowOffsetY;
+
+            canvas.DrawRectangle(shadowRect, shadowPaint);
+
+            if (m_settings.useSideFace) {
+                auto sidePoints = GetSideFacePoints(cube);
+                for (auto& point : sidePoints) {
+                    point.x += kShadowOffsetX;
+                    point.y += kShadowOffsetY;
+                }
+                canvas.DrawPolygon(sidePoints, shadowPaint);
+            }
+
+            if (m_settings.useTopFace) {
+                auto topPoints = GetTopFacePoints(cube);
+                for (auto& point : topPoints) {
+                    point.x += kShadowOffsetX;
+                    point.y += kShadowOffsetY;
+                }
+                canvas.DrawPolygon(topPoints, shadowPaint);
+            }
         }
     }
 
-    CubesRenderer::CubeGeometry CubesRenderer::CalculateCubeGeometry(
+    void CubesRenderer::RenderCubeSides(
+        Canvas& canvas,
+        const std::vector<CubeData>& cubes
+    ) const {
+        for (const auto& cube : cubes) {
+            canvas.DrawPolygon(
+                GetSideFacePoints(cube),
+                Paint::Fill(cube.sideColor)
+            );
+        }
+    }
+
+    void CubesRenderer::RenderCubeTops(
+        Canvas& canvas,
+        const std::vector<CubeData>& cubes
+    ) const {
+        for (const auto& cube : cubes) {
+            canvas.DrawPolygon(
+                GetTopFacePoints(cube),
+                Paint::Fill(cube.topColor)
+            );
+        }
+    }
+
+    void CubesRenderer::RenderCubeFronts(
+        Canvas& canvas,
+        const std::vector<CubeData>& cubes
+    ) const {
+        RectBatch frontBatches;
+
+        for (const auto& cube : cubes) {
+            frontBatches[cube.baseColor].push_back(cube.frontFace);
+        }
+
+        for (const auto& [color, rects] : frontBatches) {
+            if (!rects.empty()) {
+                canvas.DrawRectangleBatch(rects, Paint::Fill(color));
+            }
+        }
+    }
+
+    CubesRenderer::CubeData CubesRenderer::CreateCubeData(
         size_t index,
         float magnitude,
-        const RenderUtils::BarLayout& layout
-    ) const
-    {
-        CubeGeometry cube;
+        const BarLayout& layout
+    ) const {
+        const float height = RenderUtils::MagnitudeToHeight(
+            magnitude,
+            GetHeight(),
+            kHeightScale
+        );
 
-        const float height = CalculateBarHeight(magnitude);
-
-        cube.frontFace = CalculateFrontFace(index, height, layout);
-        cube.topHeight = CalculateTopHeight(layout.barWidth);
-        cube.sideWidth = CalculateSideWidth(layout.barWidth);
+        CubeData cube;
+        cube.frontFace = GetBarRect(layout, index, height);
+        cube.topHeight = layout.barWidth * m_settings.topHeightRatio;
+        cube.sideWidth = layout.barWidth * m_settings.perspective;
         cube.magnitude = magnitude;
+        cube.baseColor = CalculateBaseColor(magnitude);
+        cube.sideColor = AdjustBrightness(
+            cube.baseColor,
+            m_settings.sideFaceBrightness
+        );
+        cube.topColor = AdjustBrightness(
+            cube.baseColor,
+            kTopBrightness
+        );
 
         return cube;
     }
 
-    Rect CubesRenderer::CalculateFrontFace(
-        size_t index,
-        float height,
-        const RenderUtils::BarLayout& layout
-    ) const
-    {
-        return {
-            index * layout.totalBarWidth,
-            static_cast<float>(m_height) - height,
-            layout.barWidth,
-            height
-        };
-    }
-
-    float CubesRenderer::CalculateBarHeight(float magnitude) const
-    {
-        return RenderUtils::MagnitudeToHeight(
-            magnitude,
-            m_height,
-            kHeightScale
-        );
-    }
-
-    float CubesRenderer::CalculateTopHeight(float barWidth) const
-    {
-        return barWidth * m_settings.topHeightRatio;
-    }
-
-    float CubesRenderer::CalculateSideWidth(float barWidth) const
-    {
-        return barWidth * m_settings.perspective;
-    }
-
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Face Point Generation
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
     std::vector<Point> CubesRenderer::GetSideFacePoints(
-        const CubeGeometry& cube
-    ) const
-    {
+        const CubeData& cube
+    ) const {
+        const Point topRight = GetTopRight(cube.frontFace);
+        const Point bottomRight = GetBottomRight(cube.frontFace);
+
         return {
-            CalculateSidePoint1(cube),
-            CalculateSidePoint2(cube),
-            CalculateSidePoint3(cube),
-            CalculateSidePoint4(cube)
+            topRight,
+            Add(topRight, {cube.sideWidth, -cube.topHeight}),
+            Add(bottomRight, {cube.sideWidth, -cube.topHeight}),
+            bottomRight
         };
     }
 
     std::vector<Point> CubesRenderer::GetTopFacePoints(
-        const CubeGeometry& cube
-    ) const
-    {
+        const CubeData& cube
+    ) const {
+        const Point topLeft = GetTopLeft(cube.frontFace);
+        const Point topRight = GetTopRight(cube.frontFace);
+
         return {
-            CalculateTopPoint1(cube),
-            CalculateTopPoint2(cube),
-            CalculateTopPoint3(cube),
-            CalculateTopPoint4(cube)
+            topLeft,
+            topRight,
+            Add(topRight, {cube.sideWidth, -cube.topHeight}),
+            Add(topLeft, {cube.sideWidth, -cube.topHeight})
         };
     }
 
-    Point CubesRenderer::CalculateSidePoint1(const CubeGeometry& cube) const
-    {
-        return GetTopRight(cube.frontFace);
-    }
-
-    Point CubesRenderer::CalculateSidePoint2(const CubeGeometry& cube) const
-    {
-        const Point p1 = CalculateSidePoint1(cube);
-        return Add(p1, { cube.sideWidth, -cube.topHeight });
-    }
-
-    Point CubesRenderer::CalculateSidePoint3(const CubeGeometry& cube) const
-    {
-        const Point p2 = CalculateSidePoint2(cube);
-        return Add(p2, { 0.0f, cube.frontFace.height });
-    }
-
-    Point CubesRenderer::CalculateSidePoint4(const CubeGeometry& cube) const
-    {
-        return GetBottomRight(cube.frontFace);
-    }
-
-    Point CubesRenderer::CalculateTopPoint1(const CubeGeometry& cube) const
-    {
-        return GetTopLeft(cube.frontFace);
-    }
-
-    Point CubesRenderer::CalculateTopPoint2(const CubeGeometry& cube) const
-    {
-        return GetTopRight(cube.frontFace);
-    }
-
-    Point CubesRenderer::CalculateTopPoint3(const CubeGeometry& cube) const
-    {
-        const Point p2 = CalculateTopPoint2(cube);
-        return Add(p2, { cube.sideWidth, -cube.topHeight });
-    }
-
-    Point CubesRenderer::CalculateTopPoint4(const CubeGeometry& cube) const
-    {
-        const Point p1 = CalculateTopPoint1(cube);
-        return Add(p1, { cube.sideWidth, -cube.topHeight });
-    }
-
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Rendering Components (SRP)
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-    void CubesRenderer::RenderCubes(
-        Canvas& canvas,
-        const std::vector<CubeGeometry>& cubes
-    ) const
-    {
-        RenderAllFaces(canvas, cubes);
-    }
-
-    void CubesRenderer::RenderCubesWithShadows(
-        Canvas& canvas,
-        const std::vector<CubeGeometry>& cubes
-    ) const
-    {
-        auto drawCubeShapes = [this, &canvas, &cubes]() {
-            RenderAllFaces(canvas, cubes);
-            };
-
-        canvas.DrawWithShadow(
-            drawCubeShapes,
-            { kShadowOffsetX, kShadowOffsetY },
-            kShadowBlurRadius,
-            Color(0.0f, 0.0f, 0.0f, kShadowAlpha)
-        );
-
-        RenderAllFaces(canvas, cubes);
-    }
-
-    void CubesRenderer::RenderAllFaces(
-        Canvas& canvas,
-        const std::vector<CubeGeometry>& cubes
-    ) const
-    {
-        if (ShouldRenderSideFaces()) {
-            RenderSideFaces(canvas, cubes);
-        }
-
-        if (ShouldRenderTopFaces()) {
-            RenderTopFaces(canvas, cubes);
-        }
-
-        RenderFrontFaces(canvas, cubes);
-    }
-
-    void CubesRenderer::RenderSideFaces(
-        Canvas& canvas,
-        const std::vector<CubeGeometry>& cubes
-    ) const
-    {
-        for (const auto& cube : cubes) {
-            RenderSingleSideFace(canvas, cube);
-        }
-    }
-
-    void CubesRenderer::RenderTopFaces(
-        Canvas& canvas,
-        const std::vector<CubeGeometry>& cubes
-    ) const
-    {
-        for (const auto& cube : cubes) {
-            RenderSingleTopFace(canvas, cube);
-        }
-    }
-
-    void CubesRenderer::RenderFrontFaces(
-        Canvas& canvas,
-        const std::vector<CubeGeometry>& cubes
-    ) const
-    {
-        for (const auto& cube : cubes) {
-            RenderSingleFrontFace(canvas, cube);
-        }
-    }
-
-    void CubesRenderer::RenderSingleSideFace(
-        Canvas& canvas,
-        const CubeGeometry& cube
-    ) const
-    {
-        const Color sideColor = CalculateSideColor(cube.magnitude);
-        const auto points = GetSideFacePoints(cube);
-
-        canvas.DrawPolygon(points, Paint::Fill(sideColor));
-    }
-
-    void CubesRenderer::RenderSingleTopFace(
-        Canvas& canvas,
-        const CubeGeometry& cube
-    ) const
-    {
-        const Color topColor = CalculateTopColor(cube.magnitude);
-        const auto points = GetTopFacePoints(cube);
-
-        canvas.DrawPolygon(points, Paint::Fill(topColor));
-    }
-
-    void CubesRenderer::RenderSingleFrontFace(
-        Canvas& canvas,
-        const CubeGeometry& cube
-    ) const
-    {
-        const Color frontColor = CalculateFrontColor(cube.magnitude);
-
-        canvas.DrawRectangle(cube.frontFace, Paint::Fill(frontColor));
-    }
-
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Color Calculation
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-    Color CubesRenderer::CalculateBaseColor(float magnitude) const
-    {
-        Color color = m_primaryColor;
-        color.a = CalculateColorAlpha(magnitude);
-        return color;
-    }
-
-    Color CubesRenderer::CalculateSideColor(float magnitude) const
-    {
-        const Color baseColor = CalculateBaseColor(magnitude);
-        return Helpers::Color::AdjustBrightness(baseColor, m_settings.sideFaceBrightness);
-    }
-
-    Color CubesRenderer::CalculateTopColor(float magnitude) const
-    {
-        const Color baseColor = CalculateBaseColor(magnitude);
-        return Helpers::Color::AdjustBrightness(baseColor, kTopBrightness);
-    }
-
-    Color CubesRenderer::CalculateFrontColor(float magnitude) const
-    {
-        return CalculateBaseColor(magnitude);
-    }
-
-    float CubesRenderer::CalculateColorAlpha(float magnitude) const
-    {
-        return kAlphaBase + kAlphaRange * magnitude;
-    }
-
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Validation Helpers
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-    bool CubesRenderer::IsMagnitudeVisible(float magnitude) const
-    {
-        return magnitude >= kMinMagnitude;
-    }
-
-    bool CubesRenderer::ShouldRenderSideFaces() const
-    {
-        return m_settings.useSideFace;
-    }
-
-    bool CubesRenderer::ShouldRenderTopFaces() const
-    {
-        return m_settings.useTopFace;
-    }
-
-    bool CubesRenderer::AreCubesEmpty(const std::vector<CubeGeometry>& cubes) const
-    {
-        return cubes.empty();
+    Color CubesRenderer::CalculateBaseColor(
+        float magnitude
+    ) const {
+        const float alpha = kAlphaBase + kAlphaRange * magnitude;
+        return AdjustAlpha(GetPrimaryColor(), alpha);
     }
 
 } // namespace Spectrum

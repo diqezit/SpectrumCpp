@@ -3,8 +3,8 @@
 
 #include "Common/Common.h"
 #include "Graphics/API/GraphicsHelpers.h"
+#include "Platform/MessageHandlerBase.h"
 #include <memory>
-#include <vector>
 
 namespace Spectrum {
 
@@ -12,7 +12,6 @@ namespace Spectrum {
     class EventBus;
     class RendererManager;
     class RenderEngine;
-    class Canvas;
 
     namespace Platform {
         class WindowManager;
@@ -21,24 +20,15 @@ namespace Spectrum {
         }
     }
 
-    struct MouseState {
-        Point position{ 0.0f, 0.0f };
-        bool leftButtonDown = false;
-        bool rightButtonDown = false;
-        bool middleButtonDown = false;
-        float wheelDelta = 0.0f;
-    };
-
     struct FrameState {
-        MouseState mouse;
+        Platform::MouseState mouse;
         float deltaTime = 0.0f;
         uint64_t frameNumber = 0;
         bool isActive = false;
         bool isOverlayMode = false;
     };
 
-    class ControllerCore final
-    {
+    class ControllerCore final {
     public:
         explicit ControllerCore(HINSTANCE hInstance);
         ~ControllerCore() noexcept;
@@ -59,31 +49,26 @@ namespace Spectrum {
 
         void SetPrimaryColor(const Color& color);
 
-        [[nodiscard]] RendererManager* GetRendererManager() const noexcept;
-        [[nodiscard]] AudioManager* GetAudioManager() const noexcept;
-        [[nodiscard]] Platform::WindowManager* GetWindowManager() const noexcept;
+        [[nodiscard]] RendererManager* GetRendererManager() const noexcept { return m_rendererManager.get(); }
+        [[nodiscard]] AudioManager* GetAudioManager() const noexcept { return m_audioManager.get(); }
+        [[nodiscard]] Platform::WindowManager* GetWindowManager() const noexcept { return m_windowManager.get(); }
 
     private:
         bool InitializeSubsystems();
-
         void MainLoop();
-        void ProcessFrame(const FrameState& frameState);
+        void ProcessFrame();
 
         [[nodiscard]] FrameState CollectFrameState() const;
-        void ProcessInputAndUpdate(const FrameState& frameState);
-
+        void ProcessInputAndUpdate(float deltaTime);
         void RenderVisualization(const FrameState& frameState);
-        void RenderUI(const FrameState& frameState);
+        void RenderUI();
         void RenderSettingsButton(const FrameState& frameState);
 
-        [[nodiscard]] bool CanRenderVisualization(const FrameState& frameState) const;
-        [[nodiscard]] bool CanRenderUI() const;
         [[nodiscard]] bool ShouldProcessFrame() const;
+        void HandleDeviceLoss(RenderEngine* engine);
 
-        void HandleVisualizationDeviceLoss();
-        void HandleUIDeviceLoss();
-
-        static constexpr float kTargetFrameTime = 1.0f / 60.0f;
+        static constexpr float FPS_TARGET = 60.0f;
+        static constexpr float FRAME_TIME = 1.0f / FPS_TARGET;
 
         HINSTANCE m_hInstance;
         std::unique_ptr<EventBus> m_eventBus;
@@ -93,12 +78,10 @@ namespace Spectrum {
         std::unique_ptr<Platform::Input::InputManager> m_inputManager;
 
         Helpers::Utils::Timer m_timer;
-        std::vector<InputAction> m_actions;
-        uint64_t m_frameCounter;
-
+        uint64_t m_frameCounter = 0;
         Rect m_settingsButtonRect;
     };
 
-}  // namespace Spectrum
+}
 
-#endif  // SPECTRUM_CPP_CONTROLLER_CORE_H
+#endif

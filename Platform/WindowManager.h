@@ -1,26 +1,25 @@
-﻿// WindowManager.h
-#ifndef SPECTRUM_CPP_WINDOW_MANAGER_H
+﻿#ifndef SPECTRUM_CPP_WINDOW_MANAGER_H
 #define SPECTRUM_CPP_WINDOW_MANAGER_H
 
 #include "Common/Common.h"
+#include <functional>
 #include <memory>
 
 namespace Spectrum {
-
     class ControllerCore;
     class EventBus;
     class RenderEngine;
     class UIManager;
 
     namespace Platform {
-
         class MainWindow;
         class UIWindow;
         class MessageHandler;
         class UIMessageHandler;
 
-        class WindowManager final
-        {
+        constexpr Color kUIBackgroundColor = Color::FromRGB(30, 30, 40);
+
+        class WindowManager final {
         public:
             explicit WindowManager(
                 HINSTANCE hInstance,
@@ -37,17 +36,8 @@ namespace Spectrum {
 
             [[nodiscard]] bool Initialize();
 
-            [[nodiscard]] bool HandleVisualizationResize(
-                int width,
-                int height,
-                bool recreateContext = false
-            );
-
-            [[nodiscard]] bool HandleUIResize(
-                int width,
-                int height,
-                bool recreateContext = false
-            );
+            [[nodiscard]] bool HandleVisualizationResize(int width, int height, bool recreateContext = false);
+            [[nodiscard]] bool HandleUIResize(int width, int height, bool recreateContext = false);
 
             void OnResizeStart();
             void OnResizeEnd(HWND hwnd);
@@ -80,14 +70,10 @@ namespace Spectrum {
             bool InitializeWindows();
             bool InitializeGraphics();
             bool InitializeUI();
+            void WarmupUI();
 
             [[nodiscard]] std::unique_ptr<MainWindow> CreateMainWindowInstance(
-                const wchar_t* title,
-                int width,
-                int height,
-                bool isOverlay
-            ) const;
-
+                const wchar_t* title, int width, int height, bool isOverlay) const;
             [[nodiscard]] std::unique_ptr<UIWindow> CreateUIWindowInstance() const;
 
             void SwitchActiveWindow(MainWindow* hide, MainWindow* show);
@@ -99,8 +85,30 @@ namespace Spectrum {
             bool RecreateUIContext(HWND hwnd);
             void NotifyRendererOfModeChange() const;
 
-            bool ShouldSkipResize(int width, int height) const noexcept;
-            [[nodiscard]] bool ValidateDependencies() const noexcept;
+            [[nodiscard]] bool ShouldSkipResize(int width, int height) const noexcept;
+
+            template <typename TEngine>
+            bool HandleResizeInternal(
+                TEngine& engine,
+                int width, int height,
+                bool recreateContext,
+                const char* logContext,
+                const std::function<bool()>& recreateFunc,
+                const std::function<void(int, int)>& notifyFunc);
+
+            void OnResizeEndInternal(
+                HWND hwnd,
+                bool& isResizingFlag,
+                const char* logContext,
+                const std::function<bool(int, int)>& resizeHandler);
+
+            void OnResizeInternal(
+                HWND hwnd,
+                int width, int height,
+                int& lastWidth, int& lastHeight,
+                bool isResizing,
+                RenderEngine* engine,
+                const std::function<bool(int, int)>& handler);
 
         private:
             HINSTANCE m_hInstance;
@@ -126,7 +134,7 @@ namespace Spectrum {
             std::unique_ptr<UIMessageHandler> m_uiMessageHandler;
         };
 
-    }  // namespace Platform
-}  // namespace Spectrum
+    }
+}
 
-#endif  // SPECTRUM_CPP_WINDOW_MANAGER_H
+#endif

@@ -58,6 +58,6 @@ namespace Spectrum::ImGuiHelpers {
         );
     }
 
-} // namespace Spectrum::ImGuiHelpers
+}
 
-#endif // SPECTRUM_CPP_IMGUI_HELPERS_H
+#endif
