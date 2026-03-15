@@ -36,9 +36,9 @@ namespace Spectrum::Platform {
                 return 0;
 
             switch (msg) {
-                // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-                // Paint
-                // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+            // Paint
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
             case WM_PAINT: {
                 PAINTSTRUCT ps;
@@ -47,23 +47,27 @@ namespace Spectrum::Platform {
                 return 0;
             }
 
-                         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-                         // Resize
-                         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+            // Resize
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
             case WM_ENTERSIZEMOVE:
             case WM_EXITSIZEMOVE:
             case WM_SIZE:
                 return DispatchResize(hwnd, msg, wp, lp,
-                    [this] { m_wm->OnUIResizeStart(); },
-                    [this](HWND h) { m_wm->OnUIResizeEnd(h); },
+                    [this] {
+                        m_wm->OnUIResizeStart();
+                    },
+                    [this](HWND h) {
+                        m_wm->OnUIResizeEnd(h);
+                    },
                     [this](HWND h, int w, int ht) {
                         m_wm->OnUIResize(h, w, ht);
                     });
 
-                // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-                // Borderless drag
-                // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+            // Borderless drag
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
             case WM_NCHITTEST: {
                 POINT pt = {
@@ -80,9 +84,9 @@ namespace Spectrum::Platform {
                 return HTCLIENT;
             }
 
-                             // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-                             // Close — hide, don't destroy
-                             // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+            // Close — hide, don't destroy
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
             case WM_CLOSE:
                 ::ShowWindow(hwnd, SW_HIDE);
@@ -91,9 +95,9 @@ namespace Spectrum::Platform {
             case WM_DESTROY:
                 return 0;
 
-                // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-                // Mouse + erase + default
-                // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+            // Mouse + erase + default
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
             default:
                 return HandleCommon(hwnd, msg, wp, lp);
@@ -101,10 +105,10 @@ namespace Spectrum::Platform {
         }
 
     private:
-        static constexpr int kTitleBarHeight = 32;
+        static constexpr int kTitleBarHeight = 40;
 
         WindowManager* m_wm;
-        UIManager* m_ui;
+        UIManager*     m_ui;
     };
 
 } // namespace Spectrum::Platform

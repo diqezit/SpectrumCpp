@@ -113,7 +113,7 @@ namespace Spectrum {
 
         private:
             // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-            // Engine slot — shared state for viz / UI
+            // Engine slot — shared state per window
             // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
             struct EngineSlot {
@@ -132,11 +132,13 @@ namespace Spectrum {
             bool InitializeUI();
 
             std::unique_ptr<MainWindow> CreateMainWnd(
-                const wchar_t* title, int w, int h, bool overlay) const;
+                const wchar_t* title,
+                int w, int h, bool overlay) const;
+
             std::unique_ptr<UIWindow> CreateUIWnd() const;
 
             // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-            // Engine management (DRY)
+            // Engine management
             // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
             bool RecreateEngine(
@@ -155,7 +157,8 @@ namespace Spectrum {
             // Overlay
             // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-            void SwitchActiveWindow(MainWindow* hide, MainWindow* show);
+            void SwitchActiveWindow(
+                MainWindow* hide, MainWindow* show);
             void PositionOverlayWindow() const;
             void NotifyRendererOfModeChange() const;
 

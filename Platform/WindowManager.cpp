@@ -42,7 +42,8 @@ namespace Spectrum::Platform {
         , m_controller(ctrl)
     {
         if (!ctrl)
-            throw std::invalid_argument("WindowManager: null controller");
+            throw std::invalid_argument(
+                "WindowManager: null controller");
 
         m_uiManager = std::make_unique<UIManager>(ctrl, this);
 
@@ -55,8 +56,15 @@ namespace Spectrum::Platform {
 
     WindowManager::~WindowManager() noexcept {
         HideUIWindow();
-        if (auto* w = m_isOverlay ? m_overlayWnd.get() : m_mainWnd.get())
+
+        if (auto* w = m_isOverlay
+            ? m_overlayWnd.get()
+            : m_mainWnd.get())
             HideWindow(w->GetHwnd());
+
+        m_uiWnd.reset();
+        m_overlayWnd.reset();
+        m_mainWnd.reset();
     }
 
     bool WindowManager::Initialize() {
@@ -105,9 +113,11 @@ namespace Spectrum::Platform {
 
     bool WindowManager::InitializeGraphics() {
         return m_mainWnd
-            && RecreateEngine(m_viz, m_mainWnd->GetHwnd(), false, true)
+            && RecreateEngine(
+                m_viz, m_mainWnd->GetHwnd(), false, true)
             && m_uiWnd
-            && RecreateEngine(m_ui, m_uiWnd->GetHwnd(), false, false);
+            && RecreateEngine(
+                m_ui, m_uiWnd->GetHwnd(), false, false);
     }
 
     bool WindowManager::InitializeUI() {
@@ -115,21 +125,24 @@ namespace Spectrum::Platform {
     }
 
     std::unique_ptr<MainWindow> WindowManager::CreateMainWnd(
-        const wchar_t* title, int w, int h, bool overlay) const
+        const wchar_t* title,
+        int w, int h, bool overlay) const
     {
         auto wnd = std::make_unique<MainWindow>(m_hInstance);
-        return wnd->Initialize(title, w, h, overlay, m_msgHandler.get())
+        return wnd->Initialize(
+            title, w, h, overlay, m_msgHandler.get())
             ? std::move(wnd) : nullptr;
     }
 
     std::unique_ptr<UIWindow> WindowManager::CreateUIWnd() const {
         auto wnd = std::make_unique<UIWindow>(m_hInstance);
-        return wnd->Initialize(kUITitle, kUIW, kUIH, m_uiMsgHandler.get())
+        return wnd->Initialize(
+            kUITitle, kUIW, kUIH, m_uiMsgHandler.get())
             ? std::move(wnd) : nullptr;
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Engine management (DRY)
+    // Engine management
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     bool WindowManager::RecreateEngine(
@@ -182,8 +195,8 @@ namespace Spectrum::Platform {
         if (!IsValidSize(w, h))
             return false;
 
-        if (recreate
-            && !RecreateEngine(m_viz, GetCurrentHwnd(), m_isOverlay, true))
+        if (recreate && !RecreateEngine(
+            m_viz, GetCurrentHwnd(), m_isOverlay, true))
             return false;
 
         if (m_viz.engine)
@@ -224,8 +237,8 @@ namespace Spectrum::Platform {
             return false;
 
         if (recreate) {
-            if (!m_uiWnd
-                || !RecreateEngine(m_ui, m_uiWnd->GetHwnd(), false, false))
+            if (!m_uiWnd || !RecreateEngine(
+                m_ui, m_uiWnd->GetHwnd(), false, false))
                 return false;
 
             if (m_uiManager) {
@@ -270,7 +283,8 @@ namespace Spectrum::Platform {
         m_isOverlay = !m_isOverlay;
 
         LOG_INFO("WindowManager: "
-            << (m_isOverlay ? "OVERLAY" : "NORMAL") << " mode");
+            << (m_isOverlay ? "OVERLAY" : "NORMAL")
+            << " mode");
 
         SwitchActiveWindow(
             m_isOverlay ? m_mainWnd.get() : m_overlayWnd.get(),
@@ -343,11 +357,13 @@ namespace Spectrum::Platform {
     }
 
     bool WindowManager::IsActive() const {
-        return IsRunning() && IsActiveAndVisible(GetCurrentHwnd());
+        return IsRunning()
+            && IsActiveAndVisible(GetCurrentHwnd());
     }
 
     bool WindowManager::IsUIWindowVisible() const {
-        return m_uiWnd && ::IsWindowVisible(m_uiWnd->GetHwnd());
+        return m_uiWnd
+            && ::IsWindowVisible(m_uiWnd->GetHwnd());
     }
 
     HWND WindowManager::GetCurrentHwnd() const {

@@ -753,11 +753,43 @@ namespace Spectrum {
         options.debugLevel = D2D1_DEBUG_LEVEL_INFORMATION;
 #endif
 
-        if (FAILED(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, __uuidof(ID2D1Factory), &options, reinterpret_cast<void**>(m_d2dFactory.GetAddressOf())))) {
+        HRESULT hr = D2D1CreateFactory(
+            D2D1_FACTORY_TYPE_SINGLE_THREADED,
+            __uuidof(ID2D1Factory),
+            &options,
+            reinterpret_cast<void**>(m_d2dFactory.GetAddressOf()));
+
+#ifdef _DEBUG
+        if (FAILED(hr) && options.debugLevel != D2D1_DEBUG_LEVEL_NONE) {
+            LOG_WARNING("GraphicsCore: D2D1 Debug Layer unavailable, "
+                "retrying without it.");
+            options.debugLevel = D2D1_DEBUG_LEVEL_NONE;
+            hr = D2D1CreateFactory(
+                D2D1_FACTORY_TYPE_SINGLE_THREADED,
+                __uuidof(ID2D1Factory),
+                &options,
+                reinterpret_cast<void**>(m_d2dFactory.GetAddressOf()));
+        }
+#endif
+
+        if (FAILED(hr)) {
+            LOG_ERROR("GraphicsCore: D2D1CreateFactory failed: 0x"
+                << std::hex << hr);
             return false;
         }
 
-        return SUCCEEDED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(m_dwriteFactory.GetAddressOf())));
+        hr = DWriteCreateFactory(
+            DWRITE_FACTORY_TYPE_SHARED,
+            __uuidof(IDWriteFactory),
+            reinterpret_cast<IUnknown**>(m_dwriteFactory.GetAddressOf()));
+
+        if (FAILED(hr)) {
+            LOG_ERROR("GraphicsCore: DWriteCreateFactory failed: 0x"
+                << std::hex << hr);
+            return false;
+        }
+
+        return true;
     }
 
     bool GraphicsCore::Impl::CreateRenderTarget() {
@@ -814,20 +846,37 @@ namespace Spectrum {
         };
 
         D3D_FEATURE_LEVEL featureLevel;
-        if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, createFlags,
-            featureLevels, ARRAYSIZE(featureLevels), D3D11_SDK_VERSION,
-            &m_d3dDevice, &featureLevel, &m_d3dContext))) {
+        HRESULT hr = D3D11CreateDevice(
+            nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr,
+            createFlags, featureLevels, ARRAYSIZE(featureLevels),
+            D3D11_SDK_VERSION, &m_d3dDevice, &featureLevel, &m_d3dContext);
+
+#ifdef _DEBUG
+        if (FAILED(hr) && (createFlags & D3D11_CREATE_DEVICE_DEBUG)) {
+            LOG_WARNING("GraphicsCore: D3D11 Debug Layer unavailable, "
+                "retrying without it. "
+                "Install 'Graphics Tools' optional feature to enable.");
+            createFlags &= ~D3D11_CREATE_DEVICE_DEBUG;
+            hr = D3D11CreateDevice(
+                nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr,
+                createFlags, featureLevels, ARRAYSIZE(featureLevels),
+                D3D11_SDK_VERSION, &m_d3dDevice, &featureLevel, &m_d3dContext);
+        }
+#endif
+
+        if (FAILED(hr)) {
+            LOG_ERROR("GraphicsCore: D3D11CreateDevice failed: 0x"
+                << std::hex << hr);
             return false;
         }
 
-        wrl::ComPtr<IDXGIDevice> dxgiDevice;
+        wrl::ComPtr<IDXGIDevice>  dxgiDevice;
         wrl::ComPtr<IDXGIAdapter> adapter;
         wrl::ComPtr<IDXGIFactory> factory;
         if (FAILED(m_d3dDevice.As(&dxgiDevice)) ||
             FAILED(dxgiDevice->GetAdapter(&adapter)) ||
-            FAILED(adapter->GetParent(IID_PPV_ARGS(&factory)))) {
+            FAILED(adapter->GetParent(IID_PPV_ARGS(&factory))))
             return false;
-        }
 
         DXGI_SWAP_CHAIN_DESC desc = {};
         desc.BufferDesc.Width = m_width;
@@ -841,21 +890,25 @@ namespace Spectrum {
         desc.Windowed = TRUE;
         desc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
 
-        if (FAILED(factory->CreateSwapChain(m_d3dDevice.Get(), &desc, &m_swapChain))) {
+        if (FAILED(factory->CreateSwapChain(m_d3dDevice.Get(), &desc, &m_swapChain)))
             return false;
-        }
 
         wrl::ComPtr<ID3D11Texture2D> backBuffer;
         if (FAILED(m_swapChain->GetBuffer(0, IID_PPV_ARGS(&backBuffer))) ||
-            FAILED(m_d3dDevice->CreateRenderTargetView(backBuffer.Get(), nullptr, &m_renderTargetView))) {
+            FAILED(m_d3dDevice->CreateRenderTargetView(
+                backBuffer.Get(), nullptr, &m_renderTargetView)))
             return false;
-        }
 
-        m_d3dContext->OMSetRenderTargets(1, m_renderTargetView.GetAddressOf(), nullptr);
+        m_d3dContext->OMSetRenderTargets(
+            1, m_renderTargetView.GetAddressOf(), nullptr);
 
-        D3D11_VIEWPORT vp = { 0, 0, static_cast<float>(m_width), static_cast<float>(m_height), 0.0f, 1.0f };
+        D3D11_VIEWPORT vp = {
+            0, 0,
+            static_cast<float>(m_width),
+            static_cast<float>(m_height),
+            0.0f, 1.0f
+        };
         m_d3dContext->RSSetViewports(1, &vp);
-
         return true;
     }
 
