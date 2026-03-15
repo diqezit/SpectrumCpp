@@ -2,96 +2,107 @@
 #define SPECTRUM_CPP_PEAK_TRACKER_H
 
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// Defines the PeakTracker component for peak value tracking with decay.
-//
-// This reusable component tracks peak values across multiple channels with
-// configurable hold time and decay behavior. It's designed to be used by
-// visualizers that need sticky peak indicators (e.g., LED panels, bars).
-//
-// Key features:
-// - Per-channel peak tracking with automatic decay
-// - Configurable hold time before decay starts
-// - Smooth decay animation with configurable rate
-// - Visibility threshold for rendering optimization
-// - Thread-safe resize operations
-//
-// Design notes:
-// - Zero-cost abstraction when not used by renderer
-// - Minimal memory footprint (two float vectors)
-// - All operations are O(n) where n is channel count
-// - Uses MathHelpers::Saturate for value clamping
+// PeakTracker — per-channel peak tracking with hold and decay.
+// Header-only.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Common/Common.h"
+#include "Graphics/API/GraphicsHelpers.h"
 #include <vector>
+#include <algorithm>
 
 namespace Spectrum {
 
     class PeakTracker {
     public:
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Configuration Structure
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // Configuration
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
         struct Config {
-            float holdTime = 0.5f;      // Duration to hold peak before decay (seconds)
-            float decayRate = 0.95f;    // Decay multiplier per frame (0.0 = instant, 1.0 = never)
-            float minVisible = 0.01f;   // Minimum value for visibility checks
+            float holdTime = 0.5f;
+            float decayRate = 0.95f;
+            float minVisible = 0.01f;
         };
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Lifecycle Management
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // Lifecycle
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-        explicit PeakTracker(size_t channelCount = 0, Config config = {});
+        explicit PeakTracker(size_t channels = 0, Config cfg = {})
+            : m_config(cfg)
+        {
+            Resize(channels);
+        }
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Public Interface
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // Public interface
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-        void Update(const SpectrumData& values, float deltaTime);
-        void Reset();
-        void Resize(size_t newSize);
+        void Update(const SpectrumData& values, float deltaTime) {
+            const size_t count = std::min(values.size(), m_peaks.size());
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+            for (size_t i = 0; i < count; ++i) {
+                const float v = Helpers::Math::Saturate(values[i]);
+
+                if (v >= m_peaks[i]) {
+                    m_peaks[i] = v;
+                    m_holdTimers[i] = m_config.holdTime;
+                }
+                else if (m_holdTimers[i] > 0.0f) {
+                    m_holdTimers[i] = std::max(0.0f, m_holdTimers[i] - deltaTime);
+                }
+                else {
+                    m_peaks[i] *= m_config.decayRate;
+                }
+            }
+        }
+
+        void Reset() {
+            std::fill(m_peaks.begin(), m_peaks.end(), 0.0f);
+            std::fill(m_holdTimers.begin(), m_holdTimers.end(), 0.0f);
+        }
+
+        void Resize(size_t newSize) {
+            m_peaks.resize(newSize, 0.0f);
+            m_holdTimers.resize(newSize, 0.0f);
+        }
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
         // Getters
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-        [[nodiscard]] const SpectrumData& GetPeaks() const { return m_peaks; }
-        [[nodiscard]] float GetPeak(size_t index) const;
-        [[nodiscard]] bool IsPeakVisible(size_t index) const;
-        [[nodiscard]] size_t GetSize() const { return m_peaks.size(); }
+        [[nodiscard]] const SpectrumData& GetPeaks() const {
+            return m_peaks;
+        }
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Configuration
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        [[nodiscard]] float GetPeak(size_t i) const {
+            return i < m_peaks.size() ? m_peaks[i] : 0.0f;
+        }
 
-        void SetConfig(const Config& config) { m_config = config; }
+        [[nodiscard]] bool IsPeakVisible(size_t i) const {
+            return i < m_peaks.size()
+                && m_peaks[i] > m_config.minVisible;
+        }
+
+        [[nodiscard]] size_t GetSize() const {
+            return m_peaks.size();
+        }
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // Config
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+        void SetConfig(const Config& cfg) { m_config = cfg; }
+
         [[nodiscard]] const Config& GetConfig() const { return m_config; }
 
     private:
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Update Helpers
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-        void UpdateChannel(size_t index, float value, float deltaTime);
-        void SetNewPeak(size_t index, float value);
-        void UpdateHoldTimer(size_t index, float deltaTime);
-        void ApplyDecay(size_t index);
-
-        [[nodiscard]] bool ShouldSetNewPeak(size_t index, float value) const;
-        [[nodiscard]] bool IsHolding(size_t index) const;
-        [[nodiscard]] bool IsValidIndex(size_t index) const;
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Member Variables
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-        Config m_config;
-        SpectrumData m_peaks;
+        Config            m_config;
+        SpectrumData      m_peaks;
         std::vector<float> m_holdTimers;
     };
 
 } // namespace Spectrum
 
-#endif // SPECTRUM_CPP_PEAK_TRACKER_H
+#endif

@@ -2,22 +2,30 @@
 
 #include "Audio/AudioManager.h"
 #include "Common/EventBus.h"
-#include "Platform/Input/InputManager.h"
 #include "Graphics/IRenderer.h"
+#include "Graphics/RendererManager.h"
+#include "Platform/InputManager.h"
 #include "Platform/MainWindow.h"
 #include "Platform/MessageHandler.h"
-#include "Graphics/RendererManager.h"
-#include "UI/Core/UIManager.h"
 #include "Platform/WindowManager.h"
-#include "Platform/Input/Win32Keyboard.h"
+#include "UI/UIManager.h"
 
 #include <thread>
 
 namespace Spectrum {
 
     namespace {
-        constexpr Color kUIBackgroundColor = Color::FromRGB(30, 30, 40);
+        constexpr Color kClearColor = Color::FromRGB(13, 13, 26);
+        constexpr Color kUIBackground = Color::FromRGB(30, 30, 40);
+        constexpr float kBtnSize = 30.0f;
+        constexpr float kBtnPad = 10.0f;
+        constexpr float kBtnFontSize = 24.0f;
+        constexpr float kBtnAlphaIdle = 0.5f;
     }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Lifecycle
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     ControllerCore::ControllerCore(HINSTANCE hInstance)
         : m_hInstance(hInstance) {
@@ -28,128 +36,98 @@ namespace Spectrum {
     }
 
     bool ControllerCore::Initialize() {
-        if (!InitializeSubsystems()) {
-            return false;
-        }
+        if (!InitializeSubsystems()) return false;
         m_timer.Reset();
         return true;
     }
 
     void ControllerCore::Run() {
-        VALIDATE_PTR_OR_RETURN(m_windowManager.get(), "ControllerCore");
-
+        if (!m_windowMgr) return;
         m_timer.Reset();
         m_frameCounter = 0;
         MainLoop();
     }
 
     void ControllerCore::Shutdown() {
-        if (m_audioManager) {
-            m_audioManager->Shutdown();
-        }
-
-        m_rendererManager.reset();
-        m_audioManager.reset();
-        m_inputManager.reset();
-        m_windowManager.reset();
+        if (m_audioMgr) m_audioMgr->Shutdown();
+        m_rendererMgr.reset();
+        m_audioMgr.reset();
+        m_inputMgr.reset();
+        m_windowMgr.reset();
         m_eventBus.reset();
     }
 
-    void ControllerCore::OnResize(int width, int height) {
-        if (m_rendererManager) {
-            m_rendererManager->OnResize(width, height);
-        }
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Event callbacks
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    void ControllerCore::OnResize(int w, int h) {
+        if (m_rendererMgr) m_rendererMgr->OnResize(w, h);
     }
 
-    void ControllerCore::OnUIResize(int width, int height) {
-        if (auto* uiManager = m_windowManager ? m_windowManager->GetUIManager() : nullptr) {
-            uiManager->OnResize(width, height);
-        }
+    void ControllerCore::OnUIResize(int w, int h) {
+        if (auto* ui = m_windowMgr ? m_windowMgr->GetUIManager() : nullptr)
+            ui->OnResize(w, h);
     }
 
     void ControllerCore::OnCloseRequest() {
-        if (m_windowManager) {
-            if (auto* mainWindow = m_windowManager->GetMainWindow()) {
-                mainWindow->SetRunning(false);
-            }
-        }
+        if (m_windowMgr)
+            if (auto* mw = m_windowMgr->GetMainWindow())
+                mw->SetRunning(false);
     }
 
-    void ControllerCore::OnMainWindowClick(const Point& mousePos) {
-        if (!m_windowManager || !m_settingsButtonRect.Contains(mousePos)) {
-            return;
-        }
+    void ControllerCore::OnMainWindowClick(const Point& pos) {
+        if (!m_windowMgr || !m_settingsBtnRect.Contains(pos)) return;
 
-        LOG_INFO("ControllerCore: Settings button toggled.");
-
-        if (m_windowManager->IsUIWindowVisible()) {
-            m_windowManager->HideUIWindow();
-        }
-        else {
-            m_windowManager->ShowUIWindow();
-        }
+        m_windowMgr->IsUIWindowVisible()
+            ? m_windowMgr->HideUIWindow()
+            : m_windowMgr->ShowUIWindow();
     }
 
     void ControllerCore::SetPrimaryColor(const Color& color) {
-        if (m_rendererManager) {
-            if (auto* renderer = m_rendererManager->GetCurrentRenderer()) {
-                renderer->SetPrimaryColor(color);
-            }
-        }
+        if (m_rendererMgr)
+            if (auto* r = m_rendererMgr->GetCurrentRenderer())
+                r->SetPrimaryColor(color);
     }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Initialization
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     bool ControllerCore::InitializeSubsystems() {
         m_eventBus = std::make_unique<EventBus>();
-        VALIDATE_PTR_OR_RETURN_FALSE(m_eventBus.get(), "ControllerCore");
 
-        m_windowManager = std::make_unique<Platform::WindowManager>(
-            m_hInstance, this, m_eventBus.get()
-        );
-        VALIDATE_PTR_OR_RETURN_FALSE(m_windowManager.get(), "ControllerCore");
+        m_windowMgr = std::make_unique<Platform::WindowManager>(
+            m_hInstance, this, m_eventBus.get());
+        if (!m_windowMgr->Initialize()) return false;
 
-        if (!m_windowManager->Initialize()) {
-            return false;
-        }
+        m_inputMgr = std::make_unique<Platform::InputManager>();
 
-        auto keyboard = std::make_unique<Platform::Input::Win32Keyboard>();
-        VALIDATE_PTR_OR_RETURN_FALSE(keyboard.get(), "ControllerCore");
+        m_audioMgr = std::make_unique<AudioManager>(m_eventBus.get());
+        if (!m_audioMgr->Initialize()) return false;
 
-        m_inputManager = std::make_unique<Platform::Input::InputManager>(std::move(keyboard));
-        VALIDATE_PTR_OR_RETURN_FALSE(m_inputManager.get(), "ControllerCore");
+        m_rendererMgr = std::make_unique<RendererManager>(
+            m_eventBus.get(), m_windowMgr.get());
+        if (!m_rendererMgr->Initialize()) return false;
 
-        m_audioManager = std::make_unique<AudioManager>(m_eventBus.get());
-        VALIDATE_PTR_OR_RETURN_FALSE(m_audioManager.get(), "ControllerCore");
-
-        if (!m_audioManager->Initialize()) {
-            return false;
-        }
-
-        m_rendererManager = std::make_unique<RendererManager>(
-            m_eventBus.get(), m_windowManager.get()
-        );
-        VALIDATE_PTR_OR_RETURN_FALSE(m_rendererManager.get(), "ControllerCore");
-
-        if (!m_rendererManager->Initialize()) {
-            return false;
-        }
-
-        m_rendererManager->SetCurrentRenderer(m_rendererManager->GetCurrentStyle());
-
+        m_rendererMgr->SetCurrentRenderer(m_rendererMgr->GetCurrentStyle());
         return true;
     }
 
-    void ControllerCore::MainLoop() {
-        MSG msg = {};
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Main loop
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        while (m_windowManager->IsRunning()) {
+    void ControllerCore::MainLoop() {
+        MSG msg{};
+
+        while (m_windowMgr->IsRunning()) {
             if (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
                 TranslateMessage(&msg);
                 DispatchMessage(&msg);
             }
 
-            if (!m_windowManager->IsRunning()) {
-                break;
-            }
+            if (!m_windowMgr->IsRunning()) break;
 
             if (ShouldProcessFrame()) {
                 ProcessFrame();
@@ -163,142 +141,112 @@ namespace Spectrum {
     }
 
     void ControllerCore::ProcessFrame() {
-        const FrameState frameState = CollectFrameState();
+        const auto fs = CollectFrameState();
 
-        ProcessInputAndUpdate(frameState.deltaTime);
+        ProcessInput(fs.deltaTime);
 
-        if (frameState.isOverlayMode || frameState.isActive) {
-            RenderVisualization(frameState);
-        }
+        if (fs.isOverlay || fs.isActive)
+            RenderVisualization(fs);
 
-        if (m_windowManager && m_windowManager->IsUIWindowVisible()) {
+        if (m_windowMgr && m_windowMgr->IsUIWindowVisible())
             RenderUI();
-        }
     }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Frame state
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     FrameState ControllerCore::CollectFrameState() const {
-        FrameState state{};
-        state.deltaTime = FRAME_TIME;
-        state.frameNumber = m_frameCounter;
-        state.isActive = m_windowManager->IsActive();
-        state.isOverlayMode = m_windowManager->IsOverlayMode();
+        FrameState fs;
+        fs.deltaTime = kFrameTime;
+        fs.frameNumber = m_frameCounter;
+        fs.isActive = m_windowMgr->IsActive();
+        fs.isOverlay = m_windowMgr->IsOverlayMode();
 
-        if (const auto* messageHandler = m_windowManager->GetMessageHandler()) {
-            const auto& handlerMouseState = messageHandler->GetMouseState();
-            state.mouse.position = handlerMouseState.position;
-            state.mouse.leftButtonDown = handlerMouseState.leftButtonDown;
-            state.mouse.rightButtonDown = handlerMouseState.rightButtonDown;
-            state.mouse.middleButtonDown = handlerMouseState.middleButtonDown;
-            state.mouse.wheelDelta = handlerMouseState.wheelDelta;
-        }
+        if (auto* mh = m_windowMgr->GetMessageHandler())
+            fs.mouse = mh->GetMouseState();
 
-        return state;
+        return fs;
     }
 
-    void ControllerCore::ProcessInputAndUpdate(float deltaTime) {
-        if (!m_inputManager || !m_eventBus) {
-            return;
-        }
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Input
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        m_inputManager->Update();
+    void ControllerCore::ProcessInput(float dt) {
+        if (!m_inputMgr || !m_eventBus) return;
 
-        for (const auto& action : m_inputManager->GetActions()) {
+        m_inputMgr->Update();
+
+        for (const auto& action : m_inputMgr->FlushActions())
             m_eventBus->Publish(action);
-        }
 
-        if (m_audioManager) {
-            m_audioManager->Update(deltaTime);
-        }
+        if (m_audioMgr)
+            m_audioMgr->Update(dt);
     }
 
-    void ControllerCore::RenderVisualization(const FrameState& frameState) {
-        auto* engine = m_windowManager->GetVisualizationEngine();
-        if (!engine || !engine->BeginDraw()) {
-            LOG_ERROR("ControllerCore: Failed to begin visualization drawing.");
-            return;
-        }
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Rendering
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        const Color clearColor = frameState.isOverlayMode
-            ? Color::Transparent()
-            : Color::FromRGB(13, 13, 26);
-        engine->Clear(clearColor);
+    void ControllerCore::RenderVisualization(const FrameState& fs) {
+        auto* engine = m_windowMgr->GetVisualizationEngine();
+        if (!engine || !engine->BeginDraw()) return;
 
-        if (m_audioManager && m_rendererManager) {
-            if (auto* renderer = m_rendererManager->GetCurrentRenderer()) {
-                renderer->Render(engine->GetCanvas(), m_audioManager->GetSpectrum());
-            }
-        }
+        engine->Clear(fs.isOverlay ? Color::Transparent() : kClearColor);
 
-        RenderSettingsButton(frameState);
+        if (m_audioMgr && m_rendererMgr)
+            if (auto* r = m_rendererMgr->GetCurrentRenderer())
+                r->Render(engine->GetCanvas(), m_audioMgr->GetSpectrum());
 
-        if (engine->EndDraw() == D2DERR_RECREATE_TARGET) {
+        RenderSettingsButton(fs);
+
+        if (engine->EndDraw() == D2DERR_RECREATE_TARGET)
             HandleDeviceLoss(engine);
-        }
     }
 
     void ControllerCore::RenderUI() {
-        auto* uiManager = m_windowManager->GetUIManager();
-        auto* uiEngine = m_windowManager->GetUIEngine();
+        auto* ui = m_windowMgr->GetUIManager();
+        auto* engine = m_windowMgr->GetUIEngine();
+        if (!ui || !engine) return;
 
-        if (!uiManager || !uiEngine) {
-            return;
-        }
-
-        uiEngine->ClearD3D11(kUIBackgroundColor);
-        uiManager->BeginFrame();
-        uiManager->Render();
-        uiManager->EndFrame();
-        uiEngine->Present();
+        engine->ClearD3D11(kUIBackground);
+        ui->BeginFrame();
+        ui->Render();
+        ui->EndFrame();
+        engine->Present();
     }
 
-    void ControllerCore::RenderSettingsButton(const FrameState& frameState) {
-        auto* engine = m_windowManager->GetVisualizationEngine();
-        if (!engine) {
-            return;
-        }
+    void ControllerCore::RenderSettingsButton(const FrameState& fs) {
+        auto* engine = m_windowMgr->GetVisualizationEngine();
+        if (!engine) return;
 
-        constexpr float BUTTON_SIZE = 30.0f;
-        constexpr float PADDING = 10.0f;
+        const float x = static_cast<float>(engine->GetWidth()) - kBtnSize - kBtnPad;
+        m_settingsBtnRect = Rect(x, kBtnPad, kBtnSize, kBtnSize);
 
-        const float x = static_cast<float>(engine->GetWidth()) - BUTTON_SIZE - PADDING;
-        m_settingsButtonRect = Rect(x, PADDING, BUTTON_SIZE, BUTTON_SIZE);
+        const bool hovered = m_settingsBtnRect.Contains(fs.mouse.position);
 
-        const bool isHovered = m_settingsButtonRect.Contains(frameState.mouse.position);
-
-        TextStyle style = TextStyle::Default()
+        const TextStyle style = TextStyle::Default()
             .WithFont(L"Segoe UI Symbol")
-            .WithSize(24.0f)
+            .WithSize(kBtnFontSize)
             .WithAlign(TextAlign::Center)
             .WithParagraphAlign(ParagraphAlign::Center)
-            .WithColor(isHovered
-                ? Color(1.0f, 1.0f, 1.0f, 1.0f)
-                : Color(1.0f, 1.0f, 1.0f, 0.5f));
+            .WithColor(Color(1, 1, 1, hovered ? 1.0f : kBtnAlphaIdle));
 
-        engine->GetCanvas().DrawText(L"⚙", m_settingsButtonRect, style);
-    }
-
-    bool ControllerCore::ShouldProcessFrame() const {
-        return m_timer.GetElapsedSeconds() >= FRAME_TIME;
+        engine->GetCanvas().DrawText(L"\u2699", m_settingsBtnRect, style);
     }
 
     void ControllerCore::HandleDeviceLoss(RenderEngine* engine) {
-        if (!m_windowManager || !engine) {
-            return;
-        }
+        if (!m_windowMgr || !engine) return;
 
-        const bool isUI = (engine == m_windowManager->GetUIEngine());
-        const bool success = isUI
-            ? m_windowManager->HandleUIResize(engine->GetWidth(), engine->GetHeight(), true)
-            : m_windowManager->HandleVisualizationResize(engine->GetWidth(), engine->GetHeight(), true);
+        const bool isUI = (engine == m_windowMgr->GetUIEngine());
+        const bool ok = isUI
+            ? m_windowMgr->HandleUIResize(engine->GetWidth(), engine->GetHeight(), true)
+            : m_windowMgr->HandleVisualizationResize(engine->GetWidth(), engine->GetHeight(), true);
 
-        if (!success) {
-            if (isUI) {
-                LOG_ERROR("ControllerCore: Failed to recreate UI graphics after device loss.");
-            }
-            else {
-                LOG_ERROR("ControllerCore: Failed to recreate visualization graphics after device loss.");
-            }
-        }
+        if (!ok)
+            LOG_ERROR("ControllerCore: Failed to recover from device loss ("
+                << (isUI ? "UI" : "viz") << ")");
     }
 
-}
+} // namespace Spectrum

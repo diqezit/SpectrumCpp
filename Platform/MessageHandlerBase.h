@@ -1,16 +1,20 @@
 ﻿#ifndef SPECTRUM_CPP_MESSAGE_HANDLER_BASE_H
 #define SPECTRUM_CPP_MESSAGE_HANDLER_BASE_H
 
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// Abstract base for Win32 message handlers.
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
 #include "Common/Common.h"
 #include <functional>
 
 namespace Spectrum::Platform {
 
     struct MouseState {
-        Point position{ 0.0f, 0.0f };
-        bool leftButtonDown = false;
-        bool rightButtonDown = false;
-        bool middleButtonDown = false;
+        Point position{};
+        bool  leftButtonDown = false;
+        bool  rightButtonDown = false;
+        bool  middleButtonDown = false;
         float wheelDelta = 0.0f;
     };
 
@@ -20,53 +24,73 @@ namespace Spectrum::Platform {
 
         MessageHandlerBase(const MessageHandlerBase&) = delete;
         MessageHandlerBase& operator=(const MessageHandlerBase&) = delete;
-        MessageHandlerBase(MessageHandlerBase&&) = delete;
-        MessageHandlerBase& operator=(MessageHandlerBase&&) = delete;
 
         [[nodiscard]] const MouseState& GetMouseState() const noexcept {
-            return m_mouseState;
+            return m_mouse;
         }
 
-        virtual LRESULT HandleWindowMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) = 0;
+        virtual LRESULT HandleWindowMessage(
+            HWND, UINT, WPARAM, LPARAM) = 0;
 
     protected:
         MessageHandlerBase() = default;
 
-        void HandleMouseMoveBase(LPARAM lParam) {
-            m_mouseState.position.x = static_cast<float>(GET_X_LPARAM(lParam));
-            m_mouseState.position.y = static_cast<float>(GET_Y_LPARAM(lParam));
-        }
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // Common — mouse + erase + default
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-        void HandleMouseWheelBase(WPARAM wParam) {
-            m_mouseState.wheelDelta = static_cast<float>(GET_WHEEL_DELTA_WPARAM(wParam)) / WHEEL_DELTA;
-        }
-
-        void HandleMouseButtonDownBase(UINT msg, HWND hwnd) {
-            if (hwnd) {
-                SetCapture(hwnd);
-            }
-
+        LRESULT HandleCommon(
+            HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
+            const std::function<void()>& onLeftDown = nullptr)
+        {
             switch (msg) {
-            case WM_LBUTTONDOWN: m_mouseState.leftButtonDown = true; break;
-            case WM_RBUTTONDOWN: m_mouseState.rightButtonDown = true; break;
-            case WM_MBUTTONDOWN: m_mouseState.middleButtonDown = true; break;
+            case WM_ERASEBKGND:
+                return 1;
+
+            case WM_MOUSEMOVE:
+                m_mouse.position = {
+                    static_cast<float>(GET_X_LPARAM(lp)),
+                    static_cast<float>(GET_Y_LPARAM(lp))
+                };
+                return 0;
+
+            case WM_MOUSEWHEEL:
+                m_mouse.wheelDelta =
+                    static_cast<float>(GET_WHEEL_DELTA_WPARAM(wp))
+                    / WHEEL_DELTA;
+                return 0;
+
+            case WM_LBUTTONDOWN:
+                SetButton(msg, true, hwnd);
+                if (onLeftDown) onLeftDown();
+                return 0;
+
+            case WM_RBUTTONDOWN:
+            case WM_MBUTTONDOWN:
+                SetButton(msg, true, hwnd);
+                return 0;
+
+            case WM_LBUTTONUP:
+            case WM_RBUTTONUP:
+            case WM_MBUTTONUP:
+                SetButton(msg, false, hwnd);
+                return 0;
+
+            default:
+                return DefWindowProc(hwnd, msg, wp, lp);
             }
         }
 
-        void HandleMouseButtonUpBase(UINT msg) {
-            ReleaseCapture();
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // Resize dispatch
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-            switch (msg) {
-            case WM_LBUTTONUP: m_mouseState.leftButtonDown = false; break;
-            case WM_RBUTTONUP: m_mouseState.rightButtonDown = false; break;
-            case WM_MBUTTONUP: m_mouseState.middleButtonDown = false; break;
-            }
-        }
-
-        LRESULT ProcessResizeMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam,
+        LRESULT DispatchResize(
+            HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
             const std::function<void()>& onStart,
             const std::function<void(HWND)>& onEnd,
-            const std::function<void(HWND, int, int)>& onSize) {
+            const std::function<void(HWND, int, int)>& onSize)
+        {
             switch (msg) {
             case WM_ENTERSIZEMOVE:
                 if (onStart) onStart();
@@ -77,60 +101,36 @@ namespace Spectrum::Platform {
                 return 0;
 
             case WM_SIZE:
-                if (wParam != SIZE_MINIMIZED && onSize) {
-                    onSize(hwnd, LOWORD(lParam), HIWORD(lParam));
-                }
+                if (wp != SIZE_MINIMIZED && onSize)
+                    onSize(hwnd, LOWORD(lp), HIWORD(lp));
                 return 0;
+
+            default:
+                return DefWindowProc(hwnd, msg, wp, lp);
             }
-            return DefWindowProc(hwnd, msg, wParam, lParam);
         }
 
-        LRESULT ProcessMouseMessage(UINT msg, WPARAM wParam, LPARAM lParam, HWND hwnd,
-            const std::function<void()>& onLeftDown = nullptr,
-            const std::function<void()>& onLeftUp = nullptr) {
+        MouseState m_mouse{};
+
+    private:
+        void SetButton(UINT msg, bool down, HWND hwnd) {
+            if (down) SetCapture(hwnd);
+            else      ReleaseCapture();
+
             switch (msg) {
-            case WM_MOUSEMOVE:
-                HandleMouseMoveBase(lParam);
-                return 0;
-
-            case WM_LBUTTONDOWN:
-                HandleMouseButtonDownBase(msg, hwnd);
-                if (onLeftDown) onLeftDown();
-                return 0;
-
-            case WM_LBUTTONUP:
-                HandleMouseButtonUpBase(msg);
-                if (onLeftUp) onLeftUp();
-                return 0;
-
-            case WM_RBUTTONDOWN:
-                HandleMouseButtonDownBase(msg, hwnd);
-                return 0;
-
-            case WM_RBUTTONUP:
-                HandleMouseButtonUpBase(msg);
-                return 0;
-
-            case WM_MBUTTONDOWN:
-                HandleMouseButtonDownBase(msg, hwnd);
-                return 0;
-
-            case WM_MBUTTONUP:
-                HandleMouseButtonUpBase(msg);
-                return 0;
-
-            case WM_MOUSEWHEEL:
-                HandleMouseWheelBase(wParam);
-                return 0;
+            case WM_LBUTTONDOWN: case WM_LBUTTONUP:
+                m_mouse.leftButtonDown = down;
+                break;
+            case WM_RBUTTONDOWN: case WM_RBUTTONUP:
+                m_mouse.rightButtonDown = down;
+                break;
+            case WM_MBUTTONDOWN: case WM_MBUTTONUP:
+                m_mouse.middleButtonDown = down;
+                break;
             }
-            return DefWindowProc(hwnd, msg, wParam, lParam);
         }
-
-        MouseState m_mouseState{};
-        int m_lastResizeWidth = 0;
-        int m_lastResizeHeight = 0;
     };
 
-}
+} // namespace Spectrum::Platform
 
 #endif

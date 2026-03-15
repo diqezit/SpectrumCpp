@@ -1,43 +1,105 @@
 #ifndef SPECTRUM_CPP_MESSAGE_HANDLER_H
 #define SPECTRUM_CPP_MESSAGE_HANDLER_H
 
-#include "Common/Common.h"
-#include "MessageHandlerBase.h"
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// Main window message handler.
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-namespace Spectrum {
-    class ControllerCore;
-    class EventBus;
+#include "Platform/MessageHandlerBase.h"
+#include "App/ControllerCore.h"
+#include "Common/EventBus.h"
+#include "Platform/WindowManager.h"
+#include <stdexcept>
 
-    namespace Platform {
-        class WindowManager;
+namespace Spectrum::Platform {
 
-        class MessageHandler final : public MessageHandlerBase {
-        public:
-            MessageHandler(
-                ControllerCore* controller,
-                WindowManager* windowManager,
-                EventBus* bus
-            );
-            ~MessageHandler() noexcept override = default;
+    class MessageHandler final : public MessageHandlerBase {
+    public:
+        MessageHandler(
+            ControllerCore* ctrl,
+            WindowManager* wm,
+            EventBus* bus)
+            : m_ctrl(ctrl)
+            , m_wm(wm)
+        {
+            if (!ctrl)
+                throw std::invalid_argument(
+                    "MessageHandler: null controller");
+            if (!wm)
+                throw std::invalid_argument(
+                    "MessageHandler: null WindowManager");
 
-            MessageHandler(const MessageHandler&) = delete;
-            MessageHandler& operator=(const MessageHandler&) = delete;
-            MessageHandler(MessageHandler&&) = delete;
-            MessageHandler& operator=(MessageHandler&&) = delete;
+            if (bus) {
+                bus->Subscribe(InputAction::ToggleOverlay,
+                    [this] { m_wm->ToggleOverlay(); });
 
-            LRESULT HandleWindowMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) override;
+                bus->Subscribe(InputAction::Exit, [this] {
+                    m_wm->IsOverlayMode()
+                        ? m_wm->ToggleOverlay()
+                        : m_ctrl->OnCloseRequest();
+                    });
+            }
+        }
 
-        private:
-            [[nodiscard]] LRESULT HandleLifecycleMessage(UINT msg);
-            [[nodiscard]] LRESULT HandleSpecialMessage(UINT msg);
+        LRESULT HandleWindowMessage(
+            HWND hwnd, UINT msg,
+            WPARAM wp, LPARAM lp) override
+        {
+            switch (msg) {
+                // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+                // Lifecycle
+                // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-            void SubscribeToEvents(EventBus* bus);
+            case WM_CLOSE:
+                m_wm->IsOverlayMode()
+                    ? m_wm->ToggleOverlay()
+                    : m_ctrl->OnCloseRequest();
+                return 0;
 
-            ControllerCore* m_controller;
-            WindowManager* m_windowManager;
-        };
+            case WM_DESTROY:
+                PostQuitMessage(0);
+                return 0;
 
-    }
-}
+                // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+                // Resize
+                // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+            case WM_ENTERSIZEMOVE:
+            case WM_EXITSIZEMOVE:
+            case WM_SIZE:
+                return DispatchResize(hwnd, msg, wp, lp,
+                    [this] { m_wm->OnResizeStart(); },
+                    [this](HWND h) { m_wm->OnResizeEnd(h); },
+                    [this](HWND h, int w, int ht) {
+                        m_wm->OnResize(h, w, ht);
+                    });
+
+                // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+                // Hit test
+                // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+            case WM_NCHITTEST:
+                return m_wm->IsOverlayMode()
+                    ? HTCAPTION : HTCLIENT;
+
+                // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+                // Mouse + erase + default
+                // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+            default:
+                return HandleCommon(hwnd, msg, wp, lp,
+                    [this] {
+                        m_ctrl->OnMainWindowClick(
+                            m_mouse.position);
+                    });
+            }
+        }
+
+    private:
+        ControllerCore* m_ctrl;
+        WindowManager* m_wm;
+    };
+
+} // namespace Spectrum::Platform
 
 #endif

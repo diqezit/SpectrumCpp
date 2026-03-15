@@ -1,236 +1,180 @@
 ﻿#ifndef SPECTRUM_CPP_WINDOW_BASE_H
 #define SPECTRUM_CPP_WINDOW_BASE_H
 
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// Abstract base for Win32 window creation with class registration.
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
 #include "Common/Common.h"
 #include "Graphics/API/GraphicsHelpers.h"
 #include <string>
 
 namespace Spectrum::Platform {
 
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // WndProc template dispatcher
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+    template<typename Handler>
+    LRESULT CALLBACK CommonWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+        if (msg == WM_NCCREATE) {
+            auto* cs = reinterpret_cast<CREATESTRUCT*>(lp);
+            SetWindowLongPtr(hwnd, GWLP_USERDATA,
+                reinterpret_cast<LONG_PTR>(cs->lpCreateParams));
+            return DefWindowProc(hwnd, msg, wp, lp);
+        }
+        auto* h = reinterpret_cast<Handler*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
+        return h ? h->HandleWindowMessage(hwnd, msg, wp, lp)
+            : DefWindowProc(hwnd, msg, wp, lp);
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // Size limits
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+    namespace WindowLimits {
+        constexpr int MainMinW = 320, MainMaxW = 7680;
+        constexpr int MainMinH = 240, MainMaxH = 4320;
+        constexpr int UIMinW = 200, UIMaxW = 2560;
+        constexpr int UIMinH = 200, UIMaxH = 1440;
+    }
+
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    // Base class
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
     class WindowBase {
     public:
         virtual ~WindowBase() noexcept {
-            LOG_INFO("WindowBase: Starting cleanup.");
-
-            if (m_hwnd) {
-                DestroyWindow(m_hwnd);
-                m_hwnd = nullptr;
-            }
-
-            if (m_classRegistered && !m_className.empty()) {
-                UnregisterClassW(m_className.c_str(), m_hInstance);
-                m_classRegistered = false;
-            }
-
-            LOG_INFO("WindowBase: Cleanup complete.");
+            if (m_hwnd) { DestroyWindow(m_hwnd); m_hwnd = nullptr; }
+            if (m_registered && !m_className.empty())
+                UnregisterClassW(m_className.c_str(), m_hInst);
         }
 
         WindowBase(const WindowBase&) = delete;
         WindowBase& operator=(const WindowBase&) = delete;
-        WindowBase(WindowBase&&) = delete;
-        WindowBase& operator=(WindowBase&&) = delete;
 
-        void Hide() const {
-            Helpers::Window::HideWindow(m_hwnd);
-        }
+        void Hide() const { Helpers::Window::HideWindow(m_hwnd); }
 
-        [[nodiscard]] HWND GetHwnd() const noexcept { return m_hwnd; }
-        [[nodiscard]] int GetWidth() const noexcept { return m_width; }
-        [[nodiscard]] int GetHeight() const noexcept { return m_height; }
+        [[nodiscard]] HWND GetHwnd()   const noexcept { return m_hwnd; }
+        [[nodiscard]] int  GetWidth()  const noexcept { return m_w; }
+        [[nodiscard]] int  GetHeight() const noexcept { return m_h; }
 
     protected:
-        struct WindowLimits {
-            static constexpr int MainMinWidth = 320;
-            static constexpr int MainMinHeight = 240;
-            static constexpr int MainMaxWidth = 7680;
-            static constexpr int MainMaxHeight = 4320;
+        explicit WindowBase(HINSTANCE hInst) : m_hInst(hInst) {}
 
-            static constexpr int UIMinWidth = 200;
-            static constexpr int UIMinHeight = 200;
-            static constexpr int UIMaxWidth = 2560;
-            static constexpr int UIMaxHeight = 1440;
-        };
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // Hooks
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-        explicit WindowBase(HINSTANCE hInstance)
-            : m_hInstance(hInstance)
-            , m_hwnd(nullptr)
-            , m_className()
-            , m_classRegistered(false)
-            , m_width(0)
-            , m_height(0) {
-        }
+        virtual void    CustomizeClass(WNDCLASSEXW&) = 0;
+        virtual DWORD   StyleFlags()   const = 0;
+        virtual DWORD   ExStyleFlags() const = 0;
+        virtual WNDPROC WndProcFunc()  const = 0;
+        virtual void    OnCreated(HWND) {}
+        virtual bool    AdjustRect()   const { return true; }
 
-        [[nodiscard]] virtual const char* GetWindowTypeName() const noexcept { return "WindowBase"; }
-        virtual void CustomizeWindowClass(WNDCLASSEXW& wcex) = 0;
-        [[nodiscard]] virtual DWORD GetStyleFlags() const = 0;
-        [[nodiscard]] virtual DWORD GetExStyleFlags() const = 0;
-        virtual void OnWindowCreated(HWND hwnd) { (void)hwnd; }
-        [[nodiscard]] virtual bool CanClose() const { return true; }
-        [[nodiscard]] virtual WNDPROC GetWindowProc() const = 0;
-        [[nodiscard]] virtual bool ShouldAdjustWindowRect() const { return true; }
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // Initialization
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-        [[nodiscard]] bool InitializeBase(
+        [[nodiscard]] bool Init(
             const std::wstring& title,
-            int width,
-            int height,
-            int minWidth,
-            int maxWidth,
-            int minHeight,
-            int maxHeight,
-            void* messageHandler
-        ) {
-            char titleBuffer[256] = { 0 };
-            WideCharToMultiByte(CP_UTF8, 0, title.c_str(), -1, titleBuffer,
-                sizeof(titleBuffer) - 1, nullptr, nullptr);
-            LOG_INFO(GetWindowTypeName() << ": Initializing window '"
-                << titleBuffer << "' (" << width << "x" << height << ")");
+            int w, int h,
+            int minW, int maxW, int minH, int maxH,
+            void* handler)
+        {
+            if (!m_hInst || !handler) return false;
+            if (w < minW || w > maxW || h < minH || h > maxH) return false;
 
-            if (!m_hInstance || !messageHandler) {
-                LOG_ERROR(GetWindowTypeName()
-                    << ": Invalid parameters (hInstance or messageHandler is null).");
-                return false;
-            }
+            m_w = w;
+            m_h = h;
 
-            if (width < minWidth || width > maxWidth ||
-                height < minHeight || height > maxHeight) {
-                LOG_ERROR(GetWindowTypeName() << ": Invalid dimensions: "
-                    << width << "x" << height);
-                return false;
-            }
+            if (!RegisterWndClass()) return false;
 
-            m_width = width;
-            m_height = height;
+            m_hwnd = CreateWnd(title, w, h, handler);
+            if (!m_hwnd) return false;
 
-            if (!RegisterWindowClassInternal()) {
-                LOG_ERROR(GetWindowTypeName() << ": Failed to register window class.");
-                return false;
-            }
-
-            m_hwnd = CreateWindowInternal(title, width, height, messageHandler);
-            if (!m_hwnd) {
-                LOG_ERROR(GetWindowTypeName() << ": Failed to create window handle.");
-                return false;
-            }
-
-            OnWindowCreated(m_hwnd);
-
-            LOG_INFO(GetWindowTypeName() << ": Window created successfully (HWND: "
-                << m_hwnd << ")");
+            OnCreated(m_hwnd);
             return true;
         }
 
-        void ShowWindowWithPosition(int cmdShow, bool centerWindow, bool topRight) const {
-            VALIDATE_PTR_OR_RETURN(m_hwnd, GetWindowTypeName());
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // Show with positioning
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-            ShowWindow(m_hwnd, cmdShow);
+        void ShowAt(int cmd, bool center, bool topRight) const {
+            if (!m_hwnd) return;
+            ::ShowWindow(m_hwnd, cmd);
 
-            if (centerWindow) {
-                RECT workArea{};
-                SystemParametersInfo(SPI_GETWORKAREA, 0, &workArea, 0);
-                const int x = workArea.left + (workArea.right - workArea.left - m_width) / 2;
-                const int y = workArea.top + (workArea.bottom - workArea.top - m_height) / 2;
-                SetWindowPos(m_hwnd, nullptr, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
+            RECT wa{};
+            SystemParametersInfo(SPI_GETWORKAREA, 0, &wa, 0);
+
+            if (center) {
+                SetWindowPos(m_hwnd, nullptr,
+                    wa.left + (wa.right - wa.left - m_w) / 2,
+                    wa.top + (wa.bottom - wa.top - m_h) / 2,
+                    0, 0, SWP_NOSIZE | SWP_NOZORDER);
             }
             else if (topRight) {
-                RECT workArea{};
-                SystemParametersInfo(SPI_GETWORKAREA, 0, &workArea, 0);
-                const int x = workArea.right - m_width - 20;
-                const int y = 50;
-                SetWindowPos(m_hwnd, HWND_TOP, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
+                SetWindowPos(m_hwnd, HWND_TOP,
+                    wa.right - m_w - 20, 50,
+                    0, 0, SWP_NOSIZE | SWP_NOZORDER);
                 SetForegroundWindow(m_hwnd);
-                SetFocus(m_hwnd);
             }
 
             UpdateWindow(m_hwnd);
         }
 
-        HINSTANCE m_hInstance;
-        HWND m_hwnd;
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // Members
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+        HINSTANCE    m_hInst;
+        HWND         m_hwnd = nullptr;
         std::wstring m_className;
-        bool m_classRegistered;
-        int m_width;
-        int m_height;
+        bool         m_registered = false;
+        int          m_w = 0, m_h = 0;
 
     private:
-        bool RegisterWindowClassInternal() {
-            WNDCLASSEXW wcex{};
-            wcex.cbSize = sizeof(WNDCLASSEXW);
-            wcex.style = CS_HREDRAW | CS_VREDRAW;
-            wcex.lpfnWndProc = GetWindowProc();
-            wcex.hInstance = m_hInstance;
-            wcex.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-            wcex.lpszClassName = m_className.c_str();
+        bool RegisterWndClass() {
+            WNDCLASSEXW wc{};
+            wc.cbSize = sizeof(wc);
+            wc.style = CS_HREDRAW | CS_VREDRAW;
+            wc.lpfnWndProc = WndProcFunc();
+            wc.hInstance = m_hInst;
+            wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+            wc.lpszClassName = m_className.c_str();
+            wc.hIcon = LoadIconW(m_hInst, MAKEINTRESOURCEW(101));
+            wc.hIconSm = wc.hIcon;
 
-            wcex.hIcon = LoadIconW(m_hInstance, MAKEINTRESOURCEW(101));
-            wcex.hIconSm = LoadIconW(m_hInstance, MAKEINTRESOURCEW(101));
+            CustomizeClass(wc);
 
-            CustomizeWindowClass(wcex);
+            if (!wc.hIcon)   wc.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+            if (!wc.hIconSm) wc.hIconSm = wc.hIcon;
 
-            if (!wcex.hIcon) {
-                wcex.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
-            }
-            if (!wcex.hIconSm) {
-                wcex.hIconSm = LoadIconW(nullptr, IDI_APPLICATION);
-            }
-
-            if (RegisterClassExW(&wcex) == 0) {
-                return false;
-            }
-
-            m_classRegistered = true;
-            LOG_INFO(GetWindowTypeName() << ": Window class registered successfully.");
-            return true;
+            m_registered = (RegisterClassExW(&wc) != 0);
+            return m_registered;
         }
 
-        [[nodiscard]] HWND CreateWindowInternal(
-            const std::wstring& title,
-            int width,
-            int height,
-            void* messageHandler
-        ) {
-            const DWORD style = GetStyleFlags();
-            const DWORD exStyle = GetExStyleFlags();
+        HWND CreateWnd(const std::wstring& title, int w, int h, void* handler) {
+            const DWORD s = StyleFlags();
+            const DWORD ex = ExStyleFlags();
 
-            int x = CW_USEDEFAULT;
-            int y = CW_USEDEFAULT;
-            int w = width;
-            int h = height;
-
-            if (ShouldAdjustWindowRect()) {
-                RECT rect{ 0, 0, width, height };
-                AdjustWindowRectEx(&rect, style, FALSE, exStyle);
-                w = rect.right - rect.left;
-                h = rect.bottom - rect.top;
+            if (AdjustRect()) {
+                RECT rc{ 0, 0, w, h };
+                AdjustWindowRectEx(&rc, s, FALSE, ex);
+                w = rc.right - rc.left;
+                h = rc.bottom - rc.top;
             }
 
             return CreateWindowExW(
-                exStyle,
-                m_className.c_str(),
-                title.c_str(),
-                style,
-                x, y, w, h,
-                nullptr,
-                nullptr,
-                m_hInstance,
-                messageHandler
-            );
+                ex, m_className.c_str(), title.c_str(), s,
+                CW_USEDEFAULT, CW_USEDEFAULT, w, h,
+                nullptr, nullptr, m_hInst, handler);
         }
     };
 
-    template <typename HandlerType>
-    inline LRESULT CALLBACK CommonWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-        if (msg == WM_NCCREATE) {
-            auto* createStruct = reinterpret_cast<CREATESTRUCT*>(lParam);
-            SetWindowLongPtr(hwnd, GWLP_USERDATA,
-                reinterpret_cast<LONG_PTR>(createStruct->lpCreateParams));
-            return DefWindowProc(hwnd, msg, wParam, lParam);
-        }
-
-        auto* handler = reinterpret_cast<HandlerType*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
-        return handler ? handler->HandleWindowMessage(hwnd, msg, wParam, lParam)
-            : DefWindowProc(hwnd, msg, wParam, lParam);
-    }
-
-}
+} // namespace Spectrum::Platform
 
 #endif

@@ -1,41 +1,58 @@
 ﻿#ifndef SPECTRUM_CPP_UIWINDOW_H
 #define SPECTRUM_CPP_UIWINDOW_H
 
-#include "Common/Common.h"
-#include "WindowBase.h"
-#include <string>
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// Borderless popup window for ImGui settings panel.
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+#include "Platform/WindowBase.h"
+#include "Platform/UIMessageHandler.h"
 
 namespace Spectrum::Platform {
 
-    class UIMessageHandler;
-
     class UIWindow final : public WindowBase {
     public:
-        explicit UIWindow(HINSTANCE hInstance);
-        ~UIWindow() noexcept override = default;
+        explicit UIWindow(HINSTANCE h)
+            : WindowBase(h) {
+            m_className = L"SpectrumUIClass";
+        }
 
         [[nodiscard]] bool Initialize(
-            const std::wstring& title,
-            int width,
-            int height,
-            UIMessageHandler* messageHandler
-        );
+            const std::wstring& title, int w, int h,
+            UIMessageHandler* handler)
+        {
+            return Init(title, w, h,
+                WindowLimits::UIMinW, WindowLimits::UIMaxW,
+                WindowLimits::UIMinH, WindowLimits::UIMaxH,
+                handler);
+        }
 
-        void Show(int cmdShow = SW_SHOW);
+        void Show(int cmd = SW_SHOW) {
+            ShowAt(cmd, false, m_first);
+            m_first = false;
+        }
 
     protected:
-        [[nodiscard]] const char* GetWindowTypeName() const noexcept override;
-        void CustomizeWindowClass(WNDCLASSEXW& wcex) override;
-        [[nodiscard]] DWORD GetStyleFlags() const override;
-        [[nodiscard]] DWORD GetExStyleFlags() const override;
-        [[nodiscard]] WNDPROC GetWindowProc() const override;
+        void CustomizeClass(WNDCLASSEXW& wc) override {
+            wc.style |= CS_OWNDC;
+            wc.hbrBackground = nullptr;
+        }
+
+        DWORD StyleFlags()   const override { return WS_POPUP | WS_CLIPCHILDREN; }
+        DWORD ExStyleFlags() const override { return WS_EX_TOOLWINDOW; }
+
+        WNDPROC WndProcFunc() const override {
+            return [](HWND h, UINT m, WPARAM w, LPARAM l) -> LRESULT {
+                return CommonWndProc<UIMessageHandler>(h, m, w, l);
+                };
+        }
+
+        bool AdjustRect() const override { return false; }
 
     private:
-        static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
-
-        mutable bool m_firstShow = true;
+        bool m_first = true;
     };
 
-}
+} // namespace Spectrum::Platform
 
 #endif

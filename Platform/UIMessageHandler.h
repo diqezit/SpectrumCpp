@@ -1,44 +1,112 @@
 ﻿#ifndef SPECTRUM_CPP_UI_MESSAGE_HANDLER_H
 #define SPECTRUM_CPP_UI_MESSAGE_HANDLER_H
 
-#include "Common/Common.h"
-#include "MessageHandlerBase.h"
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// UI window message handler — ImGui + borderless drag.
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-namespace Spectrum {
-    class ControllerCore;
-    class EventBus;
-    class UIManager;
+#include "Platform/MessageHandlerBase.h"
+#include "Platform/WindowManager.h"
+#include "UI/UIManager.h"
+#include <stdexcept>
 
-    namespace Platform {
-        class WindowManager;
+namespace Spectrum::Platform {
 
-        class UIMessageHandler final : public MessageHandlerBase {
-        public:
-            explicit UIMessageHandler(
-                ControllerCore* controller,
-                WindowManager* windowManager,
-                UIManager* uiManager,
-                EventBus* bus
-            );
-            ~UIMessageHandler() noexcept override = default;
+    class UIMessageHandler final : public MessageHandlerBase {
+    public:
+        UIMessageHandler(
+            ControllerCore*,
+            WindowManager* wm,
+            UIManager* ui,
+            EventBus*)
+            : m_wm(wm)
+            , m_ui(ui)
+        {
+            if (!wm || !ui)
+                throw std::invalid_argument(
+                    "UIMessageHandler: null dependency");
+        }
 
-            UIMessageHandler(const UIMessageHandler&) = delete;
-            UIMessageHandler& operator=(const UIMessageHandler&) = delete;
-            UIMessageHandler(UIMessageHandler&&) = delete;
-            UIMessageHandler& operator=(UIMessageHandler&&) = delete;
+        LRESULT HandleWindowMessage(
+            HWND hwnd, UINT msg,
+            WPARAM wp, LPARAM lp) override
+        {
+            // ImGui gets first chance
+            if (m_ui->HandleMessage(hwnd, msg, wp, lp))
+                return 0;
 
-            [[nodiscard]] LRESULT HandleWindowMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) override;
+            switch (msg) {
+                // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+                // Paint
+                // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-        private:
-            void HandleClose(HWND hwnd);
+            case WM_PAINT: {
+                PAINTSTRUCT ps;
+                BeginPaint(hwnd, &ps);
+                EndPaint(hwnd, &ps);
+                return 0;
+            }
 
-            ControllerCore* m_controller;
-            WindowManager* m_windowManager;
-            UIManager* m_uiManager;
-            EventBus* m_bus;
-        };
+                         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+                         // Resize
+                         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-    }
-}
+            case WM_ENTERSIZEMOVE:
+            case WM_EXITSIZEMOVE:
+            case WM_SIZE:
+                return DispatchResize(hwnd, msg, wp, lp,
+                    [this] { m_wm->OnUIResizeStart(); },
+                    [this](HWND h) { m_wm->OnUIResizeEnd(h); },
+                    [this](HWND h, int w, int ht) {
+                        m_wm->OnUIResize(h, w, ht);
+                    });
+
+                // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+                // Borderless drag
+                // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+            case WM_NCHITTEST: {
+                POINT pt = {
+                    GET_X_LPARAM(lp),
+                    GET_Y_LPARAM(lp)
+                };
+                ScreenToClient(hwnd, &pt);
+
+                if (pt.y < kTitleBarHeight
+                    && !ImGui::IsAnyItemActive()
+                    && !ImGui::IsAnyItemHovered())
+                    return HTCAPTION;
+
+                return HTCLIENT;
+            }
+
+                             // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+                             // Close — hide, don't destroy
+                             // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+            case WM_CLOSE:
+                ::ShowWindow(hwnd, SW_HIDE);
+                return 0;
+
+            case WM_DESTROY:
+                return 0;
+
+                // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+                // Mouse + erase + default
+                // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+            default:
+                return HandleCommon(hwnd, msg, wp, lp);
+            }
+        }
+
+    private:
+        static constexpr int kTitleBarHeight = 32;
+
+        WindowManager* m_wm;
+        UIManager* m_ui;
+    };
+
+} // namespace Spectrum::Platform
 
 #endif

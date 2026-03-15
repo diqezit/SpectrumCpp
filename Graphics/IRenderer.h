@@ -2,78 +2,34 @@
 #define SPECTRUM_CPP_IRENDERER_H
 
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// Defines the IRenderer interface, the contract for all visualizer
-// implementations.
-// 
-// This interface allows the RendererManager to manage and interact with all
-// visualizers polymorphically, abstracting away their concrete
-// implementations. It follows the Interface Segregation Principle by
-// providing default implementations for non-essential lifecycle methods.
+// Contract for all visualizer implementations.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Common/Common.h"
 #include <string_view>
 
-namespace Spectrum
-{
-    // Forward declaration
+namespace Spectrum {
+
     class Canvas;
 
-    class IRenderer
-    {
+    class IRenderer {
     public:
         virtual ~IRenderer() = default;
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Main Execution
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-        // Main entry point for drawing a single frame.
         virtual void Render(Canvas& canvas, const SpectrumData& spectrum) = 0;
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Configuration & Setters
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-        // Sets the quality to balance performance and visuals.
         virtual void SetQuality(RenderQuality quality) = 0;
+        virtual void SetPrimaryColor(const Color&) {}
+        virtual void SetOverlayMode(bool) {}
 
-        // Sets the main color of the visualizer.
-        virtual void SetPrimaryColor(const Color& /*color*/) {}
+        [[nodiscard]] virtual RenderStyle      GetStyle() const = 0;
+        [[nodiscard]] virtual std::string_view  GetName()  const = 0;
+        [[nodiscard]] virtual bool SupportsPrimaryColor()  const { return true; }
 
-        // Sets overlay mode for drawing on top of other content.
-        virtual void SetOverlayMode(bool /*isOverlay*/) {}
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // State Queries & Getters
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-        [[nodiscard]] virtual RenderStyle GetStyle() const = 0;
-        [[nodiscard]] virtual std::string_view GetName() const = 0;
-
-        // Indicates if the visualizer's color can be changed by the user.
-        [[nodiscard]] virtual bool SupportsPrimaryColor() const { return true; }
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Lifecycle Management
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-        // Called when the renderer becomes active (initial activation)
-        // Renderers should initialize all resources needed for rendering
-        virtual void OnActivate(int /*width*/, int /*height*/) {}
-
-        // Called when viewport size changes (without deactivation)
-        // Default implementation re-activates, but renderers can override
-        // for more efficient resize-specific logic
-        virtual void OnResize(int width, int height) {
-            // Default: re-activate (backward compatible)
-            OnActivate(width, height);
-        }
-
-        // Called when the renderer is switched out. Allows for state cleanup
+        virtual void OnActivate(int, int) {}
+        virtual void OnResize(int w, int h) { OnActivate(w, h); }
         virtual void OnDeactivate() {}
     };
 
 } // namespace Spectrum
 
-#endif // SPECTRUM_CPP_IRENDERER_H
+#endif
