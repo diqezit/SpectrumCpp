@@ -2,55 +2,57 @@
 #define SPECTRUM_CPP_BASE_RENDERER_H
 
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// CRTP base for all visualizers.
-// Provides viewport, color, animation, layout, and batch-rendering utils.
+// BaseRenderer
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "Graphics/IRenderer.h"
 #include "Graphics/Base/PeakTracker.h"
 #include "Graphics/API/GraphicsHelpers.h"
+#include "Graphics/API/Draw.h"
 #include "Common/Common.h"
-#include <optional>
-#include <functional>
+
 #include <algorithm>
-#include <vector>
+#include <functional>
 #include <map>
+#include <optional>
+#include <string_view>
+#include <vector>
 
 namespace Spectrum {
 
-    class Canvas;
+    class Renderer {
+    public:
+        virtual ~Renderer() = default;
 
-    namespace Settings {
-        template<typename T> struct QualityTraits;
-    }
+        virtual void OnActivate(int width, int height) = 0;
+        virtual void OnDeactivate() = 0;
+        virtual void OnResize(int width, int height) = 0;
+
+        virtual void SetQuality(RenderQuality quality) = 0;
+        virtual void SetPrimaryColor(const Color& color) = 0;
+        virtual void SetOverlayMode(bool overlay) = 0;
+
+        virtual void Render(BLContext& ctx, const SpectrumData& spectrum) = 0;
+        [[nodiscard]] virtual std::string_view GetName() const = 0;
+    };
 
     template<typename Derived>
-    class BaseRenderer : public IRenderer {
+    class BaseRenderer : public Renderer {
     public:
         static constexpr float kTimeResetThreshold = 1e6f;
         static constexpr float kDefaultFrameTime = 1.0f / 60.0f;
+        static constexpr float kOverlayScale = 0.95f;
 
         enum class RoundingMode { None, All, Top, Bottom };
 
-        BaseRenderer()
-            : m_quality(RenderQuality::Medium)
-            , m_primaryColor(Color::FromRGB(33, 150, 243))
-            , m_isOverlay(false)
-            , m_width(0), m_height(0)
-            , m_aspectRatio(0.0f)
-            , m_padding(1.0f)
-            , m_time(0.0f)
-        {
-        }
-
+        BaseRenderer() = default;
         ~BaseRenderer() override = default;
 
         BaseRenderer(const BaseRenderer&) = delete;
         BaseRenderer& operator=(const BaseRenderer&) = delete;
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // IRenderer overrides
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Renderer
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void SetQuality(RenderQuality q) override {
             if (m_quality == q) return;
@@ -66,102 +68,110 @@ namespace Spectrum {
             UpdateSettings();
         }
 
-        void OnActivate(int w, int h) override {
-            m_width = std::max(w, 0);
-            m_height = std::max(h, 0);
+        void OnActivate(int w, int h) override { OnResize(w, h); }
+        void OnDeactivate() override {}
+
+        void OnResize(int w, int h) override {
+            m_width = w;
+            m_height = h;
         }
 
-        void Render(Canvas& canvas, const SpectrumData& spectrum) override {
-            if (spectrum.empty() || m_width <= 0 || m_height <= 0) return;
+        void Render(BLContext& ctx, const SpectrumData& spectrum) override {
             m_time += kDefaultFrameTime;
             if (m_time > kTimeResetThreshold) m_time = 0.0f;
             UpdateAnimation(spectrum, kDefaultFrameTime);
-            DoRender(canvas, spectrum);
+            DoRender(ctx, spectrum);
         }
 
     protected:
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // Hooks for derived
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-
         virtual void UpdateSettings() = 0;
         virtual void UpdateAnimation(const SpectrumData&, float) {}
-        virtual void DoRender(Canvas& canvas, const SpectrumData& spectrum) = 0;
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // Quality settings helper
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        virtual void DoRender(BLContext& ctx, const SpectrumData& spectrum) = 0;
 
         template<typename SettingsType>
         SettingsType GetQualitySettings() const;
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Viewport
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        [[nodiscard]] float GetTime()         const noexcept { return m_time; }
-        [[nodiscard]] int   GetWidth()        const noexcept { return m_width; }
-        [[nodiscard]] int   GetHeight()       const noexcept { return m_height; }
-        [[nodiscard]] float GetMinDimension() const noexcept { return static_cast<float>(std::min(m_width, m_height)); }
-        [[nodiscard]] float GetMaxDimension() const noexcept { return static_cast<float>(std::max(m_width, m_height)); }
-        [[nodiscard]] float GetMaxRadius()    const noexcept { return GetMinDimension() * 0.45f; }
+        [[nodiscard]] float GetTime() const noexcept { return m_time; }
+        [[nodiscard]] int   GetWidth() const noexcept { return m_width; }
+        [[nodiscard]] int   GetHeight() const noexcept { return m_height; }
+        [[nodiscard]] RenderQuality GetQuality() const noexcept { return m_quality; }
+        [[nodiscard]] bool  IsOverlay() const noexcept { return m_isOverlay; }
+        [[nodiscard]] Color GetPrimaryColor() const noexcept { return m_primaryColor; }
 
-        [[nodiscard]] RenderQuality GetQuality()     const noexcept { return m_quality; }
-        [[nodiscard]] bool          IsOverlay()      const noexcept { return m_isOverlay; }
-        [[nodiscard]] Color         GetPrimaryColor() const noexcept { return m_primaryColor; }
+        [[nodiscard]] float GetMinDimension() const noexcept {
+            return float(std::min(m_width, m_height));
+        }
 
-        [[nodiscard]] Rect  GetViewportBounds() const noexcept {
-            return { 0.0f, 0.0f, static_cast<float>(m_width), static_cast<float>(m_height) };
+        [[nodiscard]] float GetMaxRadius() const noexcept {
+            return GetMinDimension() * 0.45f;
+        }
+
+        [[nodiscard]] Rect GetViewportBounds() const noexcept {
+            return Helpers::Geometry::CreateViewportBounds(m_width, m_height);
         }
 
         [[nodiscard]] Point GetViewportCenter() const noexcept {
-            return { m_width * 0.5f, m_height * 0.5f };
+            return Helpers::Geometry::GetViewportCenter(m_width, m_height);
         }
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // Grid layout
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Grid
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         struct GridConfig {
-            int   rows = 0;
-            int   columns = 0;
+            int rows = 0;
+            int columns = 0;
             float cellSize = 0.0f;
             Point gridStart{};
         };
 
         [[nodiscard]] GridConfig CalculateGrid(
-            size_t requiredColumns, float cellSize,
-            int maxRows = 64, int maxColumns = 64) const
+            size_t requiredColumns,
+            float cellSize,
+            int maxRows = 64,
+            int maxColumns = 64) const
         {
-            const float availW = m_isOverlay ? m_width * 0.95f : static_cast<float>(m_width);
-            const float availH = m_isOverlay ? m_height * 0.95f : static_cast<float>(m_height);
+            const float scale = m_isOverlay ? kOverlayScale : 1.0f;
+            const float availW = float(m_width) * scale;
+            const float availH = float(m_height) * scale;
 
             GridConfig g;
-            g.columns = std::clamp(static_cast<int>(std::min(requiredColumns, static_cast<size_t>(availW / cellSize))), 1, maxColumns);
-            g.rows = std::clamp(static_cast<int>(availH / cellSize), 1, maxRows);
+            g.columns = std::clamp(int(std::min(requiredColumns, size_t(availW / cellSize))), 1, maxColumns);
+            g.rows = std::clamp(int(availH / cellSize), 1, maxRows);
             g.cellSize = std::min(availW / g.columns, availH / g.rows);
 
-            const Point center = GetViewportCenter();
+            const Point c = GetViewportCenter();
             g.gridStart = {
-                center.x - g.columns * g.cellSize * 0.5f,
-                center.y - g.rows * g.cellSize * 0.5f
+                c.x - g.columns * g.cellSize * 0.5f,
+                c.y - g.rows * g.cellSize * 0.5f
             };
             return g;
         }
 
         [[nodiscard]] Point GetGridCellCenter(const GridConfig& g, int col, int row) const {
             const float half = g.cellSize * 0.5f;
-            return { g.gridStart.x + col * g.cellSize + half,
-                     g.gridStart.y + row * g.cellSize + half };
+            return {
+                g.gridStart.x + col * g.cellSize + half,
+                g.gridStart.y + row * g.cellSize + half
+            };
         }
 
-        [[nodiscard]] size_t GetGridIndex(const GridConfig& g, int col, int row) const noexcept {
-            return static_cast<size_t>(row) * g.columns + col;
+        bool SyncGrid(GridConfig& grid, size_t columns, float cellSize, int maxRows = 64) {
+            const GridConfig next = CalculateGrid(columns, cellSize, maxRows);
+            if (next.columns == grid.columns && next.rows == grid.rows) return false;
+            grid = next;
+            if (HasPeakTracker())
+                GetPeakTracker().Resize(size_t(grid.columns));
+            return true;
         }
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // Bar layout
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Bars
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         struct BarLayout {
             float barWidth = 0.0f;
@@ -170,203 +180,129 @@ namespace Spectrum {
         };
 
         [[nodiscard]] BarLayout CalculateBarLayout(size_t count, float spacing) const {
-            if (count == 0) return {};
-            BarLayout l;
-            l.spacing = spacing;
-            l.totalBarWidth = static_cast<float>(m_width) / count;
-            l.barWidth = std::max(0.0f, l.totalBarWidth - spacing);
-            return l;
+            BarLayout layout;
+            layout.spacing = spacing;
+            layout.totalBarWidth = float(m_width) / count;
+            layout.barWidth = std::max(0.0f, layout.totalBarWidth - spacing);
+            return layout;
         }
 
-        [[nodiscard]] Rect GetBarRect(const BarLayout& l, size_t i, float h, bool fromBottom = true) const {
-            const float x = i * l.totalBarWidth + l.spacing * 0.5f;
-            const float y = fromBottom ? static_cast<float>(m_height) - h : 0.0f;
-            return { x, y, l.barWidth, h };
+        [[nodiscard]] Rect GetBarRect(
+            const BarLayout& layout, size_t i, float h, bool fromBottom = true) const
+        {
+            return {
+                i * layout.totalBarWidth + layout.spacing * 0.5f,
+                fromBottom ? float(m_height) - h : 0.0f,
+                layout.barWidth,
+                h
+            };
         }
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // Geometry helpers
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Circles / Color
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        [[nodiscard]] Point GetPointOnCircle(const Point& c, float r, float angle) const {
-            return { c.x + r * std::cos(angle), c.y + r * std::sin(angle) };
-        }
-
-        [[nodiscard]] std::vector<Point> GetCircularPoints(const Point& c, float r, size_t n) const {
-            if (n == 0) return {};
+        [[nodiscard]] std::vector<Point> GetCircularPoints(
+            const Point& c, float r, size_t n) const
+        {
             std::vector<Point> pts;
             pts.reserve(n);
-            const float step = TWO_PI / n;
+            const float step = Helpers::Constants::kTwoPi / float(n);
             for (size_t i = 0; i < n; ++i)
-                pts.push_back(GetPointOnCircle(c, r, i * step));
+                pts.push_back(PointOnCircle(c, r, i * step));
             return pts;
         }
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // Color helpers
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-
-        [[nodiscard]] Color AdjustBrightness(const Color& c, float f) const {
-            return { std::clamp(c.r * f, 0.0f, 1.0f),
-                     std::clamp(c.g * f, 0.0f, 1.0f),
-                     std::clamp(c.b * f, 0.0f, 1.0f), c.a };
-        }
-
-        [[nodiscard]] Color AdjustSaturation(const Color& c, float f) const {
-            const float gray = c.r * 0.299f + c.g * 0.587f + c.b * 0.114f;
-            return { Helpers::Math::Lerp(gray, c.r, f),
-                     Helpers::Math::Lerp(gray, c.g, f),
-                     Helpers::Math::Lerp(gray, c.b, f), c.a };
-        }
-
-        [[nodiscard]] Color AdjustAlpha(const Color& c, float a) const {
-            return { c.r, c.g, c.b, std::clamp(a, 0.0f, 1.0f) };
-        }
-
-        [[nodiscard]] Color InterpolateColors(const Color& a, const Color& b, float t) const {
-            return { Helpers::Math::Lerp(a.r, b.r, t),
-                     Helpers::Math::Lerp(a.g, b.g, t),
-                     Helpers::Math::Lerp(a.b, b.b, t),
-                     Helpers::Math::Lerp(a.a, b.a, t) };
-        }
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // Gradient
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
         using ColorGradient = std::vector<Color>;
 
         [[nodiscard]] Color SampleGradient(const ColorGradient& g, float t) const {
-            if (g.empty()) return {};
-            if (g.size() == 1) return g[0];
             const float s = std::clamp(t, 0.0f, 1.0f) * (g.size() - 1);
-            const size_t i = static_cast<size_t>(s);
-            const size_t j = std::min(i + 1, g.size() - 1);
-            return InterpolateColors(g[i], g[j], s - i);
+            const size_t i = size_t(s);
+            return InterpolateColor(g[i], g[std::min(i + 1, g.size() - 1)], s - i);
         }
 
-        [[nodiscard]] ColorGradient CreateGradient(const Color& a, const Color& b, size_t steps) const {
-            if (steps == 0) return {};
-            ColorGradient g;
-            g.reserve(steps);
-            for (size_t i = 0; i < steps; ++i) {
-                const float t = steps > 1 ? static_cast<float>(i) / (steps - 1) : 0.0f;
-                g.push_back(InterpolateColors(a, b, t));
-            }
-            return g;
-        }
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // Smoothing / easing
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-
-        [[nodiscard]] float SmoothValue(float cur, float target, float attack = 0.4f, float decay = 0.85f) const {
-            const float rate = (cur < target) ? attack : (1.0f - decay);
-            return Helpers::Math::Lerp(cur, target, rate);
-        }
-
-        [[nodiscard]] std::vector<float> SmoothValues(
-            const std::vector<float>& cur, const SpectrumData& target,
-            float attack = 0.4f, float decay = 0.85f) const
+        [[nodiscard]] float SmoothValue(
+            float cur, float target, float attack = 0.4f, float decay = 0.85f) const
         {
-            std::vector<float> out = cur;
-            const size_t n = std::min(cur.size(), target.size());
-            for (size_t i = 0; i < n; ++i)
-                out[i] = SmoothValue(cur[i], target[i], attack, decay);
-            return out;
+            return Lerp(cur, target, cur < target ? attack : (1.0f - decay));
         }
 
-        [[nodiscard]] float SmoothStep(float e0, float e1, float x) const {
-            const float t = std::clamp((x - e0) / (e1 - e0), 0.0f, 1.0f);
-            return t * t * (3.0f - 2.0f * t);
-        }
-
-        [[nodiscard]] float EaseInOut(float t) const { return t * t * (3.0f - 2.0f * t); }
-        [[nodiscard]] float EaseIn(float t)    const { return t * t; }
-        [[nodiscard]] float EaseOut(float t)   const { return t * (2.0f - t); }
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // Drawing helpers
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // Draw
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void DrawRoundedRect(
-            Canvas& canvas, const Rect& rect, float radius,
-            const Paint& paint, RoundingMode mode = RoundingMode::All) const
+            BLContext& ctx,
+            const Rect& r,
+            float radius,
+            const Color& color,
+            RoundingMode mode = RoundingMode::All) const
         {
             if (radius <= 0.0f || mode == RoundingMode::None) {
-                canvas.DrawRectangle(rect, paint);
+                Draw::FillRect(ctx, r, color);
                 return;
             }
-
             if (mode == RoundingMode::All) {
-                canvas.DrawRoundedRectangle(rect, radius, paint);
+                Draw::FillRoundRect(ctx, r, radius, color);
+                return;
+            }
+            if (r.height < radius * 2.0f) {
+                Draw::FillRect(ctx, r, color);
                 return;
             }
 
-            if (rect.height < radius * 2.0f) {
-                canvas.DrawRectangle(rect, paint);
-                return;
-            }
-
-            if (mode == RoundingMode::Top) {
-                canvas.DrawRectangle({ rect.x, rect.y + radius, rect.width, rect.height - radius }, paint);
-                canvas.DrawRoundedRectangle({ rect.x, rect.y, rect.width, radius * 2.0f }, radius, paint);
-            }
-            else { // Bottom
-                canvas.DrawRectangle({ rect.x, rect.y, rect.width, rect.height - radius }, paint);
-                canvas.DrawRoundedRectangle({ rect.x, rect.y + rect.height - radius * 2.0f, rect.width, radius * 2.0f }, radius, paint);
-            }
+            const bool top = (mode == RoundingMode::Top);
+            Draw::FillRect(ctx, {
+                r.x,
+                top ? r.y + radius : r.y,
+                r.width,
+                r.height - radius
+                }, color);
+            Draw::FillRoundRect(ctx, {
+                r.x,
+                top ? r.y : r.y + r.height - radius * 2.0f,
+                r.width,
+                radius * 2.0f
+                }, radius, color);
         }
 
         void RenderWithShadow(
-            Canvas& canvas, const std::function<void()>& draw,
-            const Point& offset = { 2.0f, 2.0f }, float alpha = 0.3f) const
+            BLContext& ctx,
+            const std::function<void()>& draw,
+            const Point& offset = { 2.0f, 2.0f },
+            float alpha = 0.3f) const
         {
-            canvas.DrawWithShadow(draw, offset, Color(0, 0, 0, alpha));
-        }
-
-        void RenderWithGlow(
-            Canvas& canvas, const std::function<void()>& draw,
-            const Point& center, float radius,
-            const Color& color, float intensity = 0.8f) const
-        {
-            canvas.DrawGlow(center, radius, color, intensity);
+            ctx.save();
+            ctx.translate(offset.x, offset.y);
+            ctx.set_global_alpha(double(alpha));
+            draw();
+            ctx.restore();
             draw();
         }
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // Batch rendering
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
         using RectBatch = std::map<Color, std::vector<Rect>>;
         using PointBatch = std::map<Color, std::vector<Point>>;
 
         void RenderRectBatches(
-            Canvas& canvas, const RectBatch& batches,
-            float cornerRadius = 0.0f, RoundingMode mode = RoundingMode::All) const
+            BLContext& ctx,
+            const RectBatch& batches,
+            float cornerRadius = 0.0f,
+            RoundingMode mode = RoundingMode::All) const
         {
-            for (const auto& [color, rects] : batches) {
-                if (rects.empty()) continue;
-                const Paint paint = Paint::Fill(color);
-                if (cornerRadius > 0.0f || mode != RoundingMode::None) {
-                    for (const auto& r : rects)
-                        DrawRoundedRect(canvas, r, cornerRadius, paint, mode);
-                }
-                else {
-                    canvas.DrawRectangleBatch(rects, paint);
-                }
-            }
+            for (const auto& [color, rects] : batches)
+                for (const auto& r : rects)
+                    DrawRoundedRect(ctx, r, cornerRadius, color, mode);
         }
 
-        void RenderCircleBatches(Canvas& canvas, const PointBatch& batches, float radius) const {
+        void RenderCircleBatches(BLContext& ctx, const PointBatch& batches, float radius) const {
             for (const auto& [color, pts] : batches)
-                if (!pts.empty())
-                    canvas.DrawCircleBatch(pts, radius, Paint::Fill(color));
+                for (const auto& p : pts)
+                    Draw::FillCircle(ctx, p, radius, color);
         }
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // Peak tracker
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void InitializePeakTracker(size_t size, float holdTime = 0.3f, float decayRate = 0.95f) {
             PeakTracker::Config cfg;
@@ -375,40 +311,22 @@ namespace Spectrum {
             m_peakTracker.emplace(size, cfg);
         }
 
-        [[nodiscard]] bool               HasPeakTracker()  const { return m_peakTracker.has_value(); }
+        [[nodiscard]] bool HasPeakTracker() const { return m_peakTracker.has_value(); }
         [[nodiscard]] PeakTracker& GetPeakTracker() { return m_peakTracker.value(); }
-        [[nodiscard]] const PeakTracker& GetPeakTracker()  const { return m_peakTracker.value(); }
+        [[nodiscard]] const PeakTracker& GetPeakTracker() const { return m_peakTracker.value(); }
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // Utilities
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-
-        [[nodiscard]] float MapToRange(float v, float inMin, float inMax, float outMin, float outMax) const {
-            return Helpers::Math::Map(v, inMin, inMax, outMin, outMax);
-        }
-
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // State
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-
-        RenderQuality m_quality;
-        Color         m_primaryColor;
-        bool          m_isOverlay;
-        int           m_width;
-        int           m_height;
-        float         m_aspectRatio;
-        float         m_padding;
-        mutable float m_time;
+        RenderQuality m_quality = RenderQuality::Medium;
+        Color         m_primaryColor = Color::FromRGB(33, 150, 243);
+        bool          m_isOverlay = false;
+        int           m_width = 0;
+        int           m_height = 0;
+        float         m_time = 0.0f;
 
     private:
         std::optional<PeakTracker> m_peakTracker;
     };
 
 } // namespace Spectrum
-
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// GetQualitySettings — needs QualityPresets (included after full definition)
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Graphics/Visualizers/Settings/QualityPresets.h"
 

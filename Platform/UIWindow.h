@@ -6,50 +6,52 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Platform/WindowBase.h"
-#include "Platform/UIMessageHandler.h"
+#include "Platform/Messages.h"
+#include <utility>
 
 namespace Spectrum::Platform {
 
     class UIWindow final : public WindowBase {
     public:
-        explicit UIWindow(HINSTANCE h)
-            : WindowBase(h) {
+        explicit UIWindow(HINSTANCE h) : WindowBase(h) {
             m_className = L"SpectrumUIClass";
         }
 
         [[nodiscard]] bool Initialize(
-            const std::wstring& title, int w, int h,
-            UIMessageHandler* handler)
+            const std::wstring& title, int w, int h, UIMessageHandler* handler)
         {
-            return Init(title, w, h,
-                WindowLimits::UIMinW, WindowLimits::UIMaxW,
-                WindowLimits::UIMinH, WindowLimits::UIMaxH,
-                handler);
+            return Init(title, w, h, handler);
         }
 
         void Show(int cmd = SW_SHOW) {
-            ShowAt(cmd, false, m_first);
-            m_first = false;
+            ShowAt(cmd, false, std::exchange(m_first, false));
         }
 
     protected:
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // Class
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
         void CustomizeClass(WNDCLASSEXW& wc) override {
             wc.style |= CS_OWNDC;
             wc.hbrBackground = nullptr;
         }
 
+        WNDPROC WndProcFunc() const override { return &WndProc; }
+
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        // Style
+        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
         DWORD StyleFlags()   const override { return WS_POPUP | WS_CLIPCHILDREN; }
         DWORD ExStyleFlags() const override { return WS_EX_TOOLWINDOW; }
-
-        WNDPROC WndProcFunc() const override {
-            return [](HWND h, UINT m, WPARAM w, LPARAM l) -> LRESULT {
-                return CommonWndProc<UIMessageHandler>(h, m, w, l);
-                };
-        }
-
-        bool AdjustRect() const override { return false; }
+        bool  AdjustRect()   const override { return false; }
 
     private:
+        static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
+            return CommonWndProc<UIMessageHandler>(h, m, w, l);
+        }
+
         bool m_first = true;
     };
 

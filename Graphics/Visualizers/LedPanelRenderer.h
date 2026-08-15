@@ -1,86 +1,107 @@
 #ifndef SPECTRUM_CPP_LED_PANEL_RENDERER_H
 #define SPECTRUM_CPP_LED_PANEL_RENDERER_H
 
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// LedPanelRenderer
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+#include "Graphics/API/Draw.h"
 #include "Graphics/Base/BaseRenderer.h"
+#include "Graphics/Base/RenderUtils.h"
 #include "Graphics/Visualizers/Settings/QualityTraits.h"
 
 namespace Spectrum {
 
-    class Canvas;
-
-    class LedPanelRenderer final : public BaseRenderer<LedPanelRenderer>
-    {
+    class LedPanelRenderer final : public BaseRenderer<LedPanelRenderer> {
     public:
-        LedPanelRenderer();
-        ~LedPanelRenderer() override = default;
-
-        [[nodiscard]] RenderStyle GetStyle() const override {
-            return RenderStyle::LedPanel;
+        LedPanelRenderer() {
+            InitializePeakTracker(0, 0.5f, 0.95f);
+            UpdateSettings();
         }
 
-        [[nodiscard]] std::string_view GetName() const override {
-            return "LED Panel";
-        }
+        [[nodiscard]] std::string_view GetName() const override { return "LED Panel"; }
 
-        void OnActivate(int width, int height) override;
+        void OnActivate(int width, int height) override {
+            BaseRenderer::OnActivate(width, height);
+            m_grid = {};
+        }
 
     protected:
-        void UpdateSettings() override;
+        void UpdateSettings() override {
+            m_settings = GetQualitySettings<Settings::LedPanelSettings>();
+            m_grid = {};
+            m_gradient = RenderUtils::LedGradient();
+        }
 
-        void UpdateAnimation(
-            const SpectrumData& spectrum,
-            float deltaTime
-        ) override;
+        void UpdateAnimation(const SpectrumData& spectrum, float dt) override {
+            SyncGrid(m_grid, spectrum.size(), kRadius * 2.0f + kMargin, m_settings.maxRows);
+            if (m_settings.usePeakHold && HasPeakTracker())
+                GetPeakTracker().Update(spectrum, dt);
+        }
 
-        void DoRender(
-            Canvas& canvas,
-            const SpectrumData& spectrum
-        ) override;
+        void DoRender(BLContext& ctx, const SpectrumData& spectrum) override {
+            if (m_grid.columns == 0 || m_grid.rows == 0 || spectrum.empty()) return;
+
+            const Color idle = RenderUtils::LedIdleColor();
+            PointBatch inactive;
+            PointBatch active;
+
+            for (int col = 0; col < m_grid.columns; ++col)
+                for (int row = 0; row < m_grid.rows; ++row)
+                    inactive[idle].push_back(LedCenter(col, row));
+            RenderCircleBatches(ctx, inactive, kRadius);
+
+            const size_t cols = std::min(static_cast<size_t>(m_grid.columns), spectrum.size());
+            for (size_t col = 0; col < cols; ++col) {
+                const float mag = Helpers::Sanitize::Normalized(spectrum[col]);
+                const int lit = RenderUtils::LitRows(mag, m_grid.rows);
+                if (lit == 0) continue;
+
+                for (int row = 0; row < lit; ++row) {
+                    active[LedColor(
+                        RenderUtils::RowT(row, m_grid.rows),
+                        RenderUtils::LedBrightness(mag, row == lit - 1))]
+                        .push_back(LedCenter(static_cast<int>(col), row));
+                }
+            }
+            RenderCircleBatches(ctx, active, kRadius);
+
+            if (!m_settings.usePeakHold || !HasPeakTracker()) return;
+
+            const auto& peaks = GetPeakTracker();
+            for (size_t col = 0; col < cols; ++col) {
+                if (!peaks.IsPeakVisible(col)) continue;
+                const int row = RenderUtils::LitRows(peaks.GetPeak(col), m_grid.rows) - 1;
+                if (row < 0 || row >= m_grid.rows) continue;
+                Draw::StrokeCircle(
+                    ctx, LedCenter(static_cast<int>(col), row),
+                    kRadius + kPeakStroke,
+                    AdjustAlpha(Color::White(), kPeakAlpha),
+                    kPeakStroke);
+            }
+        }
 
     private:
-        using Settings = Settings::LedPanelSettings;
-
-        static constexpr float kLedRadius = 6.0f;
-        static constexpr float kLedMargin = 3.0f;
-        static constexpr float kInactiveAlpha = 0.08f;
-        static constexpr float kMinActiveBrightness = 0.4f;
-        static constexpr float kHeightScale = 0.95f;
-        static constexpr float kTopLedBoost = 1.2f;
-        static constexpr float kPeakStrokeWidth = 2.0f;
+        static constexpr float kRadius = 6.0f;
+        static constexpr float kMargin = 3.0f;
+        static constexpr float kPeakStroke = 2.0f;
         static constexpr float kPeakAlpha = 0.8f;
-        static constexpr float kColorBlendAmount = 0.7f;
+        static constexpr float kBlend = 0.7f;
 
-        void UpdateGridConfiguration(size_t requiredColumns);
+        [[nodiscard]] Point LedCenter(int col, int row) const {
+            return GetGridCellCenter(m_grid, col, m_grid.rows - 1 - row);
+        }
 
-        void RenderInactiveLeds(Canvas& canvas);
+        [[nodiscard]] Color LedColor(float rowT, float brightness) const {
+            Color color = SampleGradient(m_gradient, rowT);
+            const Color& primary = GetPrimaryColor();
+            if (primary.r != 1.0f || primary.g != 1.0f || primary.b != 1.0f)
+                color = InterpolateColor(primary, color, rowT * (1.0f - kBlend) + kBlend);
+            return AdjustAlpha(color, brightness);
+        }
 
-        void RenderActiveLeds(
-            Canvas& canvas,
-            const SpectrumData& spectrum
-        );
-
-        void RenderPeakIndicators(
-            Canvas& canvas,
-            size_t columnCount
-        );
-
-        [[nodiscard]] Point GetLedCenter(
-            int col,
-            int row
-        ) const;
-
-        [[nodiscard]] Color CalculateLedColor(
-            float rowNorm,
-            float brightness,
-            bool isTopLed
-        ) const;
-
-        [[nodiscard]] int CalculateActiveLeds(
-            float magnitude
-        ) const;
-
-        Settings m_settings;
-        GridConfig m_grid;
+        Settings::LedPanelSettings m_settings{};
+        GridConfig m_grid{};
         ColorGradient m_gradient;
     };
 

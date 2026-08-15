@@ -2,32 +2,56 @@
 #define SPECTRUM_CPP_WINDOW_MANAGER_H
 
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// Manages main/overlay/UI windows and their render engines.
+// Owns main / overlay / UI windows and their GPU surfaces.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Common/Common.h"
+#include "Graphics/API/GraphicsHelpers.h"
+#include "Graphics/API/GraphicsSurface.h"
+#include "Graphics/API/D3D11Backend.h"
+#include "Platform/MainWindow.h"
+#include "Platform/UIWindow.h"
+#include "UI/UI.h"
+#include "Platform/Messages.h"
+
 #include <functional>
 #include <memory>
 
 namespace Spectrum {
-    class ControllerCore;
+
+    class Core;
     class EventBus;
-    class RenderEngine;
-    class UIManager;
 
     namespace Platform {
-        class MainWindow;
-        class UIWindow;
-        class MessageHandler;
-        class UIMessageHandler;
 
-        inline constexpr Color kUIBackgroundColor =
-            Color::FromRGB(30, 30, 40);
+        using namespace Helpers::Window;
 
         class WindowManager final {
         public:
-            WindowManager(HINSTANCE, ControllerCore*, EventBus*);
-            ~WindowManager() noexcept;
+            using ResizeFn  = std::function<void(int, int)>;
+            using OverlayFn = std::function<void(bool)>;
+
+            WindowManager(
+                HINSTANCE hInst, Core* core, EventBus* bus,
+                ResizeFn onVizResize, ResizeFn onUiResize, OverlayFn onOverlay)
+                : m_hInstance(hInst)
+                , m_onVizResize(std::move(onVizResize))
+                , m_onUiResize(std::move(onUiResize))
+                , m_onOverlay(std::move(onOverlay))
+                , m_uiManager(std::make_unique<UIManager>(
+                    [this] { HideUIWindow(); },
+                    [this] { ToggleOverlay(); }))
+                , m_msgHandler(std::make_unique<MessageHandler>(core, this, bus))
+                , m_uiMsgHandler(std::make_unique<UIMessageHandler>(core, this, m_uiManager.get(), bus)) {
+            }
+
+            ~WindowManager() noexcept {
+                HideUIWindow();
+                HideWindow(GetCurrentHwnd());
+                m_uiWnd.reset();
+                m_overlayWnd.reset();
+                m_mainWnd.reset();
+            }
 
             WindowManager(const WindowManager&) = delete;
             WindowManager& operator=(const WindowManager&) = delete;
@@ -36,155 +60,194 @@ namespace Spectrum {
             // Lifecycle
             // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-            [[nodiscard]] bool Initialize();
+            bool Initialize() {
+                m_mainWnd    = MakeWnd<MainWindow>(kMainTitle, kMainW, kMainH, false, m_msgHandler.get());
+                m_overlayWnd = MakeWnd<MainWindow>(kOverlayTitle, GetSystemMetrics(SM_CXSCREEN), kOverlayH, true, m_msgHandler.get());
+                m_uiWnd      = MakeWnd<UIWindow>(kUITitle, kUIW, kUIH, m_uiMsgHandler.get());
+
+                static_cast<void>(Recreate(m_viz, m_mainWnd->GetHwnd(), false));
+                static_cast<void>(Recreate(m_ui, m_uiWnd->GetHwnd()));
+                InitUI();
+
+                CenterWindow(m_mainWnd->GetHwnd());
+                m_mainWnd->Show();
+                ShowUIWindow();
+
+                for (int i = 0; i < kWarmupFrames; ++i) {
+                    m_uiManager->BeginFrame();
+                    m_uiManager->EndFrame();
+                }
+                return true;
+            }
 
             // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-            // Resize
+            // Visualization resize
             // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-            [[nodiscard]] bool HandleVisualizationResize(
-                int w, int h, bool recreate = false);
-            [[nodiscard]] bool HandleUIResize(
-                int w, int h, bool recreate = false);
+            bool HandleVisualizationResize(int w, int h, bool recreate = false) {
+                if (recreate) static_cast<void>(Recreate(m_viz, GetCurrentHwnd(), m_isOverlay));
+                m_viz.Resize(w, h);
+                m_onVizResize(w, h);
+                return true;
+            }
 
-            void OnResizeStart();
-            void OnResizeEnd(HWND);
-            void OnResize(HWND, int w, int h);
-
-            void OnUIResizeStart();
-            void OnUIResizeEnd(HWND);
-            void OnUIResize(HWND, int w, int h);
+            void OnResizeStart() { m_viz.resizing = true; }
+            void OnResizeEnd(HWND hwnd) { FinishResize(m_viz, hwnd, [this](int w, int h) { HandleVisualizationResize(w, h); }); }
+            void OnResize(HWND, int w, int h) { if (m_viz.LiveResize(w, h)) static_cast<void>(HandleVisualizationResize(w, h)); }
 
             // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-            // Window operations
+            // UI resize
             // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-            void ToggleOverlay();
-            void ShowUIWindow() const;
-            void HideUIWindow() const;
-            void ForceUIRender();
+            bool HandleUIResize(int w, int h, bool recreate = false) {
+                if (recreate) {
+                    static_cast<void>(Recreate(m_ui, m_uiWnd->GetHwnd()));
+                    m_uiManager->Shutdown();
+                    InitUI();
+                }
+                m_ui.Resize(w, h);
+                m_onUiResize(w, h);
+                return true;
+            }
+
+            void OnUIResizeStart() { m_ui.resizing = true; }
+            void OnUIResizeEnd(HWND hwnd) { FinishResize(m_ui, hwnd, [this](int w, int h) { HandleUIResize(w, h); }); }
+            void OnUIResize(HWND, int w, int h) { if (m_ui.LiveResize(w, h)) static_cast<void>(HandleUIResize(w, h)); }
+
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+            // Overlay / UI visibility
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+            void ToggleOverlay() {
+                m_isOverlay = !m_isOverlay;
+                SwitchActiveWindow(InactiveWnd(), ActiveWnd());
+                m_onOverlay(m_isOverlay);
+            }
+
+            void ShowUIWindow() const { m_uiWnd->Show(); }
+            void HideUIWindow() const { m_uiWnd->Hide(); }
+
+            void ForceUIRender() {
+                if (!IsUIWindowVisible()) return;
+                m_ui.obj->Clear(Color::FromRGB(30, 30, 40));
+                m_uiManager->BeginFrame();
+                m_uiManager->Render();
+                m_uiManager->EndFrame();
+                static_cast<void>(m_ui.obj->Present());
+            }
 
             // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
             // Queries
             // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-            [[nodiscard]] bool IsRunning() const;
-            [[nodiscard]] bool IsActive() const;
-            [[nodiscard]] bool IsUIWindowVisible() const;
+            [[nodiscard]] bool IsRunning()         const { return m_mainWnd->IsRunning(); }
+            [[nodiscard]] bool IsActive()          const { return IsRunning() && IsActiveAndVisible(GetCurrentHwnd()); }
+            [[nodiscard]] bool IsUIWindowVisible() const { return ::IsWindowVisible(m_uiWnd->GetHwnd()); }
+            [[nodiscard]] bool IsOverlayMode()     const noexcept { return m_isOverlay; }
 
-            [[nodiscard]] bool IsOverlayMode() const noexcept {
-                return m_isOverlay;
-            }
+            [[nodiscard]] HWND GetCurrentHwnd() const { return ActiveWnd()->GetHwnd(); }
+            [[nodiscard]] HWND GetUIHwnd()      const noexcept { return m_uiWnd->GetHwnd(); }
 
-            [[nodiscard]] bool IsResizing() const noexcept {
-                return m_viz.resizing || m_ui.resizing;
-            }
-
-            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-            // Accessors
-            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-
-            [[nodiscard]] RenderEngine* GetVisualizationEngine() const noexcept {
-                return m_viz.engine.get();
-            }
-
-            [[nodiscard]] RenderEngine* GetUIEngine() const noexcept {
-                return m_ui.engine.get();
-            }
-
-            [[nodiscard]] UIManager* GetUIManager() const noexcept {
-                return m_uiManager.get();
-            }
-
-            [[nodiscard]] MessageHandler* GetMessageHandler() const noexcept {
-                return m_msgHandler.get();
-            }
-
-            [[nodiscard]] MainWindow* GetMainWindow() const noexcept {
-                return m_mainWnd.get();
-            }
-
-            [[nodiscard]] UIWindow* GetUIWindow() const noexcept {
-                return m_uiWnd.get();
-            }
-
-            [[nodiscard]] HWND GetCurrentHwnd() const;
-            [[nodiscard]] HWND GetUIHwnd() const noexcept;
+            [[nodiscard]] GraphicsSurface* GetVisualizationSurface() const noexcept { return m_viz.obj.get(); }
+            [[nodiscard]] D3D11Backend*    GetUIBackend()            const noexcept { return m_ui.obj.get(); }
+            [[nodiscard]] UIManager*       GetUIManager()            const noexcept { return m_uiManager.get(); }
+            [[nodiscard]] MainWindow*      GetMainWindow()           const noexcept { return m_mainWnd.get(); }
+            [[nodiscard]] MessageHandler*  GetMessageHandler()       const noexcept { return m_msgHandler.get(); }
 
         private:
-            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-            // Engine slot — shared state per window
-            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+            static constexpr int            kMainW        = 800;
+            static constexpr int            kMainH        = 600;
+            static constexpr const wchar_t* kMainTitle    = L"Spectrum Visualizer";
+            static constexpr int            kOverlayH     = 300;
+            static constexpr const wchar_t* kOverlayTitle = L"Spectrum Overlay";
+            static constexpr int            kUIW          = 340;
+            static constexpr int            kUIH          = 480;
+            static constexpr const wchar_t* kUITitle      = L"Spectrum Control Panel";
+            static constexpr int            kWarmupFrames = 2;
 
-            struct EngineSlot {
-                std::unique_ptr<RenderEngine> engine;
+            template<typename T>
+            struct Slot {
+                std::unique_ptr<T> obj;
+                int  lastW    = 0;
+                int  lastH    = 0;
                 bool resizing = false;
-                int  lastW = 0;
-                int  lastH = 0;
+
+                explicit operator bool() const { return static_cast<bool>(obj); }
+
+                bool SizeChanged(int w, int h) {
+                    if (w == lastW && h == lastH) return false;
+                    lastW = w;
+                    lastH = h;
+                    return true;
+                }
+
+                void Resize(int w, int h) { obj->Resize(w, h); }
+
+                bool LiveResize(int w, int h) {
+                    if (!obj || !SizeChanged(w, h)) return false;
+                    Resize(w, h);
+                    return !resizing;
+                }
             };
 
-            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-            // Initialization
-            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+            template<typename W, typename... Args>
+            std::unique_ptr<W> MakeWnd(Args... args) const {
+                auto wnd = std::make_unique<W>(m_hInstance);
+                static_cast<void>(wnd->Initialize(args...));
+                return wnd;
+            }
 
-            bool InitializeWindows();
-            bool InitializeGraphics();
-            bool InitializeUI();
+            template<typename T, typename... Args>
+            bool Recreate(Slot<T>& slot, Args... args) {
+                slot.obj = std::make_unique<T>();
+                return slot.obj->Initialize(args...);
+            }
 
-            std::unique_ptr<MainWindow> CreateMainWnd(
-                const wchar_t* title,
-                int w, int h, bool overlay) const;
+            template<typename T, typename Fn>
+            void FinishResize(Slot<T>& slot, HWND hwnd, Fn&& fn) {
+                slot.resizing = false;
+                if (!slot) return;
+                const auto rc = *GetClientRect(hwnd);
+                fn(rc.Width(), rc.Height());
+            }
 
-            std::unique_ptr<UIWindow> CreateUIWnd() const;
+            MainWindow* ActiveWnd()   const { return (m_isOverlay ? m_overlayWnd : m_mainWnd).get(); }
+            MainWindow* InactiveWnd() const { return (m_isOverlay ? m_mainWnd : m_overlayWnd).get(); }
 
-            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-            // Engine management
-            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+            void InitUI() {
+                static_cast<void>(m_uiManager->Initialize(
+                    m_uiWnd->GetHwnd(),
+                    m_ui.obj->GetD3D11Device(),
+                    m_ui.obj->GetD3D11DeviceContext(),
+                    m_ui.obj->GetD3D11RenderTargetView()));
+            }
 
-            bool RecreateEngine(
-                EngineSlot& slot, HWND hwnd,
-                bool overlay, bool d2dOnly);
+            void SwitchActiveWindow(MainWindow* hide, MainWindow* show) {
+                HideWindow(hide->GetHwnd());
+                const auto rc = *GetClientRect(show->GetHwnd());
+                static_cast<void>(HandleVisualizationResize(rc.Width(), rc.Height(), true));
+                if (m_isOverlay) PositionAtBottom(show->GetHwnd(), show->GetHeight());
+                ShowWindowState(show->GetHwnd());
+            }
 
-            void OnSlotResize(
-                EngineSlot& slot, int w, int h,
-                const std::function<bool(int, int)>& handler);
+            HINSTANCE m_hInstance;
+            ResizeFn  m_onVizResize;
+            ResizeFn  m_onUiResize;
+            OverlayFn m_onOverlay;
+            bool      m_isOverlay = false;
 
-            void OnSlotResizeEnd(
-                EngineSlot& slot, HWND hwnd,
-                const std::function<bool(int, int)>& handler);
-
-            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-            // Overlay
-            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-
-            void SwitchActiveWindow(
-                MainWindow* hide, MainWindow* show);
-            void PositionOverlayWindow() const;
-            void NotifyRendererOfModeChange() const;
-
-            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-            // State
-            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-
-            HINSTANCE       m_hInstance;
-            ControllerCore* m_controller;
-            bool            m_isOverlay = false;
-
-            // Windows
+            std::unique_ptr<UIManager>        m_uiManager;
+            std::unique_ptr<MessageHandler>   m_msgHandler;
+            std::unique_ptr<UIMessageHandler> m_uiMsgHandler;
             std::unique_ptr<MainWindow>       m_mainWnd;
             std::unique_ptr<MainWindow>       m_overlayWnd;
             std::unique_ptr<UIWindow>         m_uiWnd;
 
-            // Engine slots
-            EngineSlot m_viz;
-            EngineSlot m_ui;
-
-            // Handlers
-            std::unique_ptr<MessageHandler>   m_msgHandler;
-            std::unique_ptr<UIMessageHandler> m_uiMsgHandler;
-            std::unique_ptr<UIManager>        m_uiManager;
+            Slot<GraphicsSurface> m_viz;
+            Slot<D3D11Backend>    m_ui;
         };
-    }
-}
+
+    } // namespace Platform
+} // namespace Spectrum
 
 #endif

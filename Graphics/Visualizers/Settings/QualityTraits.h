@@ -28,249 +28,202 @@
 
 namespace Spectrum {
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Forward Declarations
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// Forward Declarations
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    class BarsRenderer;
-    class CircularWaveRenderer;
-    class CubesRenderer;
-    class FireRenderer;
-    class GaugeRenderer;
-    class KenwoodBarsRenderer;
-    class LedPanelRenderer;
-    class MatrixLedRenderer;
-    class ParticlesRenderer;
-    class PolylineWaveRenderer;
-    class SphereRenderer;
-    class WaveRenderer;
+class BarsRenderer;
+class CircularWaveRenderer;
+class CubesRenderer;
+class FireRenderer;
+class GaugeRenderer;
+class KenwoodBarsRenderer;
+class LedPanelRenderer;
+class MatrixLedRenderer;
+class ParticlesRenderer;
+class PolylineWaveRenderer;
+class SphereRenderer;
+class WaveRenderer;
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Settings Structures
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// Settings Structures
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    namespace Settings {
+namespace Settings {
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // BarsRenderer Settings
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// BarsRenderer Settings
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        struct BarsSettings {
-            float barSpacing;
-            float cornerRadius;
-            bool useShadow;
-            bool useHighlight;
-        };
+struct BarsSettings {
+    float barSpacing;
+    float cornerRadius;
+    bool useShadow;
+    bool useHighlight;
+};
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // CircularWaveRenderer Settings
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// CircularWaveRenderer Settings
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        struct CircularWaveSettings {
-            bool useGlow;
-            float maxStroke;
-            int maxRings;
-            float rotationSpeed;
-            float waveSpeed;
-        };
+struct CircularWaveSettings {
+    bool useGlow;
+    float maxStroke;
+    int maxRings;
+    float rotationSpeed;
+    float waveSpeed;
+};
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // CubesRenderer Settings
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// CubesRenderer Settings
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        struct CubesSettings {
-            bool useTopFace;
-            bool useSideFace;
-            bool useShadow;
-            float topHeightRatio;
-            float sideFaceBrightness;
-            float perspective;
-        };
+struct CubesSettings {
+    bool useTopFace;
+    bool useSideFace;
+    bool useShadow;
+    float topHeightRatio;
+    float sideFaceBrightness;
+    float perspective;
+};
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // FireRenderer Settings
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// FireRenderer Settings
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        struct FireSettings {
-            bool useSmoothing;
-            bool useWind;
-            float pixelSize;
-            float decay;
-            float heatMultiplier;
-        };
+struct FireSettings {
+    bool useSmoothing;
+    bool useWind;
+    float pixelSize;
+    float decay;
+    float heatMultiplier;
+};
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // GaugeRenderer Settings
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// GaugeRenderer Settings
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        struct GaugeSettings {
-            float smoothingFactorInc;
-            float smoothingFactorDec;
-            float riseSpeed;
-        };
+struct GaugeSettings {
+    float smoothingFactorInc;
+    float smoothingFactorDec;
+    float riseSpeed;
+};
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // KenwoodBarsRenderer Settings
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// KenwoodBarsRenderer Settings
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        struct KenwoodBarsSettings {
-            float barSpacing;
-            float cornerRadius;
-            bool useGradient;
-        };
+struct KenwoodBarsSettings {
+    float barSpacing;
+    float cornerRadius;
+    bool useGradient;
+};
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // LedPanelRenderer Settings
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// LedPanelRenderer Settings
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        struct LedPanelSettings {
-            bool usePeakHold;
-            int maxRows;
-            float smoothingMultiplier;
-        };
+struct LedPanelSettings {
+    bool usePeakHold;
+    int maxRows;
+    float smoothingMultiplier;
+};
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // MatrixLedRenderer Settings
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// MatrixLedRenderer Settings
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        struct MatrixLedSettings {
-            bool enableGlow;       // was usePeakHold
-            int ledDensity;        // was maxRows
-            float blurAmount;      // was smoothingMultiplier
-        };
+struct MatrixLedSettings {
+    bool enableGlow;       // was usePeakHold
+    int ledDensity;        // was maxRows
+    float blurAmount;      // was smoothingMultiplier
+};
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // ParticlesRenderer Settings
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// ParticlesRenderer Settings
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        struct ParticlesSettings {
-            int maxParticles;
-            float spawnRate;
-            float particleDetail;
-            bool useBatchRendering;
-            float particleSize;    // additional field for spawn chance calculation
-            bool useTrails;        // for batch vs individual rendering
-            float trailLength;     // for size calculation
-        };
+struct ParticlesSettings {
+    int maxParticles;
+    float spawnRate;
+    float particleDetail;
+    bool useBatchRendering;
+    float particleSize;    // additional field for spawn chance calculation
+    bool useTrails;        // for batch vs individual rendering
+    float trailLength;     // for size calculation
+};
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // PolylineWaveRenderer Settings
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// PolylineWaveRenderer Settings
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        struct PolylineWaveSettings {
-            bool useGradientBars;
-            bool useGlow;
-            bool useHighlight;
-            bool usePulsingCore;
-            float glowIntensity;
-            float highlightIntensity;
-            bool useFill;          // additional for core rendering
-            float lineWidth;       // additional for glow calculation
-            float smoothness;      // additional for highlight threshold
-        };
+struct PolylineWaveSettings {
+    bool useGradientBars;
+    bool useGlow;
+    bool useHighlight;
+    bool usePulsingCore;
+    float glowIntensity;
+    float highlightIntensity;
+    bool useFill;          // additional for core rendering
+    float lineWidth;       // additional for glow calculation
+    float smoothness;      // additional for highlight threshold
+};
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // SphereRenderer Settings
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// SphereRenderer Settings
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        struct SphereSettings {
-            bool useGradient;
-            float responseSpeed;
-            bool useGlow;          // additional field (same as useGradient in practice)
-            float rotationSpeed;   // additional field (same as responseSpeed)
-        };
+struct SphereSettings {
+    bool useGradient;
+    float responseSpeed;
+    bool useGlow;          // additional field (same as useGradient in practice)
+    float rotationSpeed;   // additional field (same as responseSpeed)
+};
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // WaveRenderer Settings
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// WaveRenderer Settings
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-        struct WaveSettings {
-            float waveHeight;
-            bool useFill;
-            bool useMirror;
-            float smoothness;
-            int points;
-        };
+struct WaveSettings {
+    float waveHeight;
+    bool useFill;
+    bool useMirror;
+    float smoothness;
+    int points;
+};
 
-    } // namespace Settings
+} // namespace Settings
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Quality Traits Template
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// Quality Traits Template
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    template<typename TRenderer>
-    struct QualityTraits;
+template<typename TRenderer>
+struct QualityTraits;
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Quality Traits Specializations
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// Quality Traits Specializations
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    template<>
-    struct QualityTraits<BarsRenderer> {
-        using SettingsType = Settings::BarsSettings;
-    };
+template<> struct QualityTraits<BarsRenderer>          { using SettingsType = Settings::BarsSettings; };
+template<> struct QualityTraits<CircularWaveRenderer>  { using SettingsType = Settings::CircularWaveSettings; };
+template<> struct QualityTraits<CubesRenderer>         { using SettingsType = Settings::CubesSettings; };
+template<> struct QualityTraits<FireRenderer>          { using SettingsType = Settings::FireSettings; };
+template<> struct QualityTraits<GaugeRenderer>         { using SettingsType = Settings::GaugeSettings; };
+template<> struct QualityTraits<KenwoodBarsRenderer>   { using SettingsType = Settings::KenwoodBarsSettings; };
+template<> struct QualityTraits<LedPanelRenderer>      { using SettingsType = Settings::LedPanelSettings; };
+template<> struct QualityTraits<MatrixLedRenderer>     { using SettingsType = Settings::MatrixLedSettings; };
+template<> struct QualityTraits<ParticlesRenderer>     { using SettingsType = Settings::ParticlesSettings; };
+template<> struct QualityTraits<PolylineWaveRenderer>  { using SettingsType = Settings::PolylineWaveSettings; };
+template<> struct QualityTraits<SphereRenderer>        { using SettingsType = Settings::SphereSettings; };
+template<> struct QualityTraits<WaveRenderer>          { using SettingsType = Settings::WaveSettings; };
 
-    template<>
-    struct QualityTraits<CircularWaveRenderer> {
-        using SettingsType = Settings::CircularWaveSettings;
-    };
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// Convenience Alias
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    template<>
-    struct QualityTraits<CubesRenderer> {
-        using SettingsType = Settings::CubesSettings;
-    };
-
-    template<>
-    struct QualityTraits<FireRenderer> {
-        using SettingsType = Settings::FireSettings;
-    };
-
-    template<>
-    struct QualityTraits<GaugeRenderer> {
-        using SettingsType = Settings::GaugeSettings;
-    };
-
-    template<>
-    struct QualityTraits<KenwoodBarsRenderer> {
-        using SettingsType = Settings::KenwoodBarsSettings;
-    };
-
-    template<>
-    struct QualityTraits<LedPanelRenderer> {
-        using SettingsType = Settings::LedPanelSettings;
-    };
-
-    template<>
-    struct QualityTraits<MatrixLedRenderer> {
-        using SettingsType = Settings::MatrixLedSettings;
-    };
-
-    template<>
-    struct QualityTraits<ParticlesRenderer> {
-        using SettingsType = Settings::ParticlesSettings;
-    };
-
-    template<>
-    struct QualityTraits<PolylineWaveRenderer> {
-        using SettingsType = Settings::PolylineWaveSettings;
-    };
-
-    template<>
-    struct QualityTraits<SphereRenderer> {
-        using SettingsType = Settings::SphereSettings;
-    };
-
-    template<>
-    struct QualityTraits<WaveRenderer> {
-        using SettingsType = Settings::WaveSettings;
-    };
-
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Convenience Alias
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-    template<typename TRenderer>
-    using SettingsFor = typename QualityTraits<TRenderer>::SettingsType;
+template<typename TRenderer>
+using SettingsFor = typename QualityTraits<TRenderer>::SettingsType;
 
 } // namespace Spectrum
 

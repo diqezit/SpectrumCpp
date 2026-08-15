@@ -2,7 +2,7 @@
 #define SPECTRUM_CPP_IMGUI_CONTEXT_H
 
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// ImGuiContext — RAII wrapper for Dear ImGui (DX11 + Win32).
+// ImGuiContext — Dear ImGui (DX11 + Win32)
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Common/Common.h"
@@ -15,6 +15,23 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(
     HWND, UINT, WPARAM, LPARAM);
 
 namespace Spectrum {
+
+    struct Palette {
+        ImVec4 background{ 0.055f, 0.055f, 0.090f, 1.00f };
+        ImVec4 surface{ 0.080f, 0.080f, 0.120f, 1.00f };
+        ImVec4 surfaceHover{ 0.100f, 0.100f, 0.155f, 1.00f };
+        ImVec4 surfaceActive{ 0.140f, 0.140f, 0.220f, 1.00f };
+        ImVec4 accent{ 0.350f, 0.400f, 0.950f, 1.00f };
+        ImVec4 accentDim{ 0.200f, 0.240f, 0.600f, 1.00f };
+        ImVec4 textPrimary{ 0.920f, 0.920f, 0.960f, 1.00f };
+        ImVec4 textSecondary{ 0.500f, 0.500f, 0.600f, 1.00f };
+        ImVec4 border{ 0.180f, 0.180f, 0.260f, 0.50f };
+        ImVec4 statusOn{ 0.350f, 0.850f, 0.450f, 1.00f };
+        ImVec4 statusWarn{ 0.950f, 0.750f, 0.300f, 1.00f };
+        ImVec4 statusOff{ 0.450f, 0.450f, 0.550f, 1.00f };
+        ImVec4 closeHover{ 0.800f, 0.250f, 0.250f, 1.00f };
+        ImVec4 closeActive{ 0.600f, 0.150f, 0.150f, 1.00f };
+    };
 
     class ImGuiContext final {
     public:
@@ -29,10 +46,8 @@ namespace Spectrum {
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
         bool Initialize(HWND hwnd, ID3D11Device* device, ID3D11DeviceContext* ctx) {
-            if (m_init) Shutdown();
-            if (!hwnd || !device || !ctx) return false;
-
             m_ctx = ctx;
+
             IMGUI_CHECKVERSION();
             ImGui::CreateContext();
 
@@ -57,9 +72,11 @@ namespace Spectrum {
 
         void Shutdown() {
             if (!m_init) return;
+
             ImGui_ImplDX11_Shutdown();
             ImGui_ImplWin32_Shutdown();
             ImGui::DestroyContext();
+
             m_ctx.Reset();
             m_rtv.Reset();
             m_init = false;
@@ -70,19 +87,15 @@ namespace Spectrum {
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
         void BeginFrame() {
-            if (!m_init) return;
             ImGui_ImplDX11_NewFrame();
             ImGui_ImplWin32_NewFrame();
             ImGui::NewFrame();
         }
 
         void EndFrame() {
-            if (!m_init) return;
             ImGui::Render();
-            if (auto* dd = ImGui::GetDrawData(); dd && m_ctx && m_rtv) {
-                m_ctx->OMSetRenderTargets(1, m_rtv.GetAddressOf(), nullptr);
-                ImGui_ImplDX11_RenderDrawData(dd);
-            }
+            m_ctx->OMSetRenderTargets(1, m_rtv.GetAddressOf(), nullptr);
+            ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
         }
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
@@ -90,81 +103,76 @@ namespace Spectrum {
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
         bool ProcessMessage(HWND h, UINT m, WPARAM w, LPARAM l) {
-            return m_init
-                && ImGui_ImplWin32_WndProcHandler(h, m, w, l) != 0;
+            return ImGui_ImplWin32_WndProcHandler(h, m, w, l) != 0;
         }
 
         void SetRTV(ID3D11RenderTargetView* rtv) { m_rtv = rtv; }
-        [[nodiscard]] bool IsReady() const noexcept { return m_init; }
+
+        [[nodiscard]] static const Palette& Theme() {
+            static const Palette palette{};
+            return palette;
+        }
 
     private:
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // Theme
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-
         static void ApplyTheme() {
-            constexpr float R = 6.0f;
+            constexpr float kRounding = 6.0f;
+            const Palette& p = Theme();
 
             auto& s = ImGui::GetStyle();
-            s.WindowRounding = 0;   s.WindowBorderSize = 0;
-            s.FrameRounding = R;   s.GrabRounding = R;
-            s.ScrollbarRounding = R;   s.TabRounding = R;
-            s.ChildRounding = R;   s.PopupRounding = R;
+            s.WindowRounding = 0.0f;
+            s.WindowBorderSize = 0.0f;
+            s.FrameRounding = kRounding;
+            s.GrabRounding = kRounding;
+            s.ScrollbarRounding = kRounding;
+            s.TabRounding = kRounding;
+            s.ChildRounding = kRounding;
+            s.PopupRounding = kRounding;
 
             s.WindowPadding = { 16, 16 };
             s.FramePadding = { 10,  6 };
             s.ItemSpacing = { 8,  8 };
             s.ItemInnerSpacing = { 6,  4 };
-            s.IndentSpacing = 22;
-            s.ScrollbarSize = 10;
-            s.GrabMinSize = 10;
+            s.IndentSpacing = 22.0f;
+            s.ScrollbarSize = 10.0f;
+            s.GrabMinSize = 10.0f;
             s.WindowMinSize = { 100, 100 };
 
-            const ImVec4 bg = { 0.055f, 0.055f, 0.09f, 1 };
-            const ImVec4 sf = { 0.08f,  0.08f,  0.12f, 1 };
-            const ImVec4 sfH = { 0.10f,  0.10f,  0.155f,1 };
-            const ImVec4 ac = { 0.35f,  0.40f,  0.95f, 1 };
-            const ImVec4 acD = { 0.20f,  0.24f,  0.60f, 1 };
-            const ImVec4 txtP = { 0.92f,  0.92f,  0.96f, 1 };
-            const ImVec4 txtS = { 0.50f,  0.50f,  0.60f, 1 };
-            const ImVec4 brd = { 0.18f,  0.18f,  0.26f, 0.5f };
-
             auto* c = s.Colors;
-            c[ImGuiCol_Text] = txtP;
-            c[ImGuiCol_TextDisabled] = txtS;
-            c[ImGuiCol_WindowBg] = bg;
-            c[ImGuiCol_ChildBg] = { 0,0,0,0 };
+            c[ImGuiCol_Text] = p.textPrimary;
+            c[ImGuiCol_TextDisabled] = p.textSecondary;
+            c[ImGuiCol_WindowBg] = p.background;
+            c[ImGuiCol_ChildBg] = { 0, 0, 0, 0 };
             c[ImGuiCol_PopupBg] = { 0.07f, 0.07f, 0.11f, 0.96f };
-            c[ImGuiCol_Border] = brd;
-            c[ImGuiCol_BorderShadow] = { 0,0,0,0 };
-            c[ImGuiCol_FrameBg] = sf;
-            c[ImGuiCol_FrameBgHovered] = sfH;
-            c[ImGuiCol_FrameBgActive] = { 0.14f, 0.14f, 0.22f, 1 };
-            c[ImGuiCol_TitleBg] = bg;
-            c[ImGuiCol_TitleBgActive] = bg;
-            c[ImGuiCol_TitleBgCollapsed] = bg;
-            c[ImGuiCol_ScrollbarBg] = { 0.05f, 0.05f, 0.08f, 0.6f };
-            c[ImGuiCol_ScrollbarGrab] = { 0.22f, 0.22f, 0.32f, 1 };
-            c[ImGuiCol_ScrollbarGrabHovered] = { 0.30f, 0.30f, 0.42f, 1 };
-            c[ImGuiCol_ScrollbarGrabActive] = ac;
-            c[ImGuiCol_CheckMark] = ac;
-            c[ImGuiCol_SliderGrab] = acD;
-            c[ImGuiCol_SliderGrabActive] = ac;
-            c[ImGuiCol_Button] = sf;
-            c[ImGuiCol_ButtonHovered] = sfH;
-            c[ImGuiCol_ButtonActive] = acD;
-            c[ImGuiCol_Header] = sf;
-            c[ImGuiCol_HeaderHovered] = sfH;
-            c[ImGuiCol_HeaderActive] = { 0.16f, 0.16f, 0.24f, 1 };
-            c[ImGuiCol_Separator] = brd;
-            c[ImGuiCol_SeparatorHovered] = { 0.28f, 0.28f, 0.40f, 0.8f };
-            c[ImGuiCol_SeparatorActive] = ac;
-            c[ImGuiCol_ResizeGrip] = { 0.2f, 0.2f, 0.3f, 0.25f };
-            c[ImGuiCol_ResizeGripHovered] = acD;
-            c[ImGuiCol_ResizeGripActive] = ac;
-            c[ImGuiCol_TextSelectedBg] = { ac.x, ac.y, ac.z, 0.3f };
-            c[ImGuiCol_NavHighlight] = ac;
-            c[ImGuiCol_ModalWindowDimBg] = { 0, 0, 0, 0.6f };
+            c[ImGuiCol_Border] = p.border;
+            c[ImGuiCol_BorderShadow] = { 0, 0, 0, 0 };
+            c[ImGuiCol_FrameBg] = p.surface;
+            c[ImGuiCol_FrameBgHovered] = p.surfaceHover;
+            c[ImGuiCol_FrameBgActive] = p.surfaceActive;
+            c[ImGuiCol_TitleBg] = p.background;
+            c[ImGuiCol_TitleBgActive] = p.background;
+            c[ImGuiCol_TitleBgCollapsed] = p.background;
+            c[ImGuiCol_ScrollbarBg] = { 0.05f, 0.05f, 0.08f, 0.60f };
+            c[ImGuiCol_ScrollbarGrab] = { 0.22f, 0.22f, 0.32f, 1.00f };
+            c[ImGuiCol_ScrollbarGrabHovered] = { 0.30f, 0.30f, 0.42f, 1.00f };
+            c[ImGuiCol_ScrollbarGrabActive] = p.accent;
+            c[ImGuiCol_CheckMark] = p.accent;
+            c[ImGuiCol_SliderGrab] = p.accentDim;
+            c[ImGuiCol_SliderGrabActive] = p.accent;
+            c[ImGuiCol_Button] = p.surface;
+            c[ImGuiCol_ButtonHovered] = p.surfaceHover;
+            c[ImGuiCol_ButtonActive] = p.accentDim;
+            c[ImGuiCol_Header] = p.surface;
+            c[ImGuiCol_HeaderHovered] = p.surfaceHover;
+            c[ImGuiCol_HeaderActive] = p.surfaceActive;
+            c[ImGuiCol_Separator] = p.border;
+            c[ImGuiCol_SeparatorHovered] = { 0.28f, 0.28f, 0.40f, 0.80f };
+            c[ImGuiCol_SeparatorActive] = p.accent;
+            c[ImGuiCol_ResizeGrip] = { 0.20f, 0.20f, 0.30f, 0.25f };
+            c[ImGuiCol_ResizeGripHovered] = p.accentDim;
+            c[ImGuiCol_ResizeGripActive] = p.accent;
+            c[ImGuiCol_TextSelectedBg] = { p.accent.x, p.accent.y, p.accent.z, 0.30f };
+            c[ImGuiCol_NavHighlight] = p.accent;
+            c[ImGuiCol_ModalWindowDimBg] = { 0, 0, 0, 0.60f };
         }
 
         bool m_init = false;

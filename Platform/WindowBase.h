@@ -23,8 +23,10 @@ namespace Spectrum::Platform {
                 reinterpret_cast<LONG_PTR>(cs->lpCreateParams));
             return DefWindowProc(hwnd, msg, wp, lp);
         }
+
         auto* h = reinterpret_cast<Handler*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
-        return h ? h->HandleWindowMessage(hwnd, msg, wp, lp)
+        return h
+            ? h->HandleWindowMessage(hwnd, msg, wp, lp)
             : DefWindowProc(hwnd, msg, wp, lp);
     }
 
@@ -46,9 +48,8 @@ namespace Spectrum::Platform {
     class WindowBase {
     public:
         virtual ~WindowBase() noexcept {
-            if (m_hwnd) { DestroyWindow(m_hwnd); m_hwnd = nullptr; }
-            if (m_registered && !m_className.empty())
-                UnregisterClassW(m_className.c_str(), m_hInst);
+            if (m_hwnd)       DestroyWindow(m_hwnd);
+            if (m_registered) UnregisterClassW(m_className.c_str(), m_hInst);
         }
 
         WindowBase(const WindowBase&) = delete;
@@ -78,23 +79,12 @@ namespace Spectrum::Platform {
         // Initialization
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-        [[nodiscard]] bool Init(
-            const std::wstring& title,
-            int w, int h,
-            int minW, int maxW, int minH, int maxH,
-            void* handler)
-        {
-            if (!m_hInst || !handler) return false;
-            if (w < minW || w > maxW || h < minH || h > maxH) return false;
-
+        [[nodiscard]] bool Init(const std::wstring& title, int w, int h, void* handler) {
             m_w = w;
             m_h = h;
-
             if (!RegisterWndClass()) return false;
-
             m_hwnd = CreateWnd(title, w, h, handler);
             if (!m_hwnd) return false;
-
             OnCreated(m_hwnd);
             return true;
         }
@@ -104,7 +94,6 @@ namespace Spectrum::Platform {
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
         void ShowAt(int cmd, bool center, bool topRight) const {
-            if (!m_hwnd) return;
             ::ShowWindow(m_hwnd, cmd);
 
             RECT wa{};
@@ -126,15 +115,12 @@ namespace Spectrum::Platform {
             UpdateWindow(m_hwnd);
         }
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // Members
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-
         HINSTANCE    m_hInst;
         HWND         m_hwnd = nullptr;
         std::wstring m_className;
         bool         m_registered = false;
-        int          m_w = 0, m_h = 0;
+        int          m_w = 0;
+        int          m_h = 0;
 
     private:
         bool RegisterWndClass() {
@@ -147,13 +133,9 @@ namespace Spectrum::Platform {
             wc.lpszClassName = m_className.c_str();
             wc.hIcon = LoadIconW(m_hInst, MAKEINTRESOURCEW(101));
             wc.hIconSm = wc.hIcon;
-
             CustomizeClass(wc);
 
-            if (!wc.hIcon)   wc.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
-            if (!wc.hIconSm) wc.hIconSm = wc.hIcon;
-
-            m_registered = (RegisterClassExW(&wc) != 0);
+            m_registered = RegisterClassExW(&wc) != 0;
             return m_registered;
         }
 
