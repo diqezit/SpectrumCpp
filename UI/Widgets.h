@@ -65,8 +65,9 @@ namespace Spectrum::ui {
     };
 
     struct Child {
-        Child(const char* id, ImVec2 size, ImGuiWindowFlags flags = 0) {
-            ImGui::BeginChild(id, size, false, flags);
+        Child(const char* id, ImVec2 size,
+            ImGuiChildFlags childFlags = 0, ImGuiWindowFlags windowFlags = 0) {
+            ImGui::BeginChild(id, size, childFlags, windowFlags);
         }
         ~Child() { ImGui::EndChild(); }
     };
@@ -98,7 +99,7 @@ namespace Spectrum::ui {
     struct Body {
         explicit Body(float height) {
             ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, { kPad, kPad * 0.5f });
-            ImGui::BeginChild("##body", { 0, height }, false, ImGuiWindowFlags_AlwaysUseWindowPadding);
+            ImGui::BeginChild("##body", { 0, height }, ImGuiChildFlags_AlwaysUseWindowPadding);
             ImGui::PopStyleVar();
             ImGui::PushItemWidth(-1);
         }
@@ -128,7 +129,7 @@ namespace Spectrum::ui {
 
     inline bool TitleBar(float width, const char* title) {
         const auto& pal = Pal();
-        Child bar("##title", { width, kTitleH }, ImGuiWindowFlags_NoScrollbar);
+        Child bar("##title", { width, kTitleH }, 0, ImGuiWindowFlags_NoScrollbar);
 
         const float textY = (kTitleH - ImGui::GetTextLineHeight()) * 0.5f;
         ImGui::SetCursorPos({ kPad, textY });
@@ -175,7 +176,7 @@ namespace Spectrum::ui {
         s.V(ImGuiStyleVar_WindowPadding, { kPad, 6.0f })
             .C(ImGuiCol_ChildBg, { 0, 0, 0, 0 });
 
-        ImGui::BeginChild("##status", { width, kStatusH }, false, ImGuiWindowFlags_NoScrollbar);
+        ImGui::BeginChild("##status", { width, kStatusH }, 0, ImGuiWindowFlags_NoScrollbar);
 
         ImGui::PushStyleColor(ImGuiCol_Text, color);
         ImGui::Bullet();

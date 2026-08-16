@@ -16,6 +16,10 @@ endif()
 
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 
+# Resolve GNUInstallDirs at the top level first. CMake 4.2 can recurse
+# infinitely if a FetchContent subproject is the first to include it.
+include(GNUInstallDirs)
+
 # -------------------------------------------------------------------------
 # Options
 # -------------------------------------------------------------------------
@@ -23,103 +27,85 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 option(SPECTRUM_SHOW_CONSOLE_IN_RELEASE "Attach a console in RelWithDebInfo" ON)
 
 # -------------------------------------------------------------------------
-# Paths
+# Dependencies (Submodules & FetchContent)
 # -------------------------------------------------------------------------
 
-set(RAYLIB_ROOT "${CMAKE_SOURCE_DIR}/raylib" CACHE PATH "Path to Raylib root")
-set(IMGUI_ROOT "${CMAKE_SOURCE_DIR}/imgui_library" CACHE PATH "Path to ImGui root")
-set(BLEND2D_ROOT "${CMAKE_SOURCE_DIR}/../blend2d" CACHE PATH "Path to Blend2D root")
+# 1. ImGui (from git submodule, compiled manually)
+add_library(imgui STATIC
+    imgui/imgui.cpp
+    imgui/imgui_demo.cpp
+    imgui/imgui_draw.cpp
+    imgui/imgui_tables.cpp
+    imgui/imgui_widgets.cpp
+    imgui/backends/imgui_impl_win32.cpp
+    imgui/backends/imgui_impl_dx11.cpp
+)
+target_include_directories(imgui PUBLIC
+    ${CMAKE_SOURCE_DIR}/imgui
+    ${CMAKE_SOURCE_DIR}/imgui/backends
+)
 
-# -------------------------------------------------------------------------
-# Helpers
-# -------------------------------------------------------------------------
+# 2. Blend2D (FetchContent). Blend2D compiles asmjit into itself —
+#    do NOT add_subdirectory(asmjit) / MakeAvailable(asmjit).
+include(FetchContent)
+message(STATUS "Fetching AsmJit and Blend2D...")
 
-function(spectrum_require_file FILE_PATH HINT)
-    if(NOT EXISTS "${FILE_PATH}")
-        message(FATAL_ERROR "${HINT}\n  missing: ${FILE_PATH}")
+FetchContent_Declare(
+    asmjit
+    GIT_REPOSITORY https://github.com/asmjit/asmjit.git
+    GIT_TAG        master
+    GIT_SHALLOW    TRUE
+)
+
+FetchContent_Declare(
+    blend2d
+    GIT_REPOSITORY https://github.com/blend2d/blend2d.git
+    GIT_TAG        master
+    GIT_SHALLOW    TRUE
+)
+
+# Download asmjit sources only. FetchContent_Populate(<name>) is deprecated
+# by CMP0169 in CMake 3.30+, but this is the supported way to skip
+# add_subdirectory so Blend2D can embed the sources itself.
+FetchContent_GetProperties(asmjit)
+if(NOT asmjit_POPULATED)
+    if(POLICY CMP0169)
+        cmake_policy(PUSH)
+        cmake_policy(SET CMP0169 OLD)
     endif()
-endfunction()
-
-function(spectrum_first_existing OUT_VAR)
-    set(_found "")
-    foreach(_candidate IN LISTS ARGN)
-        if(EXISTS "${_candidate}")
-            set(_found "${_candidate}")
-            break()
-        endif()
-    endforeach()
-    set(${OUT_VAR} "${_found}" PARENT_SCOPE)
-endfunction()
-
-# -------------------------------------------------------------------------
-# Raylib / ImGui
-# -------------------------------------------------------------------------
-
-spectrum_require_file("${RAYLIB_ROOT}/include/raylib.h" "raylib not found. Set -DRAYLIB_ROOT=<path>")
-spectrum_require_file("${IMGUI_ROOT}/include/imgui.h" "ImGui not found. Set -DIMGUI_ROOT=<path>")
-
-# -------------------------------------------------------------------------
-# Blend2D 0.21.x  (public C++ API: BLContext / BLImage / BLRgba32)
-# -------------------------------------------------------------------------
-
-set(BLEND2D_INCLUDE_DIRS "")
-
-if(EXISTS "${BLEND2D_ROOT}/blend2d/blend2d.h")
-    # Layout: <root>/blend2d/blend2d.h  and  <root>/blend2d/core/...
-    list(APPEND BLEND2D_INCLUDE_DIRS "${BLEND2D_ROOT}/blend2d" "${BLEND2D_ROOT}")
-elseif(EXISTS "${BLEND2D_ROOT}/src/blend2d.h")
-    list(APPEND BLEND2D_INCLUDE_DIRS "${BLEND2D_ROOT}/src")
-elseif(EXISTS "${BLEND2D_ROOT}/include/blend2d.h")
-    list(APPEND BLEND2D_INCLUDE_DIRS "${BLEND2D_ROOT}/include")
-elseif(EXISTS "${BLEND2D_ROOT}/blend2d.h")
-    list(APPEND BLEND2D_INCLUDE_DIRS "${BLEND2D_ROOT}")
+    FetchContent_Populate(asmjit)
+    if(POLICY CMP0169)
+        cmake_policy(POP)
+    endif()
 endif()
 
-if(NOT BLEND2D_INCLUDE_DIRS)
+set(ASMJIT_DIR "${asmjit_SOURCE_DIR}" CACHE PATH "asmjit source dir for Blend2D" FORCE)
+set(BLEND2D_STATIC ON CACHE BOOL "Build Blend2D as a static library" FORCE)
+set(BLEND2D_NO_INSTALL ON CACHE BOOL "Do not install Blend2D with the app" FORCE)
+
+FetchContent_MakeAvailable(blend2d)
+
+# Current Blend2D (master):
+#   <root>/blend2d/blend2d.h          ->  #include <blend2d/blend2d.h>
+# Older Blend2D:
+#   <root>/src/blend2d.h              ->  #include <blend2d.h>
+#
+# Project sources still use #include <blend2d.h>, so for the new layout
+# we also add <root>/blend2d as a search path.
+set(SPECTRUM_BLEND2D_INCLUDES "")
+if(EXISTS "${blend2d_SOURCE_DIR}/blend2d/blend2d.h")
+    list(APPEND SPECTRUM_BLEND2D_INCLUDES
+        "${blend2d_SOURCE_DIR}"
+        "${blend2d_SOURCE_DIR}/blend2d")
+    message(STATUS "Blend2D headers: new layout (${blend2d_SOURCE_DIR})")
+elseif(EXISTS "${blend2d_SOURCE_DIR}/src/blend2d.h")
+    list(APPEND SPECTRUM_BLEND2D_INCLUDES "${blend2d_SOURCE_DIR}/src")
+    message(STATUS "Blend2D headers: old layout (${blend2d_SOURCE_DIR}/src)")
+else()
     message(FATAL_ERROR
-        "blend2d.h not found in ${BLEND2D_ROOT}.\n"
-        "Use -DBLEND2D_ROOT=<path> to specify the Blend2D tree.")
+        "blend2d.h not found under '${blend2d_SOURCE_DIR}'. "
+        "Expected blend2d/blend2d.h or src/blend2d.h")
 endif()
-
-spectrum_first_existing(BLEND2D_LIB_RELEASE
-    "${BLEND2D_ROOT}/build/Release/blend2d.lib"
-    "${BLEND2D_ROOT}/build/release/blend2d.lib"
-    "${BLEND2D_ROOT}/lib/Release/blend2d.lib"
-    "${BLEND2D_ROOT}/lib/blend2d.lib"
-)
-
-spectrum_first_existing(BLEND2D_LIB_DEBUG
-    "${BLEND2D_ROOT}/build/Debug/blend2d.lib"
-    "${BLEND2D_ROOT}/build/debug/blend2d.lib"
-    "${BLEND2D_ROOT}/lib/Debug/blend2d.lib"
-    "${BLEND2D_LIB_RELEASE}"
-)
-
-if(NOT BLEND2D_LIB_RELEASE)
-    message(FATAL_ERROR
-        "blend2d.lib (Release) not found under ${BLEND2D_ROOT}.\n"
-        "Build Blend2D first, e.g.:\n"
-        "  cmake -S \"${BLEND2D_ROOT}\" -B \"${BLEND2D_ROOT}/build\" -G \"Visual Studio 17 2022\" -A x64 -DBLEND2D_STATIC=ON\n"
-        "  cmake --build \"${BLEND2D_ROOT}/build\" --config Release")
-endif()
-
-if(NOT EXISTS "${BLEND2D_LIB_DEBUG}")
-    message(WARNING "Debug blend2d.lib not found, Debug builds will link the Release library")
-    set(BLEND2D_LIB_DEBUG "${BLEND2D_LIB_RELEASE}")
-endif()
-
-add_library(Blend2D STATIC IMPORTED)
-set_target_properties(Blend2D PROPERTIES
-    INTERFACE_INCLUDE_DIRECTORIES "${BLEND2D_INCLUDE_DIRS}"
-    INTERFACE_COMPILE_DEFINITIONS "BL_STATIC"
-    IMPORTED_LOCATION             "${BLEND2D_LIB_RELEASE}"
-    IMPORTED_LOCATION_DEBUG       "${BLEND2D_LIB_DEBUG}"
-    IMPORTED_LOCATION_RELEASE     "${BLEND2D_LIB_RELEASE}"
-    IMPORTED_LOCATION_RELWITHDEBINFO "${BLEND2D_LIB_RELEASE}"
-    IMPORTED_LOCATION_MINSIZEREL  "${BLEND2D_LIB_RELEASE}"
-    MAP_IMPORTED_CONFIG_MINSIZEREL Release
-    MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release
-)
 
 # -------------------------------------------------------------------------
 # Resources
@@ -211,7 +197,7 @@ set(SPECTRUM_PLATFORM_SOURCES
 set(SPECTRUM_UI_SOURCES
     UI/ImGuiContext.h
     UI/UI.h
-	UI/Widgets.h
+    UI/Widgets.h
 )
 
 set(SPECTRUM_RESOURCE_SOURCES
@@ -260,7 +246,7 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
     _UNICODE
     NOMINMAX
     WIN32_LEAN_AND_MEAN
-    IMGUI_USE_DLL
+    BL_STATIC
     $<$<CONFIG:Debug>:_DEBUG>
     $<$<NOT:$<CONFIG:Debug>>:NDEBUG>
     $<$<OR:$<CONFIG:Debug>,$<AND:$<BOOL:${SPECTRUM_SHOW_CONSOLE_IN_RELEASE}>,$<CONFIG:RelWithDebInfo>>>:SHOW_CONSOLE=1>
@@ -295,19 +281,13 @@ else()
 endif()
 
 # -------------------------------------------------------------------------
-# Includes / link dirs
+# Includes
 # -------------------------------------------------------------------------
 
 target_include_directories(${PROJECT_NAME} PRIVATE
     "${CMAKE_SOURCE_DIR}"
     "${CMAKE_SOURCE_DIR}/Resources"
-    "${RAYLIB_ROOT}/include"
-    "${IMGUI_ROOT}/include"
-)
-
-target_link_directories(${PROJECT_NAME} PRIVATE
-    "${RAYLIB_ROOT}/lib"
-    "${IMGUI_ROOT}/lib"
+    ${SPECTRUM_BLEND2D_INCLUDES}
 )
 
 # -------------------------------------------------------------------------
@@ -315,9 +295,8 @@ target_link_directories(${PROJECT_NAME} PRIVATE
 # -------------------------------------------------------------------------
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
-    imgui.lib
-    raylibdll
-    Blend2D
+    imgui
+    blend2d::blend2d
     d2d1
     d3d11
     dwrite
@@ -346,31 +325,10 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 )
 
 # -------------------------------------------------------------------------
-# Post-build: runtime DLLs
-# -------------------------------------------------------------------------
-
-add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${RAYLIB_ROOT}/lib/raylib.dll" "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${IMGUI_ROOT}/lib/imgui.dll"   "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
-    COMMAND ${CMAKE_COMMAND} -E echo "Build OK -> $<TARGET_FILE:${PROJECT_NAME}>"
-    COMMENT "Copying runtime DLLs"
-    VERBATIM
-)
-
-# -------------------------------------------------------------------------
 # Install
 # -------------------------------------------------------------------------
 
-include(GNUInstallDirs)
-
 install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(FILES
-    "${RAYLIB_ROOT}/lib/raylib.dll"
-    "${IMGUI_ROOT}/lib/imgui.dll"
-    DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
 
 # -------------------------------------------------------------------------
 # IDE
@@ -387,10 +345,9 @@ set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 message(STATUS "=== ${PROJECT_NAME} v${PROJECT_VERSION} ===")
 message(STATUS "C++${CMAKE_CXX_STANDARD} | ${CMAKE_CXX_COMPILER_ID}")
 message(STATUS "Generator: ${CMAKE_GENERATOR}")
-message(STATUS "raylib:    ${RAYLIB_ROOT}")
-message(STATUS "ImGui:     ${IMGUI_ROOT}")
-message(STATUS "Blend2D:   ${BLEND2D_ROOT}")
-message(STATUS "  includes: ${BLEND2D_INCLUDE_DIRS}")
-message(STATUS "  release:  ${BLEND2D_LIB_RELEASE}")
-message(STATUS "  debug:    ${BLEND2D_LIB_DEBUG}")
+message(STATUS "ImGui:     Built from submodule (Static)")
+message(STATUS "Blend2D:   Fetched via FetchContent (Static, embedded asmjit)")
+message(STATUS "AsmJit:    ${ASMJIT_DIR}")
+message(STATUS "Blend2D:   ${blend2d_SOURCE_DIR}")
+message(STATUS "Includes:  ${SPECTRUM_BLEND2D_INCLUDES}")
 message(STATUS "Output:    ${SPECTRUM_OUTPUT_DIR}")
