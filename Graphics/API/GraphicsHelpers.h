@@ -35,7 +35,7 @@ namespace Spectrum::Helpers {
 
         template<typename T>
         constexpr T Clamp(T v, T lo, T hi) noexcept {
-            return v < lo ? lo : v > hi ? hi : v;
+            return v < lo ? lo : (v > hi ? hi : v);
         }
 
         template<typename T>
@@ -65,14 +65,11 @@ namespace Spectrum::Helpers {
 
         constexpr float EaseInQuad(float t) noexcept { return t * t; }
         constexpr float EaseOutQuad(float t) noexcept { return t * (2.0f - t); }
+        constexpr float EaseInCubic(float t) noexcept { return t * t * t; }
 
         constexpr float EaseInOutQuad(float t) noexcept {
-            return t < 0.5f
-                ? 2.0f * t * t
-                : -1.0f + (4.0f - 2.0f * t) * t;
+            return t < 0.5f ? 2.0f * t * t : -1.0f + (4.0f - 2.0f * t) * t;
         }
-
-        constexpr float EaseInCubic(float t) noexcept { return t * t * t; }
 
         constexpr float EaseOutCubic(float t) noexcept {
             const float f = t - 1.0f;
@@ -126,7 +123,10 @@ namespace Spectrum::Helpers {
         inline int PolygonSides(int n) noexcept { return std::max(n, 3); }
         inline int StarPoints(int n) noexcept { return std::max(n, 2); }
         inline int CircleSegments(int n) noexcept { return Math::Clamp(n, 3, 360); }
-        inline bool PointArray(const std::vector<Point>& p, size_t n) noexcept { return Validate::ArraySize(p, n); }
+
+        inline bool PointArray(const std::vector<Point>& p, size_t n) noexcept {
+            return Validate::ArraySize(p, n);
+        }
     }
 
 #define VALIDATE_OR_RETURN(condition, ...) \
@@ -183,8 +183,7 @@ namespace Spectrum::Helpers {
         constexpr Point GetBottomRight(const Rect& r) noexcept { return { GetRight(r), GetBottom(r) }; }
 
         constexpr bool Contains(const Rect& r, const Point& p) noexcept {
-            return p.x >= r.x && p.x <= GetRight(r)
-                && p.y >= r.y && p.y <= GetBottom(r);
+            return p.x >= r.x && p.x <= GetRight(r) && p.y >= r.y && p.y <= GetBottom(r);
         }
 
         constexpr bool IsValid(const Rect& r) noexcept { return r.width > 0.0f && r.height > 0.0f; }
@@ -237,9 +236,7 @@ namespace Spectrum::Helpers {
         }
 
         inline ::Spectrum::Color InterpolateColor(
-            const ::Spectrum::Color& a,
-            const ::Spectrum::Color& b,
-            float t) noexcept
+            const ::Spectrum::Color& a, const ::Spectrum::Color& b, float t) noexcept
         {
             t = Math::Saturate(t);
             return ::Spectrum::Color(
@@ -312,10 +309,11 @@ namespace Spectrum::Helpers {
 
         private:
             void Restore() noexcept {
-                if (m_hdc && m_old) ::SelectObject(m_hdc, m_old);
+                if (m_hdc && m_old)
+                    ::SelectObject(m_hdc, m_old);
             }
 
-            HDC m_hdc = nullptr;
+            HDC     m_hdc = nullptr;
             HGDIOBJ m_old = nullptr;
         };
 
@@ -338,13 +336,10 @@ namespace Spectrum::Helpers {
             return UniqueDc(::CreateCompatibleDC(nullptr));
         }
 
-        inline UniqueBitmap CreateAlphaBitmap(
-            HDC hdc, int w, int h, void** bits = nullptr) noexcept
-        {
+        inline UniqueBitmap CreateAlphaBitmap(HDC hdc, int w, int h, void** bits = nullptr) noexcept {
             BITMAPINFO bmi{};
             bmi.bmiHeader = { sizeof(BITMAPINFOHEADER), w, -h, 1, 32, BI_RGB };
-            return UniqueBitmap(::CreateDIBSection(
-                hdc, &bmi, DIB_RGB_COLORS, bits, nullptr, 0));
+            return UniqueBitmap(::CreateDIBSection(hdc, &bmi, DIB_RGB_COLORS, bits, nullptr, 0));
         }
 
         inline AlphaDC CreateAlphaDC(int w, int h) noexcept {
@@ -365,9 +360,7 @@ namespace Spectrum::Helpers {
         }
 
         inline std::string_view ToString(FFTWindowType t) {
-            constexpr std::string_view names[] = {
-                "Hann", "Hamming", "Blackman", "Rectangular"
-            };
+            constexpr std::string_view names[] = { "Hann", "Hamming", "Blackman", "Rectangular" };
             return names[size_t(t)];
         }
 
@@ -378,17 +371,14 @@ namespace Spectrum::Helpers {
 
         class Timer {
         public:
-            Timer() : m_t(std::chrono::steady_clock::now()) {}
+            Timer() { Reset(); }
             void Reset() noexcept { m_t = std::chrono::steady_clock::now(); }
 
             float GetElapsedSeconds() const noexcept {
-                return std::chrono::duration<float>(
-                    std::chrono::steady_clock::now() - m_t).count();
+                return std::chrono::duration<float>(std::chrono::steady_clock::now() - m_t).count();
             }
 
-            float GetElapsedMilliseconds() const noexcept {
-                return GetElapsedSeconds() * 1000.0f;
-            }
+            float GetElapsedMilliseconds() const noexcept { return GetElapsedSeconds() * 1000.0f; }
 
         private:
             std::chrono::steady_clock::time_point m_t;
@@ -401,19 +391,13 @@ namespace Spectrum::Helpers {
                 return inst;
             }
 
-            Random() : m_gen(std::random_device{}()), m_unit(0.0f, 1.0f) {}
-
-            float Float(float lo = 0.0f, float hi = 1.0f) {
-                return lo + m_unit(m_gen) * (hi - lo);
-            }
-
-            int Int(int lo, int hi) {
-                return std::uniform_int_distribution<int>(lo, hi)(m_gen);
-            }
-
+            float Float(float lo = 0.0f, float hi = 1.0f) { return lo + m_unit(m_gen) * (hi - lo); }
+            int Int(int lo, int hi) { return std::uniform_int_distribution<int>(lo, hi)(m_gen); }
             bool Bool(float p = 0.5f) { return m_unit(m_gen) < p; }
 
         private:
+            Random() : m_gen(std::random_device{}()), m_unit(0.0f, 1.0f) {}
+
             std::mt19937 m_gen;
             std::uniform_real_distribution<float> m_unit;
         };
@@ -451,10 +435,7 @@ namespace Spectrum::Helpers {
         }
 
         inline bool HideWindow(HWND h) noexcept { return ::ShowWindow(h, SW_HIDE); }
-
-        inline bool ShowWindowState(HWND h, int cmd = SW_SHOW) noexcept {
-            return ::ShowWindow(h, cmd);
-        }
+        inline bool ShowWindowState(HWND h, int cmd = SW_SHOW) noexcept { return ::ShowWindow(h, cmd); }
 
         inline bool CenterWindow(HWND h) noexcept {
             RECT rc;
@@ -488,6 +469,8 @@ namespace Spectrum {
     using Helpers::Math::SmoothStep;
     using Helpers::Math::DegreesToRadians;
     using Helpers::Math::RadiansToDegrees;
+    using Helpers::Math::FreqToMel;
+    using Helpers::Math::MelToFreq;
     using Helpers::Geometry::Distance;
     using Helpers::Geometry::DistanceSquared;
     using Helpers::Geometry::Length;

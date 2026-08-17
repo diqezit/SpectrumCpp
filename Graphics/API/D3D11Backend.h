@@ -3,6 +3,7 @@
 
 #include "Common/Common.h"
 #include "Graphics/API/GraphicsHelpers.h"
+
 #include <d3d11.h>
 #include <dxgi.h>
 
@@ -20,14 +21,17 @@ namespace Spectrum {
             Shutdown();
             m_hwnd = hwnd;
             if (const auto rc = Helpers::Window::GetClientRect(hwnd)) {
-                m_width = Fit(rc->Width());
-                m_height = Fit(rc->Height());
+                m_width = rc->Width();
+                m_height = rc->Height();
             }
             return Create() && BindRTV();
         }
 
         void Shutdown() noexcept {
-            if (m_context) { m_context->ClearState(); m_context->Flush(); }
+            if (m_context) {
+                m_context->ClearState();
+                m_context->Flush();
+            }
             m_rtv.Reset();
             m_swapChain.Reset();
             m_context.Reset();
@@ -37,9 +41,8 @@ namespace Spectrum {
         }
 
         [[nodiscard]] bool Resize(int w, int h) {
-            w = Fit(w);
-            h = Fit(h);
-            if (w == m_width && h == m_height) return true;
+            if (w == m_width && h == m_height)
+                return true;
 
             m_context->OMSetRenderTargets(0, nullptr, nullptr);
             m_rtv.Reset();
@@ -65,8 +68,6 @@ namespace Spectrum {
         [[nodiscard]] int GetHeight() const noexcept { return m_height; }
 
     private:
-        static int Fit(int v) { return Helpers::Math::Clamp(v, 1, 16384); }
-
         bool Create() {
             UINT flags = 0;
 #ifdef _DEBUG
@@ -87,9 +88,11 @@ namespace Spectrum {
 
             HRESULT hr = create(flags);
 #ifdef _DEBUG
-            if (FAILED(hr)) hr = create(0);
+            if (FAILED(hr))
+                hr = create(0);
 #endif
-            if (FAILED(hr)) return false;
+            if (FAILED(hr))
+                return false;
 
             wrl::ComPtr<IDXGIDevice> dxgi;
             wrl::ComPtr<IDXGIAdapter> adapter;
@@ -114,7 +117,8 @@ namespace Spectrum {
             m_swapChain->GetBuffer(0, IID_PPV_ARGS(&bb));
             m_device->CreateRenderTargetView(bb.Get(), nullptr, &m_rtv);
             m_context->OMSetRenderTargets(1, m_rtv.GetAddressOf(), nullptr);
-            const D3D11_VIEWPORT vp{ 0, 0, float(m_width), float(m_height), 0, 1 };
+
+            const D3D11_VIEWPORT vp{ 0.0f, 0.0f, float(m_width), float(m_height), 0.0f, 1.0f };
             m_context->RSSetViewports(1, &vp);
             return true;
         }

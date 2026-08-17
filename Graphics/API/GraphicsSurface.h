@@ -3,8 +3,8 @@
 
 #include "Common/Common.h"
 #include "Graphics/API/GraphicsHelpers.h"
+
 #include <blend2d.h>
-#include <utility>
 
 namespace Spectrum {
 
@@ -20,12 +20,16 @@ namespace Spectrum {
             Shutdown();
             m_hwnd = hwnd;
             m_overlay = overlay;
+
             const auto rc = Helpers::Window::GetClientRect(hwnd);
-            return CreateBuffer(rc ? Fit(rc->Width()) : 1, rc ? Fit(rc->Height()) : 1);
+            return CreateBuffer(rc ? rc->Width() : 1, rc ? rc->Height() : 1);
         }
 
         void Shutdown() noexcept {
-            if (m_drawing) { m_ctx.end(); m_drawing = false; }
+            if (m_drawing) {
+                m_ctx.end();
+                m_drawing = false;
+            }
             m_image.reset();
             m_buffer.Reset();
             m_hwnd = nullptr;
@@ -34,8 +38,6 @@ namespace Spectrum {
         }
 
         [[nodiscard]] bool Resize(int w, int h) {
-            w = Fit(w);
-            h = Fit(h);
             return (w == m_width && h == m_height) || CreateBuffer(w, h);
         }
 
@@ -51,7 +53,8 @@ namespace Spectrum {
         }
 
         [[nodiscard]] bool EndFrame() {
-            if (!m_drawing) return true;
+            if (!m_drawing)
+                return true;
             m_ctx.end();
             m_drawing = false;
             return Present();
@@ -66,8 +69,6 @@ namespace Spectrum {
         [[nodiscard]] HWND GetHwnd()   const noexcept { return m_hwnd; }
 
     private:
-        static int Fit(int v) { return Helpers::Math::Clamp(v, 1, 16384); }
-
         static BLRgba32 ToBL(const Color& c) noexcept {
             return BLRgba32(FloatToByte(c.r), FloatToByte(c.g), FloatToByte(c.b), FloatToByte(c.a));
         }
@@ -78,8 +79,8 @@ namespace Spectrum {
             m_width = w;
             m_height = h;
             return m_image.create_from_data(
-                w, h, BL_FORMAT_PRGB32, m_buffer.bits, intptr_t(m_buffer.stride),
-                BL_DATA_ACCESS_RW) == BL_SUCCESS;
+                w, h, BL_FORMAT_PRGB32, m_buffer.bits,
+                intptr_t(m_buffer.stride), BL_DATA_ACCESS_RW) == BL_SUCCESS;
         }
 
         bool Present() const {
