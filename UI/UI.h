@@ -53,6 +53,7 @@ namespace Spectrum {
 
     private:
         void DrawPanel();
+        void DrawStatus(float y, float width);
 
         std::function<void()>         m_onHide;
         std::function<void()>         m_onOverlay;
@@ -96,10 +97,10 @@ namespace Spectrum {
             ui::Body body(root.h - ui::kTitleH - ui::kStatusH);
 
             if (ui::Section s("RENDERER"); s) {
-                ui::BindCombo("Renderer", m_renderer,
-                    &RendererManager::GetCurrentRendererName,
-                    &RendererManager::GetAvailableRendererNames,
-                    &RendererManager::SetCurrentRendererByName);
+                ui::NamedCombo("Renderer",
+                    m_renderer->GetCurrentRendererName(),
+                    m_renderer->GetAvailableRendererNames(),
+                    [this](const std::string& n) { m_renderer->SetCurrentRendererByName(n); });
             }
 
             if (ui::Section s("AUDIO"); s) {
@@ -107,15 +108,15 @@ namespace Spectrum {
                 UI_SLIDER(m_audio, "Smoothing", Smoothing);
                 UI_SLIDER(m_audio, "Bar Count", BarCount);
 
-                ui::BindCombo("FFT Window", m_audio,
-                    &AudioManager::GetFFTWindowName,
-                    &AudioManager::GetAvailableFFTWindows,
-                    &AudioManager::SetFFTWindowByName);
+                ui::NamedCombo("FFT Window",
+                    m_audio->GetFFTWindowName(),
+                    m_audio->GetAvailableFFTWindows(),
+                    [this](const std::string& n) { m_audio->SetFFTWindowByName(n); });
 
-                ui::BindCombo("Scale", m_audio,
-                    &AudioManager::GetSpectrumScaleName,
-                    &AudioManager::GetAvailableSpectrumScales,
-                    &AudioManager::SetSpectrumScaleByName);
+                ui::NamedCombo("Scale",
+                    m_audio->GetSpectrumScaleName(),
+                    m_audio->GetAvailableSpectrumScales(),
+                    [this](const std::string& n) { m_audio->SetSpectrumScaleByName(n); });
 
                 if (ui::NeonButton("Reset to Defaults", ui::Pal().accent))
                     m_audio->ResetToDefaults();
@@ -132,19 +133,32 @@ namespace Spectrum {
             }
         }
 
-        const bool capturing = m_audio->IsCapturing();
-        const bool animating = m_audio->IsAnimating();
+        DrawStatus(ImGui::GetWindowPos().y + root.h - ui::kStatusH, root.w);
+    }
+
+    inline void UIManager::DrawStatus(float y, float width) {
+        const auto& pal = ui::Pal();
+
+        const char* name = "Idle";
+        ImVec4 color = pal.statusOff;
+
+        if (m_audio->IsCapturing()) {
+            name = "Capturing";
+            color = pal.statusOn;
+        }
+        else if (m_audio->IsAnimating()) {
+            name = "Animation";
+            color = pal.statusWarn;
+        }
 
         char buf[128];
         snprintf(buf, sizeof(buf), "%s   %d bars   %s   %s",
-            capturing ? "Capturing" : animating ? "Animation" : "Idle",
+            name,
             int(m_audio->GetBarCount()),
             m_audio->GetFFTWindowName().data(),
             m_audio->GetSpectrumScaleName().data());
 
-        ui::StatusBar(
-            ImGui::GetWindowPos().y + root.h - ui::kStatusH, root.w, buf,
-            capturing ? ui::Pal().statusOn : animating ? ui::Pal().statusWarn : ui::Pal().statusOff);
+        ui::StatusBar(y, width, buf, color);
     }
 
 } // namespace Spectrum

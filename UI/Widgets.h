@@ -7,12 +7,10 @@
 
 #include "UI/ImGuiContext.h"
 
-#include <cstdio>
-#include <cstring>
+#include <cstddef>
 #include <string>
 #include <string_view>
 #include <type_traits>
-#include <utility>
 #include <vector>
 
 namespace Spectrum::ui {
@@ -20,57 +18,71 @@ namespace Spectrum::ui {
     inline const Palette& Pal() { return ImGuiContext::Theme(); }
     inline ImVec4 A(ImVec4 c, float a) { c.w = a; return c; }
 
-    constexpr float kTitleH = 40.0f;
-    constexpr float kStatusH = 30.0f;
-    constexpr float kPad = 14.0f;
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    // Metrics
+    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    //
+    // h      block height, 0 = auto
+    // round  FrameRounding / GrabRounding
+    // grab   GrabMinSize
+    // padX Y WindowPadding / FramePadding
+    // gapX Y ItemSpacing
+    // aIdle  idle alpha
+    // aHov   hover alpha
+    // aAct   active / selected alpha
+    // line   hairline inset
+    // itemW  PushItemWidth / button width
+
+    enum UiTok : std::size_t {
+        UI_TITLE = 0,
+        UI_CLOSE,
+        UI_SEP,
+        UI_STATUS,
+        UI_SECTION,
+        UI_COMBO,
+        UI_SLIDER,
+        UI_NEON,
+        UI_BODY,
+        UI_COUNT
+    };
+
+    struct Tok {
+        float h, round, grab;
+        float padX, padY;
+        float gapX, gapY;
+        float aIdle, aHov, aAct;
+        float line, itemW;
+    };
+
+    inline constexpr Tok T[UI_COUNT] = {
+        //            h   round grab  padX padY  gapX gapY  aIdle  aHov  aAct  line itemW
+        /* Title   */ { 40,  0,   0,   14,  0,    8,   0,    0,     0,    0,    1,   0    },
+        /* Close   */ {  0,  4,   0,    0,  0,    0,   0,    0,     0,    0,    0,   0    },
+        /* Sep     */ {  0,  0,   0,    0,  0,    0,   0,    0.60f, 0,    0,    0,   0    },
+        /* Status  */ { 30,  0,   0,   14,  6,    0,   0,    0,     0,    0,    0,   0    },
+        /* Section */ {  0,  0,   0,    0,  0,    0,   0,    0,     0.12f,0.10f,0,   0    },
+        /* Combo   */ {  0,  0,   0,    0,  0,    0,   0,    0,     0.35f,0.25f,0,   0    },
+        /* Slider  */ {  0,  6,  14,   10,  4,    0,   0,    0,     0,    0,    0,   0    },
+        /* Neon    */ {  0,  6,   0,    0,  0,    0,   0,    0.12f, 0.25f,0.40f,0,  -1    },
+        /* Body    */ {  0,  0,   0,   14,  7,    0,   0,    0,     0,    0,    0,  -1    },
+    };
+
+    inline constexpr ImVec4 kClear = { 0, 0, 0, 0 };
+    constexpr ImGuiWindowFlags kChromeFlags = ImGuiWindowFlags_NoScrollbar;
+
+    constexpr ImVec2 Pad(std::size_t i) { return { T[i].padX, T[i].padY }; }
+    constexpr ImVec2 Gap(std::size_t i) { return { T[i].gapX, T[i].gapY }; }
+
+    constexpr float kTitleH = T[UI_TITLE].h;
+    constexpr float kStatusH = T[UI_STATUS].h;
+
+    constexpr float CenterY(float itemH, float parentH) {
+        return (parentH - itemH) * 0.5f;
+    }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // RAII
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-    struct Style {
-        int nc = 0, nv = 0;
-
-        Style() = default;
-        ~Style() { pop(); }
-
-        Style(const Style&) = delete;
-        Style& operator=(const Style&) = delete;
-
-        Style(Style&& o) noexcept : nc(o.nc), nv(o.nv) { o.nc = o.nv = 0; }
-        Style& operator=(Style&& o) noexcept {
-            if (this == &o) return *this;
-            pop();
-            nc = o.nc;
-            nv = o.nv;
-            o.nc = o.nv = 0;
-            return *this;
-        }
-
-        Style& C(ImGuiCol i, const ImVec4& v) { ImGui::PushStyleColor(i, v); ++nc; return *this; }
-        Style& V(ImGuiStyleVar i, float v) { ImGui::PushStyleVar(i, v);   ++nv; return *this; }
-        Style& V(ImGuiStyleVar i, ImVec2 v) { ImGui::PushStyleVar(i, v);   ++nv; return *this; }
-
-    private:
-        void pop() {
-            if (nc) ImGui::PopStyleColor(nc);
-            if (nv) ImGui::PopStyleVar(nv);
-            nc = nv = 0;
-        }
-    };
-
-    struct Id {
-        explicit Id(const char* s) { ImGui::PushID(s); }
-        ~Id() { ImGui::PopID(); }
-    };
-
-    struct Child {
-        Child(const char* id, ImVec2 size,
-            ImGuiChildFlags childFlags = 0, ImGuiWindowFlags windowFlags = 0) {
-            ImGui::BeginChild(id, size, childFlags, windowFlags);
-        }
-        ~Child() { ImGui::EndChild(); }
-    };
 
     struct Fullscreen {
         float w{};
@@ -83,14 +95,13 @@ namespace Spectrum::ui {
             ImGui::SetNextWindowPos({ 0, 0 });
             ImGui::SetNextWindowSize(sz);
 
-            Style s;
-            s.V(ImGuiStyleVar_WindowPadding, { 0, 0 })
-                .C(ImGuiCol_WindowBg, Pal().background);
-
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{ 0, 0 });
+            ImGui::PushStyleColor(ImGuiCol_WindowBg, Pal().background);
             ImGui::Begin(id, nullptr,
-                ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
-                ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
-                ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoBringToFrontOnFocus);
+                ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+                ImGuiWindowFlags_NoBringToFrontOnFocus);
+            ImGui::PopStyleColor();
+            ImGui::PopStyleVar();
         }
 
         ~Fullscreen() { ImGui::End(); }
@@ -98,10 +109,10 @@ namespace Spectrum::ui {
 
     struct Body {
         explicit Body(float height) {
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, { kPad, kPad * 0.5f });
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Pad(UI_BODY));
             ImGui::BeginChild("##body", { 0, height }, ImGuiChildFlags_AlwaysUseWindowPadding);
             ImGui::PopStyleVar();
-            ImGui::PushItemWidth(-1);
+            ImGui::PushItemWidth(T[UI_BODY].itemW);
         }
 
         ~Body() {
@@ -110,81 +121,73 @@ namespace Spectrum::ui {
         }
     };
 
-    inline Style HeaderTint(const ImVec4& c, float idle, float hov, float act = -1.0f) {
-        Style s;
-        s.C(ImGuiCol_Header, A(c, idle)).C(ImGuiCol_HeaderHovered, A(c, hov));
-        if (act >= 0.0f) s.C(ImGuiCol_HeaderActive, A(c, act));
-        return s;
-    }
-
-    inline void Label(const char* text) {
-        ImGui::PushStyleColor(ImGuiCol_Text, Pal().textSecondary);
-        ImGui::TextUnformatted(text);
-        ImGui::PopStyleColor();
-    }
-
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Chrome
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
+    inline bool CloseButton(ImVec2 pos, float size) {
+        const auto& pal = Pal();
+        ImGui::SetCursorPos(pos);
+        ImGui::PushStyleColor(ImGuiCol_Button, kClear);
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, pal.closeHover);
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, pal.closeActive);
+        ImGui::PushStyleColor(ImGuiCol_Text, pal.textSecondary);
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, T[UI_CLOSE].round);
+        const bool clicked = ImGui::Button("X", { size, size });
+        ImGui::PopStyleVar();
+        ImGui::PopStyleColor(4);
+        return clicked;
+    }
+
     inline bool TitleBar(float width, const char* title) {
         const auto& pal = Pal();
-        Child bar("##title", { width, kTitleH }, 0, ImGuiWindowFlags_NoScrollbar);
+        const Tok& t = T[UI_TITLE];
+        const float btn = ImGui::GetFrameHeight();
 
-        const float textY = (kTitleH - ImGui::GetTextLineHeight()) * 0.5f;
-        ImGui::SetCursorPos({ kPad, textY });
+        ImGui::PushID(title);
+        ImGui::BeginChild("##title", { width, t.h }, 0, kChromeFlags);
 
+        ImGui::SetCursorPos({ t.padX, CenterY(ImGui::GetTextLineHeight(), t.h) });
         ImGui::PushStyleColor(ImGuiCol_Text, pal.accent);
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, Gap(UI_TITLE));
         ImGui::Bullet();
+        ImGui::PopStyleVar();
+        ImGui::SameLine();
+        ImGui::TextUnformatted(title);
         ImGui::PopStyleColor();
 
-        ImGui::SameLine(0.0f, 8.0f);
-        ImGui::TextColored(pal.accent, "%s", title);
+        const bool close = CloseButton({ width - t.padX - btn, CenterY(btn, t.h) }, btn);
 
-        const float btn = ImGui::GetFrameHeight();
-        ImGui::SameLine(width - kPad - btn);
-        ImGui::SetCursorPosY((kTitleH - btn) * 0.5f);
-
-        Style s;
-        s.C(ImGuiCol_Button, { 0, 0, 0, 0 })
-            .C(ImGuiCol_ButtonHovered, pal.closeHover)
-            .C(ImGuiCol_ButtonActive, pal.closeActive)
-            .C(ImGuiCol_Text, pal.textSecondary)
-            .V(ImGuiStyleVar_FrameRounding, 4.0f);
-
-        const bool close = ImGui::Button("X", { btn, btn });
-
-        Style sep;
-        sep.C(ImGuiCol_Separator, pal.accent)
-            .V(ImGuiStyleVar_ItemSpacing, ImVec2{ 0.0f, 0.0f });
-        ImGui::SetCursorPosY(kTitleH - 1.0f);
+        ImGui::SetCursorPosY(t.h - t.line);
+        ImGui::PushStyleColor(ImGuiCol_Separator, pal.accent);
         ImGui::Separator();
+        ImGui::PopStyleColor();
 
+        ImGui::EndChild();
+        ImGui::PopID();
         return close;
     }
 
     inline void StatusBar(float y, float width, const char* text, const ImVec4& color) {
+        const Tok& t = T[UI_STATUS];
+        const auto& pal = Pal();
+
         ImGui::SetCursorScreenPos({ ImGui::GetWindowPos().x, y });
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, kClear);
+        ImGui::BeginChild("##status", { width, t.h }, 0, kChromeFlags);
+        ImGui::PopStyleColor();
 
-        {
-            Style sep;
-            sep.C(ImGuiCol_Separator, A(Pal().border, 0.6f));
-            ImGui::Separator();
-        }
+        ImGui::PushStyleColor(ImGuiCol_Separator, A(pal.border, T[UI_SEP].aIdle));
+        ImGui::Separator();
+        ImGui::PopStyleColor();
 
-        Style s;
-        s.V(ImGuiStyleVar_WindowPadding, { kPad, 6.0f })
-            .C(ImGuiCol_ChildBg, { 0, 0, 0, 0 });
-
-        ImGui::BeginChild("##status", { width, kStatusH }, 0, ImGuiWindowFlags_NoScrollbar);
-
+        ImGui::SetCursorPos({ t.padX, CenterY(ImGui::GetTextLineHeight(), t.h) });
         ImGui::PushStyleColor(ImGuiCol_Text, color);
         ImGui::Bullet();
         ImGui::PopStyleColor();
 
         ImGui::SameLine();
-        Label(text);
-
+        ImGui::TextColored(pal.textSecondary, "%s", text);
         ImGui::EndChild();
     }
 
@@ -196,16 +199,16 @@ namespace Spectrum::ui {
     public:
         explicit Section(const char* label) {
             const auto& accent = Pal().accent;
-            Style s;
-            s.C(ImGuiCol_Header, { 0, 0, 0, 0 })
-                .C(ImGuiCol_HeaderHovered, A(accent, 0.12f))
-                .C(ImGuiCol_HeaderActive, A(accent, 0.10f))
-                .C(ImGuiCol_Text, accent);
-
+            const Tok& t = T[UI_SECTION];
+            ImGui::PushStyleColor(ImGuiCol_Header, kClear);
+            ImGui::PushStyleColor(ImGuiCol_HeaderHovered, A(accent, t.aHov));
+            ImGui::PushStyleColor(ImGuiCol_HeaderActive, A(accent, t.aAct));
+            ImGui::PushStyleColor(ImGuiCol_Text, accent);
             m_open = ImGui::TreeNodeEx(label,
                 ImGuiTreeNodeFlags_DefaultOpen |
                 ImGuiTreeNodeFlags_Bullet |
                 ImGuiTreeNodeFlags_SpanAvailWidth);
+            ImGui::PopStyleColor(4);
 
             if (m_open)
                 ImGui::Spacing();
@@ -234,72 +237,70 @@ namespace Spectrum::ui {
         const char* label, std::string_view current,
         const std::vector<std::string>& options, Fn&& onPick)
     {
-        Label(label);
+        const auto& pal = Pal();
+        const Tok& t = T[UI_COMBO];
 
-        char preview[64];
-        const size_t n = current.size() < sizeof(preview) - 1 ? current.size() : sizeof(preview) - 1;
-        memcpy(preview, current.data(), n);
-        preview[n] = '\0';
-
-        Id id(label);
-        Style popup;
-        popup.C(ImGuiCol_PopupBg, Pal().surface);
-
-        if (!ImGui::BeginCombo("##c", preview))
-            return;
-
-        for (const auto& opt : options) {
-            const bool sel = (current == opt);
-            auto hs = HeaderTint(Pal().accent, sel ? 0.25f : 0.0f, 0.35f);
-            if (ImGui::Selectable(opt.c_str(), sel))
-                onPick(opt);
-            if (sel)
-                ImGui::SetItemDefaultFocus();
+        ImGui::TextColored(pal.textPrimary, "%s", label);
+        ImGui::PushStyleColor(ImGuiCol_PopupBg, pal.surface);
+        ImGui::PushStyleColor(ImGuiCol_Header, A(pal.accent, t.aIdle));
+        ImGui::PushStyleColor(ImGuiCol_HeaderHovered, A(pal.accent, t.aHov));
+        ImGui::PushStyleColor(ImGuiCol_HeaderActive, A(pal.accent, t.aAct));
+        ImGui::PushID(label);
+        if (ImGui::BeginCombo("##c", current.data())) {
+            for (const auto& opt : options) {
+                const bool sel = opt == current;
+                if (ImGui::Selectable(opt.c_str(), sel))
+                    onPick(opt);
+                if (sel)
+                    ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
         }
-        ImGui::EndCombo();
+        ImGui::PopID();
+        ImGui::PopStyleColor(4);
     }
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     // Slider
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    inline bool Slider(const char* label, float* v, float mn, float mx, const char* fmt = "%.2f") {
-        const auto& pal = Pal();
-
-        ImGui::TextColored(pal.textPrimary, "%s", label);
-
-        char val[32];
-        snprintf(val, sizeof(val), fmt, static_cast<double>(*v));
-        const float valW = ImGui::CalcTextSize(val).x;
-        ImGui::SameLine(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - valW);
-        ImGui::TextColored(pal.accent, "%s", val);
-
-        Style s;
-        s.C(ImGuiCol_FrameBg, pal.surface)
-            .C(ImGuiCol_FrameBgHovered, pal.surfaceHover)
-            .C(ImGuiCol_FrameBgActive, pal.surfaceActive)
-            .C(ImGuiCol_SliderGrab, pal.accentDim)
-            .C(ImGuiCol_SliderGrabActive, pal.accent)
-            .V(ImGuiStyleVar_FrameRounding, 6.0f)
-            .V(ImGuiStyleVar_GrabRounding, 6.0f)
-            .V(ImGuiStyleVar_GrabMinSize, 14.0f)
-            .V(ImGuiStyleVar_FramePadding, ImVec2{ 10.0f, 4.0f });
-
-        bool changed;
-        {
-            Id id(label);
-            changed = ImGui::SliderFloat("##sl", v, mn, mx, "");
+    template<class Ty>
+    constexpr ImGuiDataType GuiType() {
+        if constexpr (std::is_same_v<Ty, float>)
+            return ImGuiDataType_Float;
+        if constexpr (std::is_same_v<Ty, double>)
+            return ImGuiDataType_Double;
+        if constexpr (std::is_signed_v<Ty>) {
+            if constexpr (sizeof(Ty) > 4)
+                return ImGuiDataType_S64;
+            return ImGuiDataType_S32;
         }
-
-        ImGui::Spacing();
-        return changed;
+        if constexpr (sizeof(Ty) > 4)
+            return ImGuiDataType_U64;
+        return ImGuiDataType_U32;
     }
 
-    inline bool Slider(const char* label, int* v, int mn, int mx) {
-        float f = float(*v);
-        const bool changed = Slider(label, &f, float(mn), float(mx), "%.0f");
-        if (changed)
-            *v = int(f);
+    template<class Ty>
+    inline bool Slider(const char* label, Ty* v, Ty mn, Ty mx, const char* fmt = nullptr) {
+        const auto& pal = Pal();
+        const Tok& t = T[UI_SLIDER];
+
+        ImGui::TextColored(pal.textPrimary, "%s", label);
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, pal.surface);
+        ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, pal.surfaceHover);
+        ImGui::PushStyleColor(ImGuiCol_FrameBgActive, pal.surfaceActive);
+        ImGui::PushStyleColor(ImGuiCol_SliderGrab, pal.accentDim);
+        ImGui::PushStyleColor(ImGuiCol_SliderGrabActive, pal.accent);
+        ImGui::PushStyleColor(ImGuiCol_Text, pal.accent);
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, t.round);
+        ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding, t.round);
+        ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize, t.grab);
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, Pad(UI_SLIDER));
+        ImGui::PushID(label);
+        const bool changed = ImGui::SliderScalar("##sl", GuiType<Ty>(), v, &mn, &mx, fmt);
+        ImGui::PopID();
+        ImGui::PopStyleVar(4);
+        ImGui::PopStyleColor(6);
         return changed;
     }
 
@@ -308,30 +309,26 @@ namespace Spectrum::ui {
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     inline bool NeonButton(const char* label, const ImVec4& col) {
-        Style s;
-        s.C(ImGuiCol_Button, A(col, 0.12f))
-            .C(ImGuiCol_ButtonHovered, A(col, 0.25f))
-            .C(ImGuiCol_ButtonActive, A(col, 0.40f))
-            .C(ImGuiCol_Text, col)
-            .V(ImGuiStyleVar_FrameRounding, 6.0f);
-        return ImGui::Button(label, { -1, 0 });
+        const Tok& t = T[UI_NEON];
+        ImGui::PushStyleColor(ImGuiCol_Button, A(col, t.aIdle));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, A(col, t.aHov));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, A(col, t.aAct));
+        ImGui::PushStyleColor(ImGuiCol_Text, col);
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, t.round);
+        const bool clicked = ImGui::Button(label, { t.itemW, 0 });
+        ImGui::PopStyleVar();
+        ImGui::PopStyleColor(4);
+        return clicked;
     }
 
     inline bool ColorPicker(Color& color) {
-        float rgb[3] = { color.r, color.g, color.b };
-
-        ImGui::ColorButton("##preview", { rgb[0], rgb[1], rgb[2], 1.0f },
-            ImGuiColorEditFlags_NoTooltip, { -1, 24 });
-        ImGui::Spacing();
-
-        if (!ImGui::ColorPicker3("##color", rgb,
+        if (!ImGui::ColorPicker3("##color", &color.r,
             ImGuiColorEditFlags_PickerHueWheel |
             ImGuiColorEditFlags_NoSidePreview |
             ImGuiColorEditFlags_NoAlpha |
             ImGuiColorEditFlags_NoInputs))
             return false;
-
-        color = Color(rgb[0], rgb[1], rgb[2], 1.0f);
+        color.a = 1.0f;
         return true;
     }
 
@@ -339,31 +336,11 @@ namespace Spectrum::ui {
     // Bind  (GetX / SetX / GetXMin / GetXMax)
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    template<class T, class Mn, class Mx>
-    bool EditScalar(const char* label, T& v, Mn mn, Mx mx) {
-        if constexpr (std::is_floating_point_v<T>) {
-            return Slider(label, &v, float(mn), float(mx));
-        }
-        else {
-            int i = int(v);
-            if (!Slider(label, &i, int(mn), int(mx)))
-                return false;
-            v = T(i);
-            return true;
-        }
-    }
-
     template<class Obj, class Get, class Set, class Mn, class Mx>
     void BindSlider(const char* label, Obj* o, Get get, Set set, Mn mn, Mx mx) {
         auto v = (o->*get)();
-        if (EditScalar(label, v, (o->*mn)(), (o->*mx)()))
-            (o->*set)(std::move(v));
-    }
-
-    template<class Obj, class GetName, class GetList, class SetName>
-    void BindCombo(const char* label, Obj* o, GetName getName, GetList getList, SetName setName) {
-        NamedCombo(label, (o->*getName)(), (o->*getList)(),
-            [o, setName](const std::string& n) { (o->*setName)(n); });
+        if (Slider(label, &v, (o->*mn)(), (o->*mx)()))
+            (o->*set)(v);
     }
 
 #define UI_SLIDER(obj, title, Prop) \
