@@ -50,10 +50,10 @@ struct PresetTable {
 
     [[nodiscard]] constexpr const TSettings& Get(RenderQuality quality) const {
         switch (quality) {
-        case RenderQuality::Low:    return low;
-        case RenderQuality::High:   return high;
-        case RenderQuality::Ultra:  return ultra;
-        default:                    return medium;
+            case RenderQuality::Low:    return low;
+            case RenderQuality::High:   return high;
+            case RenderQuality::Ultra:  return ultra;
+            default:                    return medium;
         }
     }
 };
@@ -234,6 +234,18 @@ inline const PresetTable<Settings::WaveSettings> WavePresets = {
 };
 
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// WaterfallRenderer Presets
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+inline const PresetTable<Settings::WaterfallSettings> WaterfallPresets = {
+    // Low: perspectiveDepth, lineWidth
+    { 0.50f, 1.0f },
+    { 0.60f, 1.2f },
+    { 0.72f, 1.5f },
+    { 0.85f, 1.8f }
+};
+
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // Generic Getter Template Declaration
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
@@ -303,6 +315,10 @@ template<> struct PresetSource<SphereRenderer> {
 
 template<> struct PresetSource<WaveRenderer> {
     static const auto& Table(bool) { return WavePresets; }
+};
+
+template<> struct PresetSource<WaterfallRenderer> {
+    static const auto& Table(bool) { return WaterfallPresets; }
 };
 
 } // namespace Spectrum::QualityPresets

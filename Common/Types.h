@@ -48,6 +48,7 @@ namespace Spectrum {
         Point operator+(const Point& other) const noexcept {
             return Point(x + other.x, y + other.y);
         }
+
         Point operator*(float scalar) const noexcept {
             return Point(x * scalar, y * scalar);
         }
@@ -131,6 +132,7 @@ namespace Spectrum {
         MatrixLed,
         Sphere,
         PolylineWave,
+        Waterfall,
         Count
     };
 

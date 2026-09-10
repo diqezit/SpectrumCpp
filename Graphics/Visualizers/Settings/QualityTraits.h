@@ -44,6 +44,7 @@ class ParticlesRenderer;
 class PolylineWaveRenderer;
 class SphereRenderer;
 class WaveRenderer;
+class WaterfallRenderer;
 
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // Settings Structures
@@ -192,6 +193,15 @@ struct WaveSettings {
     int points;
 };
 
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+// WaterfallRenderer Settings
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+struct WaterfallSettings {
+    float perspectiveDepth;
+    float lineWidth;
+};
+
 } // namespace Settings
 
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -217,6 +227,7 @@ template<> struct QualityTraits<ParticlesRenderer>     { using SettingsType = Se
 template<> struct QualityTraits<PolylineWaveRenderer>  { using SettingsType = Settings::PolylineWaveSettings; };
 template<> struct QualityTraits<SphereRenderer>        { using SettingsType = Settings::SphereSettings; };
 template<> struct QualityTraits<WaveRenderer>          { using SettingsType = Settings::WaveSettings; };
+template<> struct QualityTraits<WaterfallRenderer>     { using SettingsType = Settings::WaterfallSettings; };
 
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 // Convenience Alias

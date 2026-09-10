@@ -231,6 +231,7 @@ set(SPECTRUM_GRAPHICS_SOURCES
     Graphics/Visualizers/ParticlesRenderer.h
     Graphics/Visualizers/PolylineWaveRenderer.h 
     Graphics/Visualizers/SphereRenderer.h
+    Graphics/Visualizers/WaterfallRenderer.h
     Graphics/Visualizers/WaveRenderer.h 
     Graphics/Visualizers/Settings/QualityPresets.h
     Graphics/Visualizers/Settings/QualityTraits.h

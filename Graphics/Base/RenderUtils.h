@@ -64,6 +64,21 @@ namespace Spectrum::RenderUtils {
     // Mapping
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
+    [[nodiscard]] inline float SampleSpectrum(const SpectrumData& s, float t) {
+        const float f = t * float(s.size() - 1);
+        const size_t i = static_cast<size_t>(f);
+        const size_t j = i + 1;
+        const float a = Helpers::Sanitize::Normalized(s[i]);
+        if (j >= s.size()) return a;
+        return Lerp(a, Helpers::Sanitize::Normalized(s[j]), f - float(i));
+    }
+
+    inline void ResampleSpectrum(const SpectrumData& s, float* dst, size_t count, float scale) {
+        const float inv = 1.0f / float(count - 1);
+        for (size_t i = 0; i < count; ++i)
+            dst[i] = SampleSpectrum(s, float(i) * inv) * scale;
+    }
+
     inline void BuildPolylineFromSpectrum(
         const SpectrumData& s, float midlineY, float amplitude,
         int viewWidth, std::vector<Point>& out)
