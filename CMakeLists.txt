@@ -26,6 +26,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 include(GNUInstallDirs)
 include(CheckIPOSupported)
@@ -34,10 +35,20 @@ include(CheckIPOSupported)
 # Options
 # -------------------------------------------------------------------------
 option(
-    SPECTRUM_SHOW_CONSOLE_IN_RELEASE 
-    "Attach a console in RelWithDebInfo" 
+    SPECTRUM_SHOW_CONSOLE_IN_RELEASE
+    "Attach a console in RelWithDebInfo"
     ON
 )
+
+# -------------------------------------------------------------------------
+# Dependency pins
+# asmjit/blend2d: version tags like 1.13.0 do not exist — use master, then
+# pin SHA after a good configure (drop GIT_SHALLOW when pinning a commit).
+# -------------------------------------------------------------------------
+set(SPECTRUM_ASMJIT_GIT_TAG    "master")
+set(SPECTRUM_BLEND2D_GIT_TAG   "master")
+set(SPECTRUM_KFR_GIT_TAG       "6.3.1")
+set(SPECTRUM_MINIAUDIO_GIT_TAG "0.11.22")
 
 # -------------------------------------------------------------------------
 # Dependencies (Submodules & FetchContent)
@@ -53,19 +64,20 @@ add_library(imgui STATIC
     imgui/backends/imgui_impl_win32.cpp
     imgui/backends/imgui_impl_dx11.cpp
 )
-target_include_directories(imgui PUBLIC
+target_include_directories(imgui SYSTEM PUBLIC
     ${PROJECT_SOURCE_DIR}/imgui
     ${PROJECT_SOURCE_DIR}/imgui/backends
 )
 
 # 2. Blend2D & AsmJit (FetchContent)
+# asmjit is populated (not MakeAvailable) so Blend2D can consume ASMJIT_DIR.
 include(FetchContent)
-message(STATUS "Fetching AsmJit and Blend2D...")
+message(STATUS "Fetching AsmJit (${SPECTRUM_ASMJIT_GIT_TAG}) and Blend2D (${SPECTRUM_BLEND2D_GIT_TAG})...")
 
 FetchContent_Declare(
     asmjit
     GIT_REPOSITORY https://github.com/asmjit/asmjit.git
-    GIT_TAG        master
+    GIT_TAG        ${SPECTRUM_ASMJIT_GIT_TAG}
     GIT_SHALLOW    TRUE
     EXCLUDE_FROM_ALL
 )
@@ -73,7 +85,7 @@ FetchContent_Declare(
 FetchContent_Declare(
     blend2d
     GIT_REPOSITORY https://github.com/blend2d/blend2d.git
-    GIT_TAG        master
+    GIT_TAG        ${SPECTRUM_BLEND2D_GIT_TAG}
     GIT_SHALLOW    TRUE
     EXCLUDE_FROM_ALL
 )
@@ -98,8 +110,8 @@ FetchContent_MakeAvailable(blend2d)
 
 set(SPECTRUM_BLEND2D_INCLUDES "")
 if(EXISTS "${blend2d_SOURCE_DIR}/blend2d/blend2d.h")
-    list(APPEND SPECTRUM_BLEND2D_INCLUDES 
-        "${blend2d_SOURCE_DIR}" 
+    list(APPEND SPECTRUM_BLEND2D_INCLUDES
+        "${blend2d_SOURCE_DIR}"
         "${blend2d_SOURCE_DIR}/blend2d"
     )
 elseif(EXISTS "${blend2d_SOURCE_DIR}/src/blend2d.h")
@@ -109,27 +121,28 @@ else()
 endif()
 
 # 3. KFR
-message(STATUS "Fetching KFR...")
+message(STATUS "Fetching KFR (${SPECTRUM_KFR_GIT_TAG})...")
 set(KFR_ENABLE_DFT ON CACHE BOOL "" FORCE)
 set(KFR_ENABLE_CAPI_BUILD OFF CACHE BOOL "" FORCE)
 set(KFR_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
 set(KFR_ENABLE_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(KFR_ENABLE_MULTIARCH OFF CACHE BOOL "" FORCE)
 
 FetchContent_Declare(
     kfr
     GIT_REPOSITORY https://github.com/kfrlib/kfr.git
-    GIT_TAG        6.3.1
+    GIT_TAG        ${SPECTRUM_KFR_GIT_TAG}
     GIT_SHALLOW    TRUE
     EXCLUDE_FROM_ALL
 )
 FetchContent_MakeAvailable(kfr)
 
 # 4. miniaudio
-message(STATUS "Fetching miniaudio...")
+message(STATUS "Fetching miniaudio (${SPECTRUM_MINIAUDIO_GIT_TAG})...")
 FetchContent_Declare(
     miniaudio
     GIT_REPOSITORY https://github.com/mackron/miniaudio.git
-    GIT_TAG        0.11.22
+    GIT_TAG        ${SPECTRUM_MINIAUDIO_GIT_TAG}
     GIT_SHALLOW    TRUE
     EXCLUDE_FROM_ALL
 )
@@ -164,17 +177,26 @@ file(WRITE "${MINIAUDIO_IMPL}"
 )
 
 add_library(miniaudio STATIC "${MINIAUDIO_IMPL}")
-target_include_directories(miniaudio PUBLIC "${miniaudio_SOURCE_DIR}")
+target_include_directories(miniaudio SYSTEM PUBLIC "${miniaudio_SOURCE_DIR}")
 target_compile_definitions(miniaudio PUBLIC
-    MA_NO_DECODING 
-    MA_NO_ENCODING 
-    MA_NO_GENERATION 
+    MA_NO_DECODING
+    MA_NO_ENCODING
+    MA_NO_GENERATION
     MA_NO_ENGINE
-    MA_NO_RESOURCE_MANAGER 
-    MA_NO_NODE_GRAPH 
-    MA_ENABLE_ONLY_SPECIFIC_BACKENDS 
+    MA_NO_RESOURCE_MANAGER
+    MA_NO_NODE_GRAPH
+    MA_ENABLE_ONLY_SPECIFIC_BACKENDS
     MA_ENABLE_WASAPI
 )
+
+# -------------------------------------------------------------------------
+# VS: dump third-party targets into deps/
+# -------------------------------------------------------------------------
+foreach(t imgui miniaudio blend2d asmjit kfr kfr_dft)
+    if(TARGET ${t})
+        set_property(TARGET ${t} PROPERTY FOLDER "deps")
+    endif()
+endforeach()
 
 # -------------------------------------------------------------------------
 # Resources
@@ -188,67 +210,68 @@ configure_file(
 # -------------------------------------------------------------------------
 # Sources
 # -------------------------------------------------------------------------
-set(SPECTRUM_APP_SOURCES 
-    App/Application.cpp 
-    App/Core.h
+set(SPECTRUM_APP_SOURCES
+    src/App/Application.cpp
+    src/App/Core.h
 )
 
 set(SPECTRUM_AUDIO_SOURCES
-    Audio/Audio.h
-    Audio/AudioCapture.hpp
-    Audio/Spectrum.hpp
+    src/Audio/Audio.h
+    src/Audio/AudioCapture.hpp
+    src/Audio/Spectrum.hpp
 )
 
-set(SPECTRUM_COMMON_SOURCES 
-    Common/Common.h 
-    Common/EventBus.h 
-    Common/Types.h
+set(SPECTRUM_COMMON_SOURCES
+    src/Common/Common.h
+    src/Common/EventBus.h
+    src/Common/Types.h
 )
 
 set(SPECTRUM_GRAPHICS_SOURCES
-    Graphics/RendererManager.h 
-    Graphics/API/GraphicsSurface.h 
-    Graphics/API/D3D11Backend.h 
-    Graphics/Base/BaseRenderer.h
-    Graphics/Base/PeakTracker.h 
-    Graphics/Base/RenderUtils.h 
-    Graphics/Visualizers/BarsRenderer.h
-    Graphics/Visualizers/CircularWaveRenderer.h 
-    Graphics/Visualizers/CubesRenderer.h
-    Graphics/Visualizers/FireRenderer.h 
-    Graphics/Visualizers/GaugeRenderer.h
-    Graphics/Visualizers/KenwoodBarsRenderer.h 
-    Graphics/Visualizers/LedPanelRenderer.h
-    Graphics/Visualizers/MatrixLedRenderer.h 
-    Graphics/Visualizers/ParticlesRenderer.h
-    Graphics/Visualizers/PolylineWaveRenderer.h 
-    Graphics/Visualizers/SphereRenderer.h
-    Graphics/Visualizers/WaterfallRenderer.h
-    Graphics/Visualizers/WaveRenderer.h 
-    Graphics/Visualizers/Settings/QualityPresets.h
+    src/Graphics/RendererManager.h
+    src/Graphics/API/GraphicsAPI.h
+    src/Graphics/API/GraphicsSurface.h
+    src/Graphics/API/D3D11Backend.h
+    src/Graphics/Base/BaseRenderer.h
+    src/Graphics/Base/PeakTracker.h
+    src/Graphics/Base/RenderUtils.h
+    src/Graphics/Visualizers/BarsRenderer.h
+    src/Graphics/Visualizers/CircularWaveRenderer.h
+    src/Graphics/Visualizers/CubesRenderer.h
+    src/Graphics/Visualizers/FireRenderer.h
+    src/Graphics/Visualizers/GaugeRenderer.h
+    src/Graphics/Visualizers/KenwoodBarsRenderer.h
+    src/Graphics/Visualizers/LedPanelRenderer.h
+    src/Graphics/Visualizers/MatrixLedRenderer.h
+    src/Graphics/Visualizers/ParticlesRenderer.h
+    src/Graphics/Visualizers/PolylineWaveRenderer.h
+    src/Graphics/Visualizers/SphereRenderer.h
+    src/Graphics/Visualizers/WaterfallRenderer.h
+    src/Graphics/Visualizers/WaveRenderer.h
+    src/Graphics/Visualizers/Settings/QualityPresets.h
 )
 
 set(SPECTRUM_PLATFORM_SOURCES
-    Platform/InputManager.h 
-    Platform/MainWindow.h 
-    Platform/Messages.h
-    Platform/UIWindow.h 
-    Platform/WindowBase.h 
-    Platform/WindowManager.h
+    src/Platform/InputManager.h
+    src/Platform/MainWindow.h
+    src/Platform/Messages.h
+    src/Platform/UIWindow.h
+    src/Platform/WindowBase.h
+    src/Platform/WindowManager.h
 )
 
-set(SPECTRUM_UI_SOURCES 
-    UI/ImGuiContext.h 
-    UI/UI.h 
-    UI/Widgets.h
+set(SPECTRUM_UI_SOURCES
+    src/UI/ImGuiContext.h
+    src/UI/UI.h
+    src/UI/Widgets.h
 )
 
 set(SOURCES
-    ${SPECTRUM_APP_SOURCES} 
-    ${SPECTRUM_AUDIO_SOURCES} 
+    ${SPECTRUM_APP_SOURCES}
+    ${SPECTRUM_AUDIO_SOURCES}
     ${SPECTRUM_COMMON_SOURCES}
-    ${SPECTRUM_GRAPHICS_SOURCES} 
-    ${SPECTRUM_PLATFORM_SOURCES} 
+    ${SPECTRUM_GRAPHICS_SOURCES}
+    ${SPECTRUM_PLATFORM_SOURCES}
     ${SPECTRUM_UI_SOURCES}
     Resources/Resource.h
 )
@@ -256,8 +279,8 @@ set(SOURCES
 # -------------------------------------------------------------------------
 # Executable
 # -------------------------------------------------------------------------
-add_executable(${PROJECT_NAME} WIN32 
-    ${SOURCES} 
+add_executable(${PROJECT_NAME} WIN32
+    ${SOURCES}
     "${CMAKE_BINARY_DIR}/resource.rc"
 )
 
@@ -265,9 +288,9 @@ add_executable(${PROJECT_NAME} WIN32
 # VS Filters
 # -------------------------------------------------------------------------
 source_group(TREE "${PROJECT_SOURCE_DIR}" FILES ${SOURCES})
-source_group("Resources" FILES 
-    "${CMAKE_BINARY_DIR}/resource.rc" 
-    Resources/resource.rc.in 
+source_group("Resources" FILES
+    "${CMAKE_BINARY_DIR}/resource.rc"
+    Resources/resource.rc.in
     Resources/Resource.h
 )
 
@@ -277,10 +300,10 @@ source_group("Resources" FILES
 set(SPECTRUM_CONSOLE_DEF "$<$<OR:$<CONFIG:Debug>,$<AND:$<BOOL:${SPECTRUM_SHOW_CONSOLE_IN_RELEASE}>,$<CONFIG:RelWithDebInfo>>>:SHOW_CONSOLE=1>")
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
-    UNICODE 
-    _UNICODE 
-    NOMINMAX 
-    WIN32_LEAN_AND_MEAN 
+    UNICODE
+    _UNICODE
+    NOMINMAX
+    WIN32_LEAN_AND_MEAN
     BL_STATIC
     $<$<CONFIG:Debug>:_DEBUG>
     $<$<NOT:$<CONFIG:Debug>>:NDEBUG>
@@ -292,12 +315,14 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
 # -------------------------------------------------------------------------
 if(MSVC)
     target_compile_options(${PROJECT_NAME} PRIVATE
-        /W4 
-        /EHsc 
-        /permissive- 
-        /utf-8 
-        /Zc:__cplusplus 
-        /Zc:inline 
+        /W4
+        /external:W0
+        /external:anglebrackets
+        /EHsc
+        /permissive-
+        /utf-8
+        /Zc:__cplusplus
+        /Zc:inline
         /wd4828
         /MP
         $<$<CONFIG:Debug>:/Zi /Od /RTC1>
@@ -313,8 +338,8 @@ if(MSVC)
     )
 else()
     target_compile_options(${PROJECT_NAME} PRIVATE
-        -Wall 
-        -Wextra 
+        -Wall
+        -Wextra
         -Wpedantic
         $<$<CONFIG:Release>:-O3 -march=native -ffast-math>
         $<$<CONFIG:RelWithDebInfo>:-O2 -g -march=native -ffast-math>
@@ -326,18 +351,20 @@ endif()
 # -------------------------------------------------------------------------
 check_ipo_supported(RESULT ipo_supported OUTPUT error)
 if(ipo_supported)
-    set_property(TARGET ${PROJECT_NAME} 
+    set_property(TARGET ${PROJECT_NAME}
         PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE
     )
-    set_property(TARGET ${PROJECT_NAME} 
+    set_property(TARGET ${PROJECT_NAME}
         PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE
     )
-    set_property(TARGET miniaudio 
+    set_property(TARGET miniaudio
         PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE
     )
-    set_property(TARGET kfr_dft 
-        PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE
-    )
+    if(TARGET kfr_dft)
+        set_property(TARGET kfr_dft
+            PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE
+        )
+    endif()
 else()
     message(WARNING "LTO is not supported: ${error}")
 endif()
@@ -346,8 +373,10 @@ endif()
 # Includes
 # -------------------------------------------------------------------------
 target_include_directories(${PROJECT_NAME} PRIVATE
-    "${PROJECT_SOURCE_DIR}"
+    "${PROJECT_SOURCE_DIR}/src"
     "${PROJECT_SOURCE_DIR}/Resources"
+)
+target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE
     ${SPECTRUM_BLEND2D_INCLUDES}
 )
 
@@ -355,20 +384,20 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 # Dependencies Linking
 # -------------------------------------------------------------------------
 target_link_libraries(${PROJECT_NAME} PRIVATE
-    imgui 
-    blend2d::blend2d 
-    kfr 
-    kfr_dft 
+    imgui
+    blend2d::blend2d
+    kfr
+    kfr_dft
     miniaudio
-    d2d1 
-    d3d11 
-    dwrite 
-    dxgi 
-    ole32 
-    uuid 
-    dwmapi 
-    windowscodecs 
-    gdi32 
+    d2d1
+    d3d11
+    dwrite
+    dxgi
+    ole32
+    uuid
+    dwmapi
+    windowscodecs
+    gdi32
     user32
 )
 
@@ -391,8 +420,7 @@ install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 # -------------------------------------------------------------------------
 # IDE Settings & Summary
 # -------------------------------------------------------------------------
-set_property(GLOBAL PROPERTY USE_FOLDERS ON)
-set_property(DIRECTORY ${PROJECT_SOURCE_DIR} 
+set_property(DIRECTORY ${PROJECT_SOURCE_DIR}
     PROPERTY VS_STARTUP_PROJECT ${PROJECT_NAME}
 )
 
@@ -401,3 +429,4 @@ message(STATUS "C++${CMAKE_CXX_STANDARD} | ${CMAKE_CXX_COMPILER_ID}")
 message(STATUS "Generator: ${CMAKE_GENERATOR}")
 message(STATUS "LTO (Release): ${ipo_supported}")
 message(STATUS "Output: ${SPECTRUM_OUTPUT_DIR}")
+message(STATUS "Pins: asmjit=${SPECTRUM_ASMJIT_GIT_TAG} blend2d=${SPECTRUM_BLEND2D_GIT_TAG} kfr=${SPECTRUM_KFR_GIT_TAG} miniaudio=${SPECTRUM_MINIAUDIO_GIT_TAG}")
