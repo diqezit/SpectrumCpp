@@ -5,10 +5,7 @@
 // CubesRenderer
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "Graphics/API/Draw.h"
 #include "Graphics/Base/BaseRenderer.h"
-#include "Graphics/Base/RenderUtils.h"
-#include "Graphics/Visualizers/Settings/QualityTraits.h"
 
 namespace Spectrum {
 
@@ -18,10 +15,6 @@ namespace Spectrum {
         [[nodiscard]] std::string_view GetName() const override { return "Cubes"; }
 
     protected:
-        void UpdateSettings() override {
-            m_settings = GetQualitySettings<Settings::CubesSettings>();
-        }
-
         void DoRender(BLContext& ctx, const SpectrumData& spectrum) override {
             const auto layout = CalculateBarLayout(spectrum.size(), kSpacing);
             if (layout.barWidth <= 0.0f) return;
@@ -29,7 +22,7 @@ namespace Spectrum {
             std::vector<Cube> cubes;
             cubes.reserve(spectrum.size());
             for (size_t i = 0; i < spectrum.size(); ++i) {
-                const float mag = Helpers::Sanitize::Normalized(spectrum[i]);
+                const float mag = Normalized(spectrum[i]);
                 if (mag >= kMinMagnitude)
                     cubes.push_back(MakeCube(i, mag, layout));
             }
@@ -72,7 +65,7 @@ namespace Spectrum {
         [[nodiscard]] Cube MakeCube(size_t index, float mag, const BarLayout& layout) const {
             const Color base = AdjustAlpha(GetPrimaryColor(), kAlphaBase + kAlphaRange * mag);
             return {
-                GetBarRect(layout, index, RenderUtils::MagnitudeToHeight(mag, GetHeight(), kHeightScale)),
+                GetBarRect(layout, index, RenderUtils::MagnitudeToHeight(mag, float(GetHeight()), kHeightScale)),
                 layout.barWidth * m_settings.topHeightRatio,
                 layout.barWidth * m_settings.perspective,
                 base,
@@ -82,14 +75,12 @@ namespace Spectrum {
         }
 
         [[nodiscard]] std::vector<Point> SidePoints(const Cube& cube) const {
-            using namespace Helpers::Geometry;
             const Point tr = GetTopRight(cube.front);
             const Point br = GetBottomRight(cube.front);
             return { tr, Add(tr, { cube.sideW, -cube.topH }), Add(br, { cube.sideW, -cube.topH }), br };
         }
 
         [[nodiscard]] std::vector<Point> TopPoints(const Cube& cube) const {
-            using namespace Helpers::Geometry;
             const Point tl = GetTopLeft(cube.front);
             const Point tr = GetTopRight(cube.front);
             return { tl, tr, Add(tr, { cube.sideW, -cube.topH }), Add(tl, { cube.sideW, -cube.topH }) };
@@ -101,25 +92,16 @@ namespace Spectrum {
                 Draw::FillRect(ctx, RenderUtils::OffsetRect(cube.front), shadow);
                 if (m_settings.useSideFace) {
                     auto pts = SidePoints(cube);
-                    Offset(pts);
+                    RenderUtils::OffsetShadow(pts);
                     Draw::FillPolygon(ctx, pts, shadow);
                 }
                 if (m_settings.useTopFace) {
                     auto pts = TopPoints(cube);
-                    Offset(pts);
+                    RenderUtils::OffsetShadow(pts);
                     Draw::FillPolygon(ctx, pts, shadow);
                 }
             }
         }
-
-        static void Offset(std::vector<Point>& pts) {
-            for (auto& p : pts) {
-                p.x += RenderUtils::kShadowOffset;
-                p.y += RenderUtils::kShadowOffset;
-            }
-        }
-
-        Settings::CubesSettings m_settings{};
     };
 
 } // namespace Spectrum

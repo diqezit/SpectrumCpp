@@ -6,8 +6,6 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Graphics/Base/BaseRenderer.h"
-#include "Graphics/Base/RenderUtils.h"
-#include "Graphics/Visualizers/Settings/QualityTraits.h"
 
 namespace Spectrum {
 
@@ -17,33 +15,23 @@ namespace Spectrum {
         [[nodiscard]] std::string_view GetName() const override { return "Bars"; }
 
     protected:
-        void UpdateSettings() override {
-            m_settings = GetQualitySettings<Settings::BarsSettings>();
-        }
-
         void DoRender(BLContext& ctx, const SpectrumData& spectrum) override {
-            const auto layout = CalculateBarLayout(spectrum.size(), m_settings.barSpacing);
-            if (layout.barWidth <= 0.0f) return;
-
             RectBatch shadows;
             RectBatch bodies;
             std::vector<Bar> highlights;
             highlights.reserve(spectrum.size());
 
-            for (size_t i = 0; i < spectrum.size(); ++i) {
-                const float mag = Helpers::Sanitize::Normalized(spectrum[i]);
-                const float height = RenderUtils::MagnitudeToHeight(mag, GetHeight(), kHeightScale);
-                if (height < kMinVisibleHeight) continue;
-
-                const Rect rect = GetBarRect(layout, i, height);
-                const Color color = AdjustBrightness(
-                    GetPrimaryColor(), kBrightnessMin + kBrightnessRange * mag);
-
-                if (m_settings.useShadow)
-                    shadows[RenderUtils::ShadowColor()].push_back(RenderUtils::OffsetRect(rect));
-                bodies[color].push_back(rect);
-                highlights.push_back({ rect, mag });
-            }
+            if (!ForEachBar(
+                spectrum, m_settings.barSpacing, kHeightScale, kMinVisibleHeight,
+                [&](size_t, float mag, const Rect& rect, const BarLayout&) {
+                    const Color color = AdjustBrightness(
+                        GetPrimaryColor(), kBrightnessMin + kBrightnessRange * mag);
+                    if (m_settings.useShadow)
+                        shadows[RenderUtils::ShadowColor()].push_back(RenderUtils::OffsetRect(rect));
+                    bodies[color].push_back(rect);
+                    highlights.push_back({ rect, mag });
+                }))
+                return;
 
             if (m_settings.useShadow)
                 RenderRectBatches(ctx, shadows, m_settings.cornerRadius, RoundingMode::Top);
@@ -73,8 +61,6 @@ namespace Spectrum {
             Rect rect;
             float magnitude = 0.0f;
         };
-
-        Settings::BarsSettings m_settings{};
     };
 
 } // namespace Spectrum

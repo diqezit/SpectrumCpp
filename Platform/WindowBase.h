@@ -6,7 +6,7 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Common/Common.h"
-#include "Graphics/API/GraphicsHelpers.h"
+#include "Graphics/Base/RenderUtils.h"
 #include <string>
 
 namespace Spectrum::Platform {

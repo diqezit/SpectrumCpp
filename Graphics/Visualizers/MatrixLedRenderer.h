@@ -6,8 +6,6 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Graphics/Base/BaseRenderer.h"
-#include "Graphics/Base/RenderUtils.h"
-#include "Graphics/Visualizers/Settings/QualityTraits.h"
 
 namespace Spectrum {
 
@@ -26,8 +24,7 @@ namespace Spectrum {
         }
 
     protected:
-        void UpdateSettings() override {
-            m_settings = GetQualitySettings<Settings::MatrixLedSettings>();
+        void OnSettingsUpdated() override {
             m_grid = {};
             m_gradient = RenderUtils::LedGradient();
         }
@@ -42,27 +39,22 @@ namespace Spectrum {
             if (m_grid.columns == 0 || m_grid.rows == 0 || spectrum.empty()) return;
 
             RectBatch inactive;
-            RectBatch active;
-            const Color idle = RenderUtils::LedIdleColor(IsOverlay());
-
-            for (int col = 0; col < m_grid.columns; ++col)
-                for (int row = 0; row < m_grid.rows; ++row)
-                    inactive[idle].push_back(LedRect(col, row));
+            RenderUtils::FillIdleGrid(
+                inactive, m_grid.columns, m_grid.rows, RenderUtils::LedIdleColor(IsOverlay()),
+                [&](int col, int row) { return LedRect(col, row); });
             RenderRectBatches(ctx, inactive);
 
-            const size_t cols = std::min(static_cast<size_t>(m_grid.columns), spectrum.size());
+            RectBatch active;
+            const size_t cols = std::min(size_t(m_grid.columns), spectrum.size());
             for (size_t col = 0; col < cols; ++col) {
-                const float mag = Helpers::Sanitize::Normalized(spectrum[col]);
-                int lit = RenderUtils::LitRows(mag, m_grid.rows);
-                if (lit == 0 && mag > 0.05f) lit = 1;
-                if (lit == 0) continue;
-
-                for (int row = 0; row < lit; ++row) {
-                    active[AdjustAlpha(
-                        SampleGradient(m_gradient, RenderUtils::RowT(row, m_grid.rows)),
+                const float mag = Normalized(spectrum[col]);
+                RenderUtils::ForEachLitLed(mag, m_grid.rows, true, [&](int row, int lit) {
+                    active[RenderUtils::LedColor(
+                        m_gradient,
+                        RenderUtils::RowT(row, m_grid.rows),
                         RenderUtils::LedBrightness(mag, row == lit - 1))]
-                        .push_back(LedRect(static_cast<int>(col), row));
-                }
+                        .push_back(LedRect(int(col), row));
+                    });
             }
             RenderRectBatches(ctx, active);
 
@@ -70,12 +62,12 @@ namespace Spectrum {
 
             RectBatch peaks;
             const auto& tracker = GetPeakTracker();
+            const Color peakColor = AdjustAlpha(Color::White(), IsOverlay() ? 0.76f : 0.8f);
             for (size_t col = 0; col < cols; ++col) {
                 if (!tracker.IsPeakVisible(col)) continue;
-                const int row = RenderUtils::LitRows(tracker.GetPeak(col), m_grid.rows) - 1;
-                if (row < 0 || row >= m_grid.rows) continue;
-                peaks[AdjustAlpha(Color::White(), IsOverlay() ? 0.76f : 0.8f)]
-                    .push_back(LedRect(static_cast<int>(col), row));
+                const int row = RenderUtils::PeakRow(tracker.GetPeak(col), m_grid.rows);
+                if (!RenderUtils::IsValidRow(row, m_grid.rows)) continue;
+                peaks[peakColor].push_back(LedRect(int(col), row));
             }
             RenderRectBatches(ctx, peaks);
         }
@@ -89,7 +81,6 @@ namespace Spectrum {
             return { c.x - kSize * 0.5f, c.y - kSize * 0.5f, kSize, kSize };
         }
 
-        Settings::MatrixLedSettings m_settings{};
         GridConfig m_grid{};
         ColorGradient m_gradient;
     };

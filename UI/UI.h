@@ -29,6 +29,8 @@ namespace Spectrum {
 
         UIManager(const UIManager&) = delete;
         UIManager& operator=(const UIManager&) = delete;
+        UIManager(UIManager&&) = delete;
+        UIManager& operator=(UIManager&&) = delete;
 
         void Attach(AudioManager* audio, RendererManager* renderer) {
             m_audio = audio;
@@ -79,7 +81,8 @@ namespace Spectrum {
     }
 
     inline void UIManager::Shutdown() {
-        if (!m_ctx) return;
+        if (!m_ctx)
+            return;
         m_ctx->Shutdown();
         m_ctx.reset();
     }
@@ -104,19 +107,25 @@ namespace Spectrum {
             }
 
             if (ui::Section s("AUDIO"); s) {
-                UI_SLIDER(m_audio, "Amplification", Amplification);
-                UI_SLIDER(m_audio, "Smoothing", Smoothing);
-                UI_SLIDER(m_audio, "Bar Count", BarCount);
+                float amp = m_audio->GetAmplification();
+                if (ui::Slider("Amplification", &amp,
+                    Analyzer::kAmpMin, Analyzer::kAmpMax))
+                    m_audio->SetAmplification(amp);
+
+                float smooth = m_audio->GetSmoothing();
+                if (ui::Slider("Smoothing", &smooth,
+                    Analyzer::kSmoothMin, Analyzer::kSmoothMax))
+                    m_audio->SetSmoothing(smooth);
+
+                size_t bars = m_audio->GetBarCount();
+                if (ui::Slider("Bar Count", &bars,
+                    AudioManager::kMinBarCount, size_t(Analyzer::MAX_BARS)))
+                    m_audio->SetBarCount(bars);
 
                 ui::NamedCombo("FFT Window",
                     m_audio->GetFFTWindowName(),
                     m_audio->GetAvailableFFTWindows(),
                     [this](const std::string& n) { m_audio->SetFFTWindowByName(n); });
-
-                ui::NamedCombo("Scale",
-                    m_audio->GetSpectrumScaleName(),
-                    m_audio->GetAvailableSpectrumScales(),
-                    [this](const std::string& n) { m_audio->SetSpectrumScaleByName(n); });
 
                 if (ui::NeonButton("Reset to Defaults", ui::Pal().accent))
                     m_audio->ResetToDefaults();
@@ -141,22 +150,16 @@ namespace Spectrum {
 
         const char* name = "Idle";
         ImVec4 color = pal.statusOff;
-
         if (m_audio->IsCapturing()) {
             name = "Capturing";
             color = pal.statusOn;
         }
-        else if (m_audio->IsAnimating()) {
-            name = "Animation";
-            color = pal.statusWarn;
-        }
 
         char buf[128];
-        snprintf(buf, sizeof(buf), "%s   %d bars   %s   %s",
+        snprintf(buf, sizeof(buf), "%s   %d bars   %s",
             name,
             int(m_audio->GetBarCount()),
-            m_audio->GetFFTWindowName().data(),
-            m_audio->GetSpectrumScaleName().data());
+            m_audio->GetFFTWindowName().data());
 
         ui::StatusBar(y, width, buf, color);
     }

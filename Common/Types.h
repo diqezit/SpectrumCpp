@@ -145,11 +145,24 @@ namespace Spectrum {
     };
 
     enum class FFTWindowType : uint8_t {
-        Hann = 0, Hamming, Blackman, Rectangular, Count
-    };
-
-    enum class SpectrumScale : uint8_t {
-        Linear = 0, Logarithmic, Mel, Count
+        Rectangular = 0,
+        Triangular,
+        Bartlett,
+        Cosine,
+        Hann,
+        BartlettHann,
+        Hamming,
+        Bohman,
+        Blackman,
+        BlackmanHarris,
+        Kaiser,
+        FlatTop,
+        Gaussian,
+        Lanczos,
+        CosineNp,
+        PlanckTaper,
+        Tukey,
+        Count
     };
 
     enum class InputAction {
@@ -158,7 +171,6 @@ namespace Spectrum {
         ToggleOverlay,
         SwitchRenderer,
         CycleQuality,
-        CycleSpectrumScale,
         IncreaseAmplification,
         DecreaseAmplification,
         NextFFTWindow,
@@ -177,7 +189,6 @@ namespace Spectrum {
         float amplification = DEFAULT_AMPLIFICATION;
         float smoothing = DEFAULT_SMOOTHING;
         FFTWindowType windowType = FFTWindowType::Hann;
-        SpectrumScale scaleType = SpectrumScale::Logarithmic;
     };
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-

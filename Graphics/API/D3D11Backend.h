@@ -2,7 +2,7 @@
 #define SPECTRUM_CPP_D3D11_BACKEND_H
 
 #include "Common/Common.h"
-#include "Graphics/API/GraphicsHelpers.h"
+#include "Graphics/Base/RenderUtils.h"
 
 #include <d3d11.h>
 #include <dxgi.h>

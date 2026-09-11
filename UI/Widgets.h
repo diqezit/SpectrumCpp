@@ -332,24 +332,6 @@ namespace Spectrum::ui {
         return true;
     }
 
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    // Bind  (GetX / SetX / GetXMin / GetXMax)
-    // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-    template<class Obj, class Get, class Set, class Mn, class Mx>
-    void BindSlider(const char* label, Obj* o, Get get, Set set, Mn mn, Mx mx) {
-        auto v = (o->*get)();
-        if (Slider(label, &v, (o->*mn)(), (o->*mx)()))
-            (o->*set)(v);
-    }
-
-#define UI_SLIDER(obj, title, Prop) \
-    ::Spectrum::ui::BindSlider(title, obj, \
-        &std::remove_pointer_t<decltype(obj)>::Get##Prop, \
-        &std::remove_pointer_t<decltype(obj)>::Set##Prop, \
-        &std::remove_pointer_t<decltype(obj)>::Get##Prop##Min, \
-        &std::remove_pointer_t<decltype(obj)>::Get##Prop##Max)
-
 } // namespace Spectrum::ui
 
 #endif

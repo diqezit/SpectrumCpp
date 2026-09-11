@@ -5,9 +5,7 @@
 // FireRenderer
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "Graphics/API/Draw.h"
 #include "Graphics/Base/BaseRenderer.h"
-#include "Graphics/Visualizers/Settings/QualityTraits.h"
 
 namespace Spectrum {
 
@@ -36,10 +34,7 @@ namespace Spectrum {
         }
 
     protected:
-        void UpdateSettings() override {
-            m_settings = GetQualitySettings<Settings::FireSettings>();
-            RebuildGrid();
-        }
+        void OnSettingsUpdated() override { RebuildGrid(); }
 
         void UpdateAnimation(const SpectrumData& spectrum, float) override {
             if (m_cols <= 0 || m_rows <= 0) return;
@@ -61,8 +56,8 @@ namespace Spectrum {
                     if (color.a < 0.01f) continue;
 
                     Draw::FillRect(ctx, {
-                        static_cast<float>(x) * m_settings.pixelSize,
-                        static_cast<float>(y) * m_settings.pixelSize,
+                        float(x) * m_settings.pixelSize,
+                        float(y) * m_settings.pixelSize,
                         m_settings.pixelSize,
                         m_settings.pixelSize
                         }, color);
@@ -85,13 +80,13 @@ namespace Spectrum {
                 m_grid.clear();
                 return;
             }
-            m_cols = static_cast<int>(static_cast<float>(GetWidth()) / m_settings.pixelSize);
-            m_rows = static_cast<int>(static_cast<float>(GetHeight()) / m_settings.pixelSize);
-            m_grid.assign(static_cast<size_t>(m_cols) * static_cast<size_t>(m_rows), 0.0f);
+            m_cols = int(float(GetWidth()) / m_settings.pixelSize);
+            m_rows = int(float(GetHeight()) / m_settings.pixelSize);
+            m_grid.assign(size_t(m_cols) * size_t(m_rows), 0.0f);
         }
 
         [[nodiscard]] size_t Index(int x, int y) const {
-            return static_cast<size_t>(y) * static_cast<size_t>(m_cols) + static_cast<size_t>(x);
+            return size_t(y) * size_t(m_cols) + size_t(x);
         }
 
         [[nodiscard]] float At(int x, int y) const {
@@ -103,18 +98,17 @@ namespace Spectrum {
             if (spectrum.empty() || m_cols <= 0 || m_rows <= 0) return;
 
             const int bottom = m_rows - 1;
-            const float last = static_cast<float>(std::max<size_t>(1, spectrum.size()) - 1);
+            const float last = float(std::max<size_t>(1, spectrum.size()) - 1);
 
             for (size_t i = 0; i < spectrum.size(); ++i) {
                 const int x = Clamp(
-                    static_cast<int>(Map(static_cast<float>(i), 0.0f, last, 0.0f,
-                        static_cast<float>(m_cols - 1))),
+                    int(Map(float(i), 0.0f, last, 0.0f, float(m_cols - 1))),
                     0, m_cols - 1);
                 const size_t idx = Index(x, bottom);
                 if (idx < m_grid.size()) {
                     m_grid[idx] = std::max(
                         m_grid[idx],
-                        Helpers::Sanitize::Normalized(spectrum[i]) * m_settings.heatMultiplier);
+                        Normalized(spectrum[i]) * m_settings.heatMultiplier);
                 }
             }
         }
@@ -125,8 +119,7 @@ namespace Spectrum {
                 for (int x = 0; x < m_cols; ++x) {
                     int sx = x;
                     if (m_settings.useWind) {
-                        sx += static_cast<int>(
-                            std::sin(GetTime() * kWindSpeed + x * 0.5f) * kWindAmplitude);
+                        sx += int(std::sin(GetTime() * kWindSpeed + x * 0.5f) * kWindAmplitude);
                         sx = Clamp(sx, 0, m_cols - 1);
                     }
 
@@ -145,7 +138,6 @@ namespace Spectrum {
             }
         }
 
-        Settings::FireSettings m_settings{};
         int m_cols = 0;
         int m_rows = 0;
         std::vector<float> m_grid;

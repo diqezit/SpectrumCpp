@@ -51,7 +51,6 @@ namespace Spectrum::Platform {
         std::vector<Binding> m_binds{
             { VK_SPACE,     InputAction::ToggleCapture         },
             { 'A',          InputAction::ToggleAnimation       },
-            { 'S',          InputAction::CycleSpectrumScale    },
             { VK_UP,        InputAction::IncreaseAmplification },
             { VK_DOWN,      InputAction::DecreaseAmplification },
             { VK_LEFT,      InputAction::PrevFFTWindow         },

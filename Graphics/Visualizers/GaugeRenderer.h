@@ -5,9 +5,7 @@
 // GaugeRenderer
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "Graphics/API/Draw.h"
 #include "Graphics/Base/BaseRenderer.h"
-#include "Graphics/Visualizers/Settings/QualityTraits.h"
 
 namespace Spectrum {
 
@@ -22,12 +20,8 @@ namespace Spectrum {
         [[nodiscard]] std::string_view GetName() const override { return "Gauge"; }
 
     protected:
-        void UpdateSettings() override {
-            m_settings = GetQualitySettings<Settings::GaugeSettings>();
-        }
-
         void UpdateAnimation(const SpectrumData& spectrum, float) override {
-            const float target = Loudness(spectrum);
+            const float target = RenderUtils::RmsToDb(spectrum, kDbMin, kDbMax);
             const float smoothing = (target > m_db)
                 ? m_settings.smoothingFactorInc
                 : m_settings.smoothingFactorDec;
@@ -76,7 +70,6 @@ namespace Spectrum {
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
         void DrawBackground(BLContext& ctx, const Rect& rect) const {
-            using namespace Helpers::Geometry;
             Draw::FillRoundRect(ctx, rect, 8.0f, Color::FromRGB(80, 80, 80));
 
             const Rect inner = Deflate(rect, 4.0f);
@@ -95,7 +88,6 @@ namespace Spectrum {
         }
 
         void DrawScale(BLContext& ctx, const Rect& rect) const {
-            using namespace Helpers::Geometry;
             const Point center = Add(GetCenter(rect), { 0.0f, rect.height * 0.15f });
             const float rx = rect.width * (IsOverlay() ? 0.4f : 0.45f);
             const float ry = rect.height * (IsOverlay() ? 0.45f : 0.5f);
@@ -126,7 +118,6 @@ namespace Spectrum {
         }
 
         void DrawNeedle(BLContext& ctx, const Rect& rect) const {
-            using namespace Helpers::Geometry;
             const Point center = Add(GetCenter(rect), {
                 0.0f, rect.height * (IsOverlay() ? 0.35f : 0.4f)
                 });
@@ -157,7 +148,6 @@ namespace Spectrum {
         }
 
         void DrawPeak(BLContext& ctx, const Rect& rect) const {
-            using namespace Helpers::Geometry;
             const float r = std::min(rect.width, rect.height) * (IsOverlay() ? 0.04f : 0.05f);
             const Point pos = Add(GetTopRight(rect), { -r * 2.5f, r * 2.5f });
             const Color lamp = m_peak ? Color::Red() : Color::FromRGB(180, 0, 0);
@@ -173,26 +163,13 @@ namespace Spectrum {
                 lamp, r);
         }
 
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // Helpers
-        // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-        [[nodiscard]] float Loudness(const SpectrumData& spectrum) const {
-            if (spectrum.empty()) return kDbMin;
-            float sum = 0.0f;
-            for (float v : spectrum) sum += v * v;
-            const float rms = std::sqrt(sum / static_cast<float>(spectrum.size()));
-            return Clamp(20.0f * std::log10(std::max(rms, 1e-10f)), kDbMin, kDbMax);
-        }
-
         [[nodiscard]] float DbToAngle(float db) const {
             return Map(Clamp(db, kDbMin, kDbMax), kDbMin, kDbMax, kAngleStart, kAngleEnd);
         }
 
         [[nodiscard]] Rect PaddedRect() const {
-            using namespace Helpers::Geometry;
-            const float vw = static_cast<float>(GetWidth());
-            const float vh = static_cast<float>(GetHeight());
+            const float vw = float(GetWidth());
+            const float vh = float(GetHeight());
             if (vw <= 0.0f || vh <= 0.0f) return {};
 
             float w = vw * m_padding;
@@ -204,7 +181,6 @@ namespace Spectrum {
             return CreateCentered(GetViewportCenter(), w, h);
         }
 
-        Settings::GaugeSettings m_settings{};
         float m_aspectRatio = 2.0f;
         float m_padding = 0.8f;
         float m_db = 0.0f;

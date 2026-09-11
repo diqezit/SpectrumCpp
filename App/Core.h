@@ -10,8 +10,8 @@
 #include "Common/EventBus.h"
 #include "Graphics/RendererManager.h"
 #include "Graphics/API/D3D11Backend.h"
-#include "Graphics/API/Draw.h"
 #include "Graphics/API/GraphicsSurface.h"
+#include "Graphics/Base/RenderUtils.h"
 #include "Platform/InputManager.h"
 #include "Platform/MainWindow.h"
 #include "Platform/WindowManager.h"
@@ -23,10 +23,9 @@ namespace Spectrum {
 
     struct FrameState {
         Platform::MouseState mouse;
-        float    deltaTime = 0.0f;
-        uint64_t frameNumber = 0;
-        bool     isActive = false;
-        bool     isOverlay = false;
+        float deltaTime = 0.0f;
+        bool  isActive = false;
+        bool  isOverlay = false;
     };
 
     class Core final {
@@ -49,12 +48,11 @@ namespace Spectrum {
                 [this](int, int) { OnUIResize(); },
                 [this](bool overlay) { SetOverlayMode(overlay); });
 
-            if (!m_windowMgr->Initialize()) return false;
+            if (!m_windowMgr->Initialize())
+                return false;
 
             m_inputMgr = std::make_unique<Platform::InputManager>();
-
             m_audioMgr = std::make_unique<AudioManager>(m_eventBus.get());
-            if (!m_audioMgr->Initialize()) return false;
 
             auto* surface = m_windowMgr->GetVisualizationSurface();
             m_rendererMgr = std::make_unique<RendererManager>(m_eventBus.get());
@@ -69,7 +67,6 @@ namespace Spectrum {
 
         void Run() {
             m_timer.Reset();
-            m_frameCounter = 0;
             MainLoop();
         }
 
@@ -86,7 +83,8 @@ namespace Spectrum {
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
         void OnResize(int w, int h) {
-            if (m_rendererMgr) m_rendererMgr->OnResize(w, h);
+            if (m_rendererMgr)
+                m_rendererMgr->OnResize(w, h);
         }
 
         void OnUIResize() {
@@ -99,10 +97,12 @@ namespace Spectrum {
         }
 
         void OnMainWindowClick(const Point& pos) {
-            if (!m_settingsBtnRect.Contains(pos)) return;
-            m_windowMgr->IsUIWindowVisible()
-                ? m_windowMgr->HideUIWindow()
-                : m_windowMgr->ShowUIWindow();
+            if (!m_settingsBtnRect.Contains(pos))
+                return;
+            if (m_windowMgr->IsUIWindowVisible())
+                m_windowMgr->HideUIWindow();
+            else
+                m_windowMgr->ShowUIWindow();
         }
 
         void SetPrimaryColor(const Color& color) {
@@ -114,8 +114,8 @@ namespace Spectrum {
         }
 
         [[nodiscard]] RendererManager* GetRendererManager() const noexcept { return m_rendererMgr.get(); }
-        [[nodiscard]] AudioManager* GetAudioManager()    const noexcept { return m_audioMgr.get(); }
-        [[nodiscard]] Platform::WindowManager* GetWindowManager()   const noexcept { return m_windowMgr.get(); }
+        [[nodiscard]] AudioManager* GetAudioManager() const noexcept { return m_audioMgr.get(); }
+        [[nodiscard]] Platform::WindowManager* GetWindowManager() const noexcept { return m_windowMgr.get(); }
 
     private:
         static constexpr float kFps = 60.0f;
@@ -134,11 +134,11 @@ namespace Spectrum {
                     TranslateMessage(&msg);
                     DispatchMessage(&msg);
                 }
-                if (!m_windowMgr->IsRunning()) break;
+                if (!m_windowMgr->IsRunning())
+                    break;
 
-                if (ShouldProcessFrame()) {
+                if (m_timer.GetElapsedSeconds() >= kFrameTime) {
                     ProcessFrame();
-                    ++m_frameCounter;
                     m_timer.Reset();
                 }
                 else {
@@ -148,34 +148,34 @@ namespace Spectrum {
         }
 
         void ProcessFrame() {
-            const auto fs = CollectFrameState();
-            ProcessInput(fs.deltaTime);
-            if (fs.isOverlay || fs.isActive) RenderVisualization(fs);
-            if (m_windowMgr->IsUIWindowVisible()) RenderUI();
-        }
-
-        [[nodiscard]] FrameState CollectFrameState() const {
-            return {
+            const FrameState fs{
                 m_windowMgr->GetMessageHandler()->GetMouseState(),
                 kFrameTime,
-                m_frameCounter,
                 m_windowMgr->IsActive(),
                 m_windowMgr->IsOverlayMode()
             };
-        }
 
-        void ProcessInput(float dt) {
             m_inputMgr->Update();
             for (const auto& action : m_inputMgr->FlushActions())
                 m_eventBus->Publish(action);
-            m_audioMgr->Update(dt);
+            m_audioMgr->Update(fs.deltaTime);
+
+            if (fs.isOverlay || fs.isActive)
+                RenderVisualization(fs);
+            if (m_windowMgr->IsUIWindowVisible())
+                RenderUI();
         }
 
         void RenderVisualization(const FrameState& fs) {
             auto* surface = m_windowMgr->GetVisualizationSurface();
-            if (!surface->BeginFrame()) return;
+            if (!surface->BeginFrame())
+                return;
 
-            surface->Clear(fs.isOverlay ? Color::Transparent() : kClear);
+            if (fs.isOverlay)
+                surface->Clear(Color::Transparent());
+            else
+                surface->Clear(kClear);
+
             m_rendererMgr->GetCurrentRenderer()->Render(
                 surface->GetContext(), m_audioMgr->GetSpectrum());
             RenderSettingsButton(fs, surface);
@@ -190,30 +190,24 @@ namespace Spectrum {
             ui->BeginFrame();
             ui->Render();
             ui->EndFrame();
-            if (!backend->Present()) HandleUIDeviceLoss();
+            if (!backend->Present())
+                static_cast<void>(m_windowMgr->HandleUIResize(backend->GetWidth(), backend->GetHeight(), true));
         }
 
         void RenderSettingsButton(const FrameState& fs, GraphicsSurface* surface) {
             const float x = float(surface->GetWidth()) - kBtnSize - kBtnPad;
             m_settingsBtnRect = Rect(x, kBtnPad, kBtnSize, kBtnSize);
 
-            const bool hovered = m_settingsBtnRect.Contains(fs.mouse.position);
+            float alpha = kBtnIdle;
+            if (m_settingsBtnRect.Contains(fs.mouse.position))
+                alpha = 1.0f;
+
             Draw::FillTextCentered(
                 surface->GetContext(),
                 "\xE2\x9A\x99",
                 m_settingsBtnRect,
-                Color(1.0f, 1.0f, 1.0f, hovered ? 1.0f : kBtnIdle),
+                Color(1.0f, 1.0f, 1.0f, alpha),
                 kBtnFont);
-        }
-
-        void HandleUIDeviceLoss() {
-            auto* backend = m_windowMgr->GetUIBackend();
-            static_cast<void>(m_windowMgr->HandleUIResize(
-                backend->GetWidth(), backend->GetHeight(), true));
-        }
-
-        [[nodiscard]] bool ShouldProcessFrame() const {
-            return m_timer.GetElapsedSeconds() >= kFrameTime;
         }
 
         HINSTANCE m_hInstance;
@@ -225,8 +219,7 @@ namespace Spectrum {
         std::unique_ptr<Platform::InputManager>  m_inputMgr;
 
         Helpers::Utils::Timer m_timer;
-        uint64_t m_frameCounter = 0;
-        Rect     m_settingsBtnRect;
+        Rect m_settingsBtnRect;
     };
 
 } // namespace Spectrum

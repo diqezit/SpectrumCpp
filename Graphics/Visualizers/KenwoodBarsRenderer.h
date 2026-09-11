@@ -6,7 +6,6 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Graphics/Base/BaseRenderer.h"
-#include "Graphics/Visualizers/Settings/QualityTraits.h"
 
 namespace Spectrum {
 
@@ -20,10 +19,6 @@ namespace Spectrum {
         [[nodiscard]] std::string_view GetName() const override { return "Kenwood Bars"; }
 
     protected:
-        void UpdateSettings() override {
-            m_settings = GetQualitySettings<Settings::KenwoodBarsSettings>();
-        }
-
         void UpdateAnimation(const SpectrumData& spectrum, float dt) override {
             if (!HasPeakTracker()) return;
             GetPeakTracker().Resize(spectrum.size());
@@ -36,9 +31,9 @@ namespace Spectrum {
             const auto layout = CalculateBarLayout(spectrum.size(), m_settings.barSpacing);
             if (layout.barWidth <= 0.0f) return;
 
-            const float viewH = static_cast<float>(GetHeight());
+            const float viewH = float(GetHeight());
             for (size_t i = 0; i < spectrum.size(); ++i) {
-                const float mag = Helpers::Sanitize::Normalized(spectrum[i]);
+                const float mag = Normalized(spectrum[i]);
                 DrawRoundedRect(ctx, GetBarRect(layout, i, std::max(mag * viewH, 1.0f)),
                     m_settings.cornerRadius, BarColor(mag));
             }
@@ -51,7 +46,7 @@ namespace Spectrum {
                 if (!peaks.IsPeakVisible(i)) continue;
                 const float y = Map(peaks.GetPeak(i), 0.0f, 1.0f, viewH, 0.0f);
                 DrawRoundedRect(ctx, {
-                    static_cast<float>(i) * layout.totalBarWidth,
+                    float(i) * layout.totalBarWidth,
                     std::clamp(y - peakH, 0.0f, viewH),
                     layout.barWidth, peakH
                     }, m_settings.cornerRadius * 0.5f, Color::White());
@@ -66,8 +61,6 @@ namespace Spectrum {
                 AdjustBrightness(AdjustSaturation(GetPrimaryColor(), 1.0f), 1.2f),
                 mag);
         }
-
-        Settings::KenwoodBarsSettings m_settings{};
     };
 
 } // namespace Spectrum

@@ -5,10 +5,7 @@
 // WaterfallRenderer
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "Graphics/API/Draw.h"
 #include "Graphics/Base/BaseRenderer.h"
-#include "Graphics/Base/RenderUtils.h"
-#include "Graphics/Visualizers/Settings/QualityTraits.h"
 
 #include <array>
 #include <cmath>
@@ -19,22 +16,17 @@ namespace Spectrum {
     class WaterfallRenderer final : public BaseRenderer<WaterfallRenderer> {
     public:
         WaterfallRenderer() { UpdateSettings(); }
-
         [[nodiscard]] std::string_view GetName() const override { return "Waterfall"; }
 
     protected:
-        void UpdateSettings() override {
-            m_settings = GetQualitySettings<Settings::WaterfallSettings>();
-        }
-
         void UpdateAnimation(const SpectrumData& spectrum, float dt) override {
-            m_swayPhase = std::fmod(
-                m_swayPhase + kSwaySpeed * dt,
-                Helpers::Constants::kTwoPi);
-            if (spectrum.empty()) return;
+            m_swayPhase = WrapTwoPi(m_swayPhase + kSwaySpeed * dt);
+            if (spectrum.empty())
+                return;
 
             m_sliceTimer += dt;
-            if (m_sliceTimer < kSliceInterval) return;
+            if (m_sliceTimer < kSliceInterval)
+                return;
             m_sliceTimer -= kSliceInterval;
 
             RenderUtils::ResampleSpectrum(
@@ -49,7 +41,8 @@ namespace Spectrum {
         }
 
         void DoRender(BLContext& ctx, const SpectrumData& spectrum) override {
-            if (m_count == 0 && spectrum.empty()) return;
+            if (m_count == 0 && spectrum.empty())
+                return;
 
             const Camera cam = MakeCamera();
             const float frac = Saturate(m_sliceTimer / kSliceInterval);
@@ -60,13 +53,13 @@ namespace Spectrum {
 
             for (size_t n = 0; n < m_count; ++n) {
                 DrawSlice(
-                    ctx,
-                    cam,
+                    ctx, cam,
                     m_buffer.data() + ((oldest + n) % kHistory) * kSampleCount,
-                    static_cast<float>(m_count - 1 - n) + frac);
+                    float(m_count - 1 - n) + frac);
             }
 
-            if (spectrum.empty()) return;
+            if (spectrum.empty())
+                return;
 
             std::array<float, kSampleCount> live{};
             RenderUtils::ResampleSpectrum(spectrum, live.data(), kSampleCount, kAmplitudeScale);
@@ -119,7 +112,7 @@ namespace Spectrum {
                 std::sin(kFixedRotX),
                 GetMinDimension() * m_settings.perspectiveDepth,
                 center.x,
-                center.y + static_cast<float>(GetHeight()) * kVerticalOffset
+                center.y + float(GetHeight()) * kVerticalOffset
             };
         }
 
@@ -142,13 +135,14 @@ namespace Spectrum {
             const float* samples,
             float fromFront)
         {
-            const float history = static_cast<float>(kHistory);
+            const float history = float(kHistory);
             const float fade = Saturate((history - fromFront) / kFadeSlices);
-            if (fade <= 0.0f) return;
+            if (fade <= 0.0f)
+                return;
 
             const float depth = Saturate(1.0f - fromFront / history);
             const float z = kZSpan * (1.0f - 2.0f * depth);
-            const float step = (kXSpan * 2.0f) / static_cast<float>(kSampleCount - 1);
+            const float step = (kXSpan * 2.0f) / float(kSampleCount - 1);
 
             m_fill.clear();
             m_line.clear();
@@ -156,7 +150,7 @@ namespace Spectrum {
             for (size_t i = 0; i < kSampleCount; ++i) {
                 const Point p = Project(
                     cam,
-                    -kXSpan + static_cast<float>(i) * step,
+                    -kXSpan + float(i) * step,
                     -samples[i],
                     z);
                 m_fill.push_back(p);
@@ -166,13 +160,11 @@ namespace Spectrum {
 
             Draw::FillPolygon(ctx, m_fill, AdjustAlpha(kFillColor, kFillAlpha * fade));
             Draw::StrokePolyline(
-                ctx,
-                m_line,
+                ctx, m_line,
                 AdjustAlpha(GetPrimaryColor(), fade),
                 m_settings.lineWidth);
         }
 
-        Settings::WaterfallSettings m_settings{};
         std::array<float, kHistory* kSampleCount> m_buffer{};
         std::vector<Point> m_fill;
         std::vector<Point> m_line;

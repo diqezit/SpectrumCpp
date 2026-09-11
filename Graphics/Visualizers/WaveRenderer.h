@@ -5,10 +5,7 @@
 // WaveRenderer
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "Graphics/API/Draw.h"
 #include "Graphics/Base/BaseRenderer.h"
-#include "Graphics/Base/RenderUtils.h"
-#include "Graphics/Visualizers/Settings/QualityTraits.h"
 
 namespace Spectrum {
 
@@ -18,16 +15,12 @@ namespace Spectrum {
         [[nodiscard]] std::string_view GetName() const override { return "Wave"; }
 
     protected:
-        void UpdateSettings() override {
-            m_settings = GetQualitySettings<Settings::WaveSettings>();
-        }
-
         void UpdateAnimation(const SpectrumData& spectrum, float dt) override {
             if (spectrum.empty()) return;
             m_intensity = Lerp(
                 m_intensity,
                 RenderUtils::GetAverageMagnitude(spectrum),
-                Clamp(0.15f * dt * 60.0f, 0.0f, 1.0f));
+                SmoothDt(0.15f, dt));
         }
 
         void DoRender(BLContext& ctx, const SpectrumData& spectrum) override {
@@ -35,12 +28,7 @@ namespace Spectrum {
 
             const Rect bounds = GetViewportBounds();
             const float width = 2.0f * m_settings.waveHeight;
-            Color color = GetPrimaryColor();
-
-            if (m_intensity > 0.7f) {
-                color = AdjustBrightness(color,
-                    Lerp(1.0f, 1.3f, Map(m_intensity, 0.7f, 1.0f, 0.0f, 1.0f)));
-            }
+            Color color = RenderUtils::IntensityColor(GetPrimaryColor(), m_intensity);
 
             if (m_settings.useFill && m_settings.useMirror) {
                 RenderWithShadow(ctx,
@@ -48,24 +36,8 @@ namespace Spectrum {
                     { 0.0f, 3.0f }, 0.5f);
             }
 
-            if (m_settings.useFill) {
-                const int layers = std::max(1, m_settings.points / 64);
-                for (int i = layers; i >= 1; --i) {
-                    Color glow = GetPrimaryColor();
-                    const float t = Normalize(static_cast<float>(i), 0.0f, static_cast<float>(layers));
-                    glow.a *= (0.4f / static_cast<float>(i))
-                        * (1.0f + t * 0.5f)
-                        * m_settings.smoothness
-                        * Lerp(1.0f, 1.2f, m_intensity);
-
-                    const float glowW = width + static_cast<float>(i) * 2.5f;
-                    Stroke(ctx, spectrum, bounds, glow, glowW, false);
-                    if (m_settings.useMirror) {
-                        glow.a *= 0.55f;
-                        Stroke(ctx, spectrum, bounds, glow, glowW, true);
-                    }
-                }
-            }
+            if (m_settings.useFill)
+                StrokeGlow(ctx, spectrum, bounds, width);
 
             Stroke(ctx, spectrum, bounds, color, width, false);
             if (m_settings.useMirror) {
@@ -75,6 +47,30 @@ namespace Spectrum {
         }
 
     private:
+        void StrokeGlow(
+            BLContext& ctx,
+            const SpectrumData& spectrum,
+            const Rect& bounds,
+            float width) const
+        {
+            const int layers = std::max(1, m_settings.points / 64);
+            for (int i = layers; i >= 1; --i) {
+                Color glow = GetPrimaryColor();
+                const float t = Normalize(float(i), 0.0f, float(layers));
+                glow.a *= (0.4f / float(i))
+                    * (1.0f + t * 0.5f)
+                    * m_settings.smoothness
+                    * Lerp(1.0f, 1.2f, m_intensity);
+
+                const float glowW = width + float(i) * 2.5f;
+                Stroke(ctx, spectrum, bounds, glow, glowW, false);
+                if (m_settings.useMirror) {
+                    glow.a *= 0.55f;
+                    Stroke(ctx, spectrum, bounds, glow, glowW, true);
+                }
+            }
+        }
+
         void Stroke(
             BLContext& ctx,
             const SpectrumData& spectrum,
@@ -88,15 +84,13 @@ namespace Spectrum {
                 spectrum,
                 bounds.y + bounds.height * 0.5f,
                 bounds.height * 0.5f * (reflected ? -1.0f : 1.0f),
-                static_cast<int>(bounds.width),
+                int(bounds.width),
                 points);
-            if (bounds.x != 0.0f) {
-                for (auto& p : points) p.x += bounds.x;
-            }
+            if (bounds.x != 0.0f)
+                OffsetPoints(points, bounds.x, 0.0f);
             Draw::StrokePolyline(ctx, points, color, width);
         }
 
-        Settings::WaveSettings m_settings{};
         float m_intensity = 0.0f;
     };
 

@@ -2,7 +2,7 @@
 #define SPECTRUM_CPP_GRAPHICS_SURFACE_H
 
 #include "Common/Common.h"
-#include "Graphics/API/GraphicsHelpers.h"
+#include "Graphics/Base/RenderUtils.h"
 
 #include <blend2d.h>
 
@@ -48,7 +48,7 @@ namespace Spectrum {
 
         void Clear(const Color& c) {
             m_ctx.set_comp_op(BL_COMP_OP_SRC_COPY);
-            m_ctx.fill_all(ToBL(c));
+            m_ctx.fill_all(Draw::ToBL(c));
             m_ctx.set_comp_op(BL_COMP_OP_SRC_OVER);
         }
 
@@ -69,10 +69,6 @@ namespace Spectrum {
         [[nodiscard]] HWND GetHwnd()   const noexcept { return m_hwnd; }
 
     private:
-        static BLRgba32 ToBL(const Color& c) noexcept {
-            return BLRgba32(FloatToByte(c.r), FloatToByte(c.g), FloatToByte(c.b), FloatToByte(c.a));
-        }
-
         bool CreateBuffer(int w, int h) {
             m_image.reset();
             m_buffer = Helpers::Gdi::CreateAlphaDC(w, h);

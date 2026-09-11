@@ -5,9 +5,7 @@
 // ParticlesRenderer
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#include "Graphics/API/Draw.h"
 #include "Graphics/Base/BaseRenderer.h"
-#include "Graphics/Visualizers/Settings/QualityTraits.h"
 
 #include <algorithm>
 
@@ -16,7 +14,6 @@ namespace Spectrum {
     class ParticlesRenderer final : public BaseRenderer<ParticlesRenderer> {
     public:
         ParticlesRenderer() { UpdateSettings(); }
-
         [[nodiscard]] std::string_view GetName() const override { return "Particles"; }
 
         void OnActivate(int width, int height) override {
@@ -25,10 +22,9 @@ namespace Spectrum {
         }
 
     protected:
-        void UpdateSettings() override {
-            m_settings = GetQualitySettings<Settings::ParticlesSettings>();
+        void OnSettingsUpdated() override {
             m_particles.clear();
-            m_particles.reserve(static_cast<size_t>(m_settings.maxParticles));
+            m_particles.reserve(size_t(m_settings.maxParticles));
         }
 
         void UpdateAnimation(const SpectrumData& spectrum, float dt) override {
@@ -67,12 +63,12 @@ namespace Spectrum {
         };
 
         void Spawn(const SpectrumData& spectrum) {
-            const size_t cap = static_cast<size_t>(m_settings.maxParticles);
+            const size_t cap = size_t(m_settings.maxParticles);
             if (m_particles.size() >= cap || spectrum.empty()) return;
 
             const float threshold = IsOverlay() ? 0.02f : 0.01f;
             const float baseSize = IsOverlay() ? 2.5f : 3.0f;
-            const float barW = static_cast<float>(GetWidth()) / static_cast<float>(spectrum.size());
+            const float barW = float(GetWidth()) / float(spectrum.size());
             auto& rng = Helpers::Utils::Random::Instance();
 
             for (size_t i = 0; i < spectrum.size() && m_particles.size() < cap; ++i) {
@@ -83,7 +79,7 @@ namespace Spectrum {
                     continue;
 
                 Particle p;
-                p.pos = { static_cast<float>(i) * barW + rng.Float() * barW, static_cast<float>(GetHeight()) };
+                p.pos = { float(i) * barW + rng.Float() * barW, float(GetHeight()) };
                 p.vel = Lerp(8.0f, 35.0f, rng.Float()) * Clamp(intensity, 1.0f, 2.5f);
                 p.size = baseSize * Clamp(intensity, 1.0f, 2.5f) * m_settings.trailLength;
                 p.life = 2.0f;
@@ -92,7 +88,6 @@ namespace Spectrum {
             }
         }
 
-        Settings::ParticlesSettings m_settings{};
         std::vector<Particle> m_particles;
     };
 

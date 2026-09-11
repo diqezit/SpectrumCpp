@@ -108,23 +108,21 @@ else()
     message(FATAL_ERROR "blend2d.h not found under '${blend2d_SOURCE_DIR}'.")
 endif()
 
-# 3. KissFFT
-message(STATUS "Fetching KissFFT...")
-set(KISSFFT_TEST OFF CACHE BOOL "" FORCE)
-set(KISSFFT_TOOLS OFF CACHE BOOL "" FORCE)
-set(KISSFFT_STATIC ON CACHE BOOL "" FORCE)
-set(KISSFFT_PKGCONFIG OFF CACHE BOOL "" FORCE)
-set(KISSFFT_OPENMP OFF CACHE BOOL "" FORCE)
-set(KISSFFT_DATATYPE "float" CACHE STRING "" FORCE)
+# 3. KFR
+message(STATUS "Fetching KFR...")
+set(KFR_ENABLE_DFT ON CACHE BOOL "" FORCE)
+set(KFR_ENABLE_CAPI_BUILD OFF CACHE BOOL "" FORCE)
+set(KFR_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
+set(KFR_ENABLE_EXAMPLES OFF CACHE BOOL "" FORCE)
 
 FetchContent_Declare(
-    kissfft
-    GIT_REPOSITORY https://github.com/mborgerding/kissfft.git
-    GIT_TAG        131.1.0
+    kfr
+    GIT_REPOSITORY https://github.com/kfrlib/kfr.git
+    GIT_TAG        6.3.1
     GIT_SHALLOW    TRUE
     EXCLUDE_FROM_ALL
 )
-FetchContent_MakeAvailable(kissfft)
+FetchContent_MakeAvailable(kfr)
 
 # 4. miniaudio
 message(STATUS "Fetching miniaudio...")
@@ -196,25 +194,19 @@ set(SPECTRUM_APP_SOURCES
 )
 
 set(SPECTRUM_AUDIO_SOURCES
-    Audio/Audio.h 
-    Audio/Capture/AudioCapture.hpp 
-    Audio/Processing/Spectrum.hpp
-    Audio/Sources/AnimatedAudioSource.hpp 
-    Audio/Sources/IAudioSource.hpp 
-    Audio/Sources/RealtimeAudioSource.hpp
+    Audio/Audio.h
+    Audio/AudioCapture.hpp
+    Audio/Spectrum.hpp
 )
 
 set(SPECTRUM_COMMON_SOURCES 
     Common/Common.h 
     Common/EventBus.h 
-    Common/SpectrumTypes.h 
     Common/Types.h
 )
 
 set(SPECTRUM_GRAPHICS_SOURCES
     Graphics/RendererManager.h 
-    Graphics/API/GraphicsHelpers.h 
-    Graphics/API/Draw.h
     Graphics/API/GraphicsSurface.h 
     Graphics/API/D3D11Backend.h 
     Graphics/Base/BaseRenderer.h
@@ -234,7 +226,6 @@ set(SPECTRUM_GRAPHICS_SOURCES
     Graphics/Visualizers/WaterfallRenderer.h
     Graphics/Visualizers/WaveRenderer.h 
     Graphics/Visualizers/Settings/QualityPresets.h
-    Graphics/Visualizers/Settings/QualityTraits.h
 )
 
 set(SPECTRUM_PLATFORM_SOURCES
@@ -344,7 +335,7 @@ if(ipo_supported)
     set_property(TARGET miniaudio 
         PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE
     )
-    set_property(TARGET kissfft 
+    set_property(TARGET kfr_dft 
         PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE
     )
 else()
@@ -366,7 +357,8 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 target_link_libraries(${PROJECT_NAME} PRIVATE
     imgui 
     blend2d::blend2d 
-    kissfft::kissfft 
+    kfr 
+    kfr_dft 
     miniaudio
     d2d1 
     d3d11 
