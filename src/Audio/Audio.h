@@ -70,12 +70,12 @@ namespace Spectrum {
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
         void SetAmplification(float v) {
-            m_cfg.amplification = Clamp(v, Analyzer::kAmpMin, Analyzer::kAmpMax);
+            m_cfg.amplification = Clamp(v, AMP_MIN, AMP_MAX);
             m_analyzer.SetAmplification(m_cfg.amplification);
         }
 
         void SetSmoothing(float v) {
-            m_cfg.smoothing = Clamp(v, Analyzer::kSmoothMin, Analyzer::kSmoothMax);
+            m_cfg.smoothing = Clamp(v, SMOOTH_MIN, SMOOTH_MAX);
             m_analyzer.SetSmoothing(m_cfg.smoothing);
         }
 

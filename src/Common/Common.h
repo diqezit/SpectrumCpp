@@ -1,21 +1,10 @@
-// Common.h
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-// Common.h: A central header file for all necessary system and standard libraries.
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-
 #ifndef SPECTRUM_CPP_COMMON_H
 #define SPECTRUM_CPP_COMMON_H
 
 // Windows headers
 #include <windows.h>
 #include <windowsx.h>
-#include <d2d1_3.h>
-#include <dwrite_3.h>
 #include <wrl/client.h>
-#include <dwmapi.h>
-#include <mmdeviceapi.h>
-#include <audioclient.h>
-#include <functiondiscoverykeys_devpkey.h>
 
 // Standard library headers
 #include <memory>
@@ -41,11 +30,8 @@
 #include <type_traits>
 
 // Link required libraries
-#pragma comment(lib, "d2d1.lib")
-#pragma comment(lib, "dwrite.lib")
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "uuid.lib")
-#pragma comment(lib, "dwmapi.lib")
 
 // Include project types
 #include "Types.h"
@@ -151,7 +137,7 @@ namespace Spectrum::Helpers::Utils {
         };
         static_assert(
             sizeof(names) / sizeof(names[0]) == size_t(FFTWindowType::Count),
-            "names must match FFTWindowType"); 
+            "names must match FFTWindowType");
         return names[size_t(t)];
     }
 

@@ -74,6 +74,14 @@ namespace Spectrum {
                 m_current->SetQuality(m_quality);
         }
 
+        void SetPrimaryColor(const Color& color) {
+            m_primaryColor = color;
+            if (m_current)
+                m_current->SetPrimaryColor(color);
+        }
+
+        [[nodiscard]] Color GetPrimaryColor() const noexcept { return m_primaryColor; }
+
         void OnResize(int w, int h) {
             m_w = w;
             m_h = h;
@@ -113,6 +121,7 @@ namespace Spectrum {
         Renderer* m_current = nullptr;
         RenderStyle   m_style = RenderStyle::Bars;
         RenderQuality m_quality = RenderQuality::Medium;
+        Color         m_primaryColor = DEFAULT_PRIMARY_COLOR;
         int           m_w = 0;
         int           m_h = 0;
     };
@@ -152,6 +161,7 @@ namespace Spectrum {
         m_current = m_renderers[style].get();
         m_current->OnActivate(m_w, m_h);
         m_current->SetQuality(m_quality);
+        m_current->SetPrimaryColor(m_primaryColor);
         m_style = style;
     }
 

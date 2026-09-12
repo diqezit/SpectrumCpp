@@ -173,7 +173,7 @@ namespace Spectrum::ui {
         const auto& pal = Pal();
 
         ImGui::SetCursorScreenPos({ ImGui::GetWindowPos().x, y });
-        ImGui::PushStyleColor(ImGuiCol_ChildBg, kClear);
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, pal.background);
         ImGui::BeginChild("##status", { width, t.h }, 0, kChromeFlags);
         ImGui::PopStyleColor();
 
@@ -322,14 +322,15 @@ namespace Spectrum::ui {
     }
 
     inline bool ColorPicker(Color& color) {
-        if (!ImGui::ColorPicker3("##color", &color.r,
+        return ImGui::ColorPicker3(
+            "##color",
+            &color.r,
             ImGuiColorEditFlags_PickerHueWheel |
+            ImGuiColorEditFlags_NoInputs |
+            ImGuiColorEditFlags_NoLabel |
             ImGuiColorEditFlags_NoSidePreview |
-            ImGuiColorEditFlags_NoAlpha |
-            ImGuiColorEditFlags_NoInputs))
-            return false;
-        color.a = 1.0f;
-        return true;
+            ImGuiColorEditFlags_NoSmallPreview |
+            ImGuiColorEditFlags_NoOptions);
     }
 
 } // namespace Spectrum::ui

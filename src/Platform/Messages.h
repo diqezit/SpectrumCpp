@@ -153,11 +153,6 @@ namespace Spectrum {
                 return 0;
             }
 
-            static LRESULT HandleClose(HWND hwnd) {
-                ShowWindow(hwnd, SW_HIDE);
-                return 0;
-            }
-
             static LRESULT HitTest(HWND hwnd, LPARAM lp) {
                 POINT pt{ GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
                 ScreenToClient(hwnd, &pt);
@@ -279,9 +274,19 @@ namespace Spectrum::Platform {
             // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
         case WM_CLOSE:
-            return HandleClose(hwnd);
+            m_wm->HideUIWindow();
+            return 0;
 
         case WM_DESTROY:
+            return 0;
+
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+            // Tray
+            // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+        case WM_APP + 1:
+            if (LOWORD(lp) == WM_LBUTTONUP)
+                m_wm->ShowUIWindow();
             return 0;
 
             // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-

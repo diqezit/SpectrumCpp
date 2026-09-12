@@ -27,11 +27,18 @@ namespace Spectrum {
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
     inline constexpr size_t DEFAULT_FFT_SIZE = 2048;
     inline constexpr size_t DEFAULT_BAR_COUNT = 64;
+    inline constexpr float SMOOTH_MIN = 0.0f;
+    inline constexpr float SMOOTH_MAX = 1.0f;
     inline constexpr float DEFAULT_SMOOTHING = 0.8f;
-    inline constexpr float DEFAULT_AMPLIFICATION = 1.0f;
+    inline constexpr float AMP_MIN = 0.1f;
+    inline constexpr float AMP_MAX = 1.0f;
+    inline constexpr float DEFAULT_AMPLIFICATION = 0.5f;
     inline constexpr int DEFAULT_SAMPLE_RATE = 44100;
-    inline constexpr float DEFAULT_FPS = 60.0f;
-    inline constexpr float FRAME_TIME = 1.0f / DEFAULT_FPS;
+    inline constexpr float FRAME_TIME = 1.0f / 240.0f;
+
+    static_assert(AMP_MIN > 0.0f, "AMP_MIN is unit at slider min");
+    static_assert(DEFAULT_AMPLIFICATION >= AMP_MIN && DEFAULT_AMPLIFICATION <= AMP_MAX);
+    static_assert(DEFAULT_SMOOTHING >= SMOOTH_MIN && DEFAULT_SMOOTHING <= SMOOTH_MAX);
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
     // Core data structures
@@ -94,6 +101,8 @@ namespace Spectrum {
         static constexpr Color Blue() noexcept { return Color(0.0f, 0.0f, 1.0f); }
         static constexpr Color Transparent() noexcept { return Color(0, 0, 0, 0); }
     };
+
+    inline constexpr Color DEFAULT_PRIMARY_COLOR = Color::FromRGB(33, 150, 243);
 
     struct Rect {
         float x, y, width, height;

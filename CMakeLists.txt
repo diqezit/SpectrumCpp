@@ -41,143 +41,139 @@ option(
 )
 
 # -------------------------------------------------------------------------
-# Dependency pins
-# asmjit/blend2d: version tags like 1.13.0 do not exist — use master, then
-# pin SHA after a good configure (drop GIT_SHALLOW when pinning a commit).
+# Vendor
+# Prefer git submodules. Missing / broken trees are cloned into third_party/.
 # -------------------------------------------------------------------------
+set(SPECTRUM_VENDOR_DIR "${PROJECT_SOURCE_DIR}/third_party")
+
 set(SPECTRUM_ASMJIT_GIT_TAG    "master")
 set(SPECTRUM_BLEND2D_GIT_TAG   "master")
 set(SPECTRUM_KFR_GIT_TAG       "6.3.1")
 set(SPECTRUM_MINIAUDIO_GIT_TAG "0.11.22")
+set(SPECTRUM_IMGUI_GIT_TAG     "master")
 
-# -------------------------------------------------------------------------
-# Dependencies (Submodules & FetchContent)
-# -------------------------------------------------------------------------
-
-# 1. ImGui (Submodule)
-add_library(imgui STATIC
-    imgui/imgui.cpp
-    imgui/imgui_demo.cpp
-    imgui/imgui_draw.cpp
-    imgui/imgui_tables.cpp
-    imgui/imgui_widgets.cpp
-    imgui/backends/imgui_impl_win32.cpp
-    imgui/backends/imgui_impl_dx11.cpp
-)
-target_include_directories(imgui SYSTEM PUBLIC
-    ${PROJECT_SOURCE_DIR}/imgui
-    ${PROJECT_SOURCE_DIR}/imgui/backends
-)
-
-# 2. Blend2D & AsmJit (FetchContent)
-# asmjit is populated (not MakeAvailable) so Blend2D can consume ASMJIT_DIR.
-include(FetchContent)
-message(STATUS "Fetching AsmJit (${SPECTRUM_ASMJIT_GIT_TAG}) and Blend2D (${SPECTRUM_BLEND2D_GIT_TAG})...")
-
-FetchContent_Declare(
-    asmjit
-    GIT_REPOSITORY https://github.com/asmjit/asmjit.git
-    GIT_TAG        ${SPECTRUM_ASMJIT_GIT_TAG}
-    GIT_SHALLOW    TRUE
-    EXCLUDE_FROM_ALL
-)
-
-FetchContent_Declare(
-    blend2d
-    GIT_REPOSITORY https://github.com/blend2d/blend2d.git
-    GIT_TAG        ${SPECTRUM_BLEND2D_GIT_TAG}
-    GIT_SHALLOW    TRUE
-    EXCLUDE_FROM_ALL
-)
-
-FetchContent_GetProperties(asmjit)
-if(NOT asmjit_POPULATED)
-    if(POLICY CMP0169)
-        cmake_policy(PUSH)
-        cmake_policy(SET CMP0169 OLD)
-    endif()
-    FetchContent_Populate(asmjit)
-    if(POLICY CMP0169)
-        cmake_policy(POP)
-    endif()
+if(EXISTS "${PROJECT_SOURCE_DIR}/.git")
+    execute_process(
+        COMMAND git submodule update --init --recursive
+        WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+        RESULT_VARIABLE SPECTRUM_SUBMODULE_RV
+        OUTPUT_QUIET
+        ERROR_QUIET
+    )
 endif()
 
-set(ASMJIT_DIR "${asmjit_SOURCE_DIR}" CACHE PATH "asmjit source dir" FORCE)
+function(spectrum_ensure name repo tag sentinel)
+    set(dst "${SPECTRUM_VENDOR_DIR}/${name}")
+    if(EXISTS "${dst}/${sentinel}")
+        return()
+    endif()
+
+    if(EXISTS "${dst}")
+        message(STATUS "Removing broken third_party/${name}")
+        file(REMOVE_RECURSE "${dst}")
+    endif()
+
+    file(MAKE_DIRECTORY "${SPECTRUM_VENDOR_DIR}")
+    message(STATUS "Fetching ${name} (${tag}) -> third_party/${name}")
+    execute_process(
+        COMMAND git clone --depth 1 --branch "${tag}" --single-branch "${repo}" "${dst}"
+        WORKING_DIRECTORY "${SPECTRUM_VENDOR_DIR}"
+        RESULT_VARIABLE rv
+        ERROR_VARIABLE err
+    )
+    if(NOT rv EQUAL 0)
+        message(FATAL_ERROR "git clone ${name} failed (${rv}):\n${err}")
+    endif()
+    if(NOT EXISTS "${dst}/${sentinel}")
+        message(FATAL_ERROR "Failed to fetch ${name} into ${dst}")
+    endif()
+endfunction()
+
+spectrum_ensure(imgui
+    https://github.com/ocornut/imgui.git
+    ${SPECTRUM_IMGUI_GIT_TAG}
+    imgui.cpp)
+spectrum_ensure(asmjit
+    https://github.com/asmjit/asmjit.git
+    ${SPECTRUM_ASMJIT_GIT_TAG}
+    CMakeLists.txt)
+spectrum_ensure(blend2d
+    https://github.com/blend2d/blend2d.git
+    ${SPECTRUM_BLEND2D_GIT_TAG}
+    CMakeLists.txt)
+spectrum_ensure(kfr
+    https://github.com/kfrlib/kfr.git
+    ${SPECTRUM_KFR_GIT_TAG}
+    CMakeLists.txt)
+spectrum_ensure(miniaudio
+    https://github.com/mackron/miniaudio.git
+    ${SPECTRUM_MINIAUDIO_GIT_TAG}
+    miniaudio.h)
+
+# -------------------------------------------------------------------------
+# 1. ImGui
+# -------------------------------------------------------------------------
+add_library(imgui STATIC
+    ${SPECTRUM_VENDOR_DIR}/imgui/imgui.cpp
+    ${SPECTRUM_VENDOR_DIR}/imgui/imgui_draw.cpp
+    ${SPECTRUM_VENDOR_DIR}/imgui/imgui_tables.cpp
+    ${SPECTRUM_VENDOR_DIR}/imgui/imgui_widgets.cpp
+    ${SPECTRUM_VENDOR_DIR}/imgui/backends/imgui_impl_win32.cpp
+    ${SPECTRUM_VENDOR_DIR}/imgui/backends/imgui_impl_dx11.cpp
+)
+target_include_directories(imgui SYSTEM PUBLIC
+    ${SPECTRUM_VENDOR_DIR}/imgui
+    ${SPECTRUM_VENDOR_DIR}/imgui/backends
+)
+target_compile_definitions(imgui PUBLIC
+    IMGUI_DISABLE_OBSOLETE_FUNCTIONS
+    IMGUI_DISABLE_DEMO_WINDOWS
+)
+
+# -------------------------------------------------------------------------
+# 2. Blend2D + AsmJit
+# Blend2D embeds asmjit via ASMJIT_DIR. Do not add_subdirectory(asmjit).
+# -------------------------------------------------------------------------
+set(ASMJIT_DIR "${SPECTRUM_VENDOR_DIR}/asmjit" CACHE PATH "asmjit source dir" FORCE)
 set(BLEND2D_STATIC ON CACHE BOOL "Build Blend2D as static" FORCE)
 set(BLEND2D_NO_INSTALL ON CACHE BOOL "No Blend2D install" FORCE)
 
-FetchContent_MakeAvailable(blend2d)
+add_subdirectory("${SPECTRUM_VENDOR_DIR}/blend2d" "${CMAKE_BINARY_DIR}/_deps/blend2d" EXCLUDE_FROM_ALL)
 
 set(SPECTRUM_BLEND2D_INCLUDES "")
-if(EXISTS "${blend2d_SOURCE_DIR}/blend2d/blend2d.h")
+if(EXISTS "${SPECTRUM_VENDOR_DIR}/blend2d/blend2d/blend2d.h")
     list(APPEND SPECTRUM_BLEND2D_INCLUDES
-        "${blend2d_SOURCE_DIR}"
-        "${blend2d_SOURCE_DIR}/blend2d"
+        "${SPECTRUM_VENDOR_DIR}/blend2d"
+        "${SPECTRUM_VENDOR_DIR}/blend2d/blend2d"
     )
-elseif(EXISTS "${blend2d_SOURCE_DIR}/src/blend2d.h")
-    list(APPEND SPECTRUM_BLEND2D_INCLUDES "${blend2d_SOURCE_DIR}/src")
+elseif(EXISTS "${SPECTRUM_VENDOR_DIR}/blend2d/src/blend2d.h")
+    list(APPEND SPECTRUM_BLEND2D_INCLUDES "${SPECTRUM_VENDOR_DIR}/blend2d/src")
 else()
-    message(FATAL_ERROR "blend2d.h not found under '${blend2d_SOURCE_DIR}'.")
+    message(FATAL_ERROR "blend2d.h not found under '${SPECTRUM_VENDOR_DIR}/blend2d'.")
 endif()
 
+# -------------------------------------------------------------------------
 # 3. KFR
-message(STATUS "Fetching KFR (${SPECTRUM_KFR_GIT_TAG})...")
+# -------------------------------------------------------------------------
 set(KFR_ENABLE_DFT ON CACHE BOOL "" FORCE)
 set(KFR_ENABLE_CAPI_BUILD OFF CACHE BOOL "" FORCE)
 set(KFR_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
 set(KFR_ENABLE_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(KFR_ENABLE_MULTIARCH OFF CACHE BOOL "" FORCE)
 
-FetchContent_Declare(
-    kfr
-    GIT_REPOSITORY https://github.com/kfrlib/kfr.git
-    GIT_TAG        ${SPECTRUM_KFR_GIT_TAG}
-    GIT_SHALLOW    TRUE
-    EXCLUDE_FROM_ALL
-)
-FetchContent_MakeAvailable(kfr)
+add_subdirectory("${SPECTRUM_VENDOR_DIR}/kfr" "${CMAKE_BINARY_DIR}/_deps/kfr" EXCLUDE_FROM_ALL)
 
+# -------------------------------------------------------------------------
 # 4. miniaudio
-message(STATUS "Fetching miniaudio (${SPECTRUM_MINIAUDIO_GIT_TAG})...")
-FetchContent_Declare(
-    miniaudio
-    GIT_REPOSITORY https://github.com/mackron/miniaudio.git
-    GIT_TAG        ${SPECTRUM_MINIAUDIO_GIT_TAG}
-    GIT_SHALLOW    TRUE
-    EXCLUDE_FROM_ALL
-)
-
-FetchContent_GetProperties(miniaudio)
-if(NOT miniaudio_POPULATED)
-    if(POLICY CMP0169)
-        cmake_policy(PUSH)
-        cmake_policy(SET CMP0169 OLD)
-    endif()
-    FetchContent_Populate(miniaudio)
-    if(POLICY CMP0169)
-        cmake_policy(POP)
-    endif()
-endif()
-
+# -------------------------------------------------------------------------
 set(MINIAUDIO_IMPL "${CMAKE_BINARY_DIR}/miniaudio_impl.c")
 file(WRITE "${MINIAUDIO_IMPL}"
-    "#define MA_NO_DECODING\n"
-    "#define MA_NO_ENCODING\n"
-    "#define MA_NO_GENERATION\n"
-    "#define MA_NO_ENGINE\n"
-    "#define MA_NO_RESOURCE_MANAGER\n"
-    "#define MA_NO_NODE_GRAPH\n"
-    "#define MA_NO_FLAC\n"
-    "#define MA_NO_MP3\n"
-    "#define MA_NO_WAV\n"
-    "#define MA_ENABLE_ONLY_SPECIFIC_BACKENDS\n"
-    "#define MA_ENABLE_WASAPI\n"
     "#define MINIAUDIO_IMPLEMENTATION\n"
     "#include \"miniaudio.h\"\n"
 )
 
 add_library(miniaudio STATIC "${MINIAUDIO_IMPL}")
-target_include_directories(miniaudio SYSTEM PUBLIC "${miniaudio_SOURCE_DIR}")
+target_include_directories(miniaudio SYSTEM PUBLIC "${SPECTRUM_VENDOR_DIR}/miniaudio")
 target_compile_definitions(miniaudio PUBLIC
     MA_NO_DECODING
     MA_NO_ENCODING
@@ -185,6 +181,10 @@ target_compile_definitions(miniaudio PUBLIC
     MA_NO_ENGINE
     MA_NO_RESOURCE_MANAGER
     MA_NO_NODE_GRAPH
+    MA_NO_FLAC
+    MA_NO_MP3
+    MA_NO_WAV
+    MA_NO_NULL
     MA_ENABLE_ONLY_SPECIFIC_BACKENDS
     MA_ENABLE_WASAPI
 )
@@ -229,7 +229,6 @@ set(SPECTRUM_COMMON_SOURCES
 
 set(SPECTRUM_GRAPHICS_SOURCES
     src/Graphics/RendererManager.h
-    src/Graphics/API/GraphicsAPI.h
     src/Graphics/API/GraphicsSurface.h
     src/Graphics/API/D3D11Backend.h
     src/Graphics/Base/BaseRenderer.h
@@ -253,10 +252,8 @@ set(SPECTRUM_GRAPHICS_SOURCES
 
 set(SPECTRUM_PLATFORM_SOURCES
     src/Platform/InputManager.h
-    src/Platform/MainWindow.h
     src/Platform/Messages.h
-    src/Platform/UIWindow.h
-    src/Platform/WindowBase.h
+    src/Platform/Window.h
     src/Platform/WindowManager.h
 )
 
@@ -326,9 +323,9 @@ if(MSVC)
         /wd4828
         /MP
         $<$<CONFIG:Debug>:/Zi /Od /RTC1>
-        $<$<CONFIG:Release>:/O2 /Ob2 /fp:fast>
-        $<$<CONFIG:RelWithDebInfo>:/Zi /O2 /Ob1 /fp:fast>
-        $<$<CONFIG:MinSizeRel>:/O1 /Ob1>
+        $<$<CONFIG:Release>:/O2 /Ob2 /fp:fast /Gw>
+        $<$<CONFIG:RelWithDebInfo>:/Zi /O2 /Ob1 /fp:fast /Gw>
+        $<$<CONFIG:MinSizeRel>:/O1 /Ob1 /Gw>
     )
     target_link_options(${PROJECT_NAME} PRIVATE
         $<$<CONFIG:Debug>:/DEBUG /INCREMENTAL>
@@ -389,16 +386,13 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     kfr
     kfr_dft
     miniaudio
-    d2d1
     d3d11
-    dwrite
     dxgi
     ole32
     uuid
-    dwmapi
-    windowscodecs
     gdi32
     user32
+    shell32
 )
 
 # -------------------------------------------------------------------------
@@ -429,4 +423,4 @@ message(STATUS "C++${CMAKE_CXX_STANDARD} | ${CMAKE_CXX_COMPILER_ID}")
 message(STATUS "Generator: ${CMAKE_GENERATOR}")
 message(STATUS "LTO (Release): ${ipo_supported}")
 message(STATUS "Output: ${SPECTRUM_OUTPUT_DIR}")
-message(STATUS "Pins: asmjit=${SPECTRUM_ASMJIT_GIT_TAG} blend2d=${SPECTRUM_BLEND2D_GIT_TAG} kfr=${SPECTRUM_KFR_GIT_TAG} miniaudio=${SPECTRUM_MINIAUDIO_GIT_TAG}")
+message(STATUS "Vendor: ${SPECTRUM_VENDOR_DIR}")

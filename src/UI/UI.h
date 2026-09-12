@@ -62,7 +62,6 @@ namespace Spectrum {
         AudioManager* m_audio = nullptr;
         RendererManager* m_renderer = nullptr;
         std::unique_ptr<ImGuiContext> m_ctx;
-        Color                         m_color = Color::White();
     };
 
     // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -107,14 +106,19 @@ namespace Spectrum {
             }
 
             if (ui::Section s("AUDIO"); s) {
+
+                // TODO
+                        //    ui::NamedCombo("Audio Source",
+                        //        m_audio->GetSourceName(),
+                        //        m_audio->GetAvailableSource(),
+                        //        [this](const std::string& n) { m_audio->SetCurrentSourceByName(n); });
+
                 float amp = m_audio->GetAmplification();
-                if (ui::Slider("Amplification", &amp,
-                    Analyzer::kAmpMin, Analyzer::kAmpMax))
+                if (ui::Slider("Amplification", &amp, AMP_MIN, AMP_MAX))
                     m_audio->SetAmplification(amp);
 
                 float smooth = m_audio->GetSmoothing();
-                if (ui::Slider("Smoothing", &smooth,
-                    Analyzer::kSmoothMin, Analyzer::kSmoothMax))
+                if (ui::Slider("Smoothing", &smooth, SMOOTH_MIN, SMOOTH_MAX))
                     m_audio->SetSmoothing(smooth);
 
                 size_t bars = m_audio->GetBarCount();
@@ -132,8 +136,9 @@ namespace Spectrum {
             }
 
             if (ui::Section s("COLOR"); s) {
-                if (ui::ColorPicker(m_color))
-                    m_renderer->GetCurrentRenderer()->SetPrimaryColor(m_color);
+                Color color = m_renderer->GetPrimaryColor();
+                if (ui::ColorPicker(color))
+                    m_renderer->SetPrimaryColor(color);
             }
 
             if (ui::Section s("DISPLAY"); s) {

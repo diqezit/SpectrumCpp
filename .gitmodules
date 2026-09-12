@@ -1,3 +1,19 @@
-[submodule "imgui"]
-	path = imgui
+[submodule "third_party/imgui"]
+	path = third_party/imgui
 	url = https://github.com/ocornut/imgui.git
+[submodule "third_party/asmjit"]
+	path = third_party/asmjit
+	url = https://github.com/asmjit/asmjit.git
+	branch = master
+[submodule "third_party/blend2d"]
+	path = third_party/blend2d
+	url = https://github.com/blend2d/blend2d.git
+	branch = master
+[submodule "third_party/kfr"]
+	path = third_party/kfr
+	url = https://github.com/kfrlib/kfr.git
+	branch = 6.3.1
+[submodule "third_party/miniaudio"]
+	path = third_party/miniaudio
+	url = https://github.com/mackron/miniaudio.git
+	branch = 0.11.22

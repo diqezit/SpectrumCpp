@@ -9,13 +9,13 @@
 #include "Graphics/Base/RenderUtils.h"
 #include "Graphics/API/GraphicsSurface.h"
 #include "Graphics/API/D3D11Backend.h"
-#include "Platform/MainWindow.h"
-#include "Platform/UIWindow.h"
+#include "Platform/Window.h"
 #include "UI/UI.h"
 #include "Platform/Messages.h"
 
 #include <functional>
 #include <memory>
+#include <shellapi.h>
 
 namespace Spectrum {
 
@@ -46,11 +46,10 @@ namespace Spectrum {
             }
 
             ~WindowManager() noexcept {
-                HideUIWindow();
-                HideWindow(GetCurrentHwnd());
-                m_uiWnd.reset();
-                m_overlayWnd.reset();
-                m_mainWnd.reset();
+                if (!m_uiWnd) return;
+
+                m_isOverlay = false;
+                UpdateTray();
             }
 
             WindowManager(const WindowManager&) = delete;
@@ -61,9 +60,9 @@ namespace Spectrum {
             // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
             bool Initialize() {
-                m_mainWnd    = MakeWnd<MainWindow>(kMainTitle, kMainW, kMainH, false, m_msgHandler.get());
-                m_overlayWnd = MakeWnd<MainWindow>(kOverlayTitle, GetSystemMetrics(SM_CXSCREEN), kOverlayH, true, m_msgHandler.get());
-                m_uiWnd      = MakeWnd<UIWindow>(kUITitle, kUIW, kUIH, m_uiMsgHandler.get());
+                m_mainWnd    = MakeWnd(kMainTitle, kMainW, kMainH, Window::Main, m_msgHandler.get());
+                m_overlayWnd = MakeWnd(kOverlayTitle, GetSystemMetrics(SM_CXSCREEN), kOverlayH, Window::Overlay, m_msgHandler.get());
+                m_uiWnd      = MakeWnd(kUITitle, kUIW, kUIH, Window::UI, m_uiMsgHandler.get());
 
                 static_cast<void>(Recreate(m_viz, m_mainWnd->GetHwnd(), false));
                 static_cast<void>(Recreate(m_ui, m_uiWnd->GetHwnd()));
@@ -122,10 +121,19 @@ namespace Spectrum {
                 m_isOverlay = !m_isOverlay;
                 SwitchActiveWindow(InactiveWnd(), ActiveWnd());
                 m_onOverlay(m_isOverlay);
+                UpdateTray();
             }
 
-            void ShowUIWindow() const { m_uiWnd->Show(); }
-            void HideUIWindow() const { m_uiWnd->Hide(); }
+            void ShowUIWindow() const {
+                m_uiWnd->Show();
+                SetForegroundWindow(m_uiWnd->GetHwnd());
+                UpdateTray();
+            }
+
+            void HideUIWindow() const {
+                m_uiWnd->Hide();
+                UpdateTray();
+            }
 
             void ForceUIRender() {
                 if (!IsUIWindowVisible()) return;
@@ -145,13 +153,22 @@ namespace Spectrum {
             [[nodiscard]] bool IsUIWindowVisible() const { return ::IsWindowVisible(m_uiWnd->GetHwnd()); }
             [[nodiscard]] bool IsOverlayMode()     const noexcept { return m_isOverlay; }
 
+            // Overlay hotkeys stay global by design
+            // In window mode hotkeys fire only while the main or UI window is focused
+            [[nodiscard]] bool AcceptsHotkeys() const {
+                const HWND fg = GetForegroundWindow();
+                return fg == m_mainWnd->GetHwnd()
+                    || fg == m_uiWnd->GetHwnd()
+                    || fg == m_overlayWnd->GetHwnd();
+            }
+
             [[nodiscard]] HWND GetCurrentHwnd() const { return ActiveWnd()->GetHwnd(); }
             [[nodiscard]] HWND GetUIHwnd()      const noexcept { return m_uiWnd->GetHwnd(); }
 
             [[nodiscard]] GraphicsSurface* GetVisualizationSurface() const noexcept { return m_viz.obj.get(); }
             [[nodiscard]] D3D11Backend*    GetUIBackend()            const noexcept { return m_ui.obj.get(); }
             [[nodiscard]] UIManager*       GetUIManager()            const noexcept { return m_uiManager.get(); }
-            [[nodiscard]] MainWindow*      GetMainWindow()           const noexcept { return m_mainWnd.get(); }
+            [[nodiscard]] Window*          GetMainWindow()           const noexcept { return m_mainWnd.get(); }
             [[nodiscard]] MessageHandler*  GetMessageHandler()       const noexcept { return m_msgHandler.get(); }
 
         private:
@@ -181,7 +198,7 @@ namespace Spectrum {
                     return true;
                 }
 
-                void Resize(int w, int h) { obj->Resize(w, h); }
+                void Resize(int w, int h) { static_cast<void>(obj->Resize(w, h)); }
 
                 bool LiveResize(int w, int h) {
                     if (!obj || !SizeChanged(w, h)) return false;
@@ -190,9 +207,9 @@ namespace Spectrum {
                 }
             };
 
-            template<typename W, typename... Args>
-            std::unique_ptr<W> MakeWnd(Args... args) const {
-                auto wnd = std::make_unique<W>(m_hInstance);
+            template<typename... Args>
+            std::unique_ptr<Window> MakeWnd(Args... args) const {
+                auto wnd = std::make_unique<Window>(m_hInstance);
                 static_cast<void>(wnd->Initialize(args...));
                 return wnd;
             }
@@ -211,8 +228,8 @@ namespace Spectrum {
                 fn(rc.Width(), rc.Height());
             }
 
-            MainWindow* ActiveWnd()   const { return (m_isOverlay ? m_overlayWnd : m_mainWnd).get(); }
-            MainWindow* InactiveWnd() const { return (m_isOverlay ? m_mainWnd : m_overlayWnd).get(); }
+            Window* ActiveWnd()   const { return (m_isOverlay ? m_overlayWnd : m_mainWnd).get(); }
+            Window* InactiveWnd() const { return (m_isOverlay ? m_mainWnd : m_overlayWnd).get(); }
 
             void InitUI() {
                 static_cast<void>(m_uiManager->Initialize(
@@ -222,12 +239,28 @@ namespace Spectrum {
                     m_ui.obj->GetD3D11RenderTargetView()));
             }
 
-            void SwitchActiveWindow(MainWindow* hide, MainWindow* show) {
+            void SwitchActiveWindow(Window* hide, Window* show) {
                 HideWindow(hide->GetHwnd());
                 const auto rc = *GetClientRect(show->GetHwnd());
                 static_cast<void>(HandleVisualizationResize(rc.Width(), rc.Height(), true));
                 if (m_isOverlay) PositionAtBottom(show->GetHwnd(), show->GetHeight());
                 ShowWindowState(show->GetHwnd());
+            }
+
+            // recover hidden panel from the tray for APP
+            void UpdateTray() const {
+                NOTIFYICONDATAW nid{ sizeof(nid), m_uiWnd->GetHwnd(), 1 };
+
+                Shell_NotifyIconW(NIM_DELETE, &nid);
+
+                if (!m_isOverlay || IsUIWindowVisible()) return;
+
+                nid.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
+                nid.uCallbackMessage = WM_APP + 1;
+                nid.hIcon = LoadIconW(m_hInstance, MAKEINTRESOURCEW(101));
+
+                wcscpy_s(nid.szTip, L"Spectrum");
+                Shell_NotifyIconW(NIM_ADD, &nid);
             }
 
             HINSTANCE m_hInstance;
@@ -239,9 +272,9 @@ namespace Spectrum {
             std::unique_ptr<UIManager>        m_uiManager;
             std::unique_ptr<MessageHandler>   m_msgHandler;
             std::unique_ptr<UIMessageHandler> m_uiMsgHandler;
-            std::unique_ptr<MainWindow>       m_mainWnd;
-            std::unique_ptr<MainWindow>       m_overlayWnd;
-            std::unique_ptr<UIWindow>         m_uiWnd;
+            std::unique_ptr<Window>           m_mainWnd;
+            std::unique_ptr<Window>           m_overlayWnd;
+            std::unique_ptr<Window>           m_uiWnd;
 
             Slot<GraphicsSurface> m_viz;
             Slot<D3D11Backend>    m_ui;

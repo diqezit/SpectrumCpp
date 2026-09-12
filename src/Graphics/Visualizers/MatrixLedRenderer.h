@@ -11,10 +11,7 @@ namespace Spectrum {
 
     class MatrixLedRenderer final : public BaseRenderer<MatrixLedRenderer> {
     public:
-        MatrixLedRenderer() {
-            InitializePeakTracker(0, 0.5f, 0.95f);
-            UpdateSettings();
-        }
+        MatrixLedRenderer() { InitializePeakTracker(0, 0.5f, 0.95f); UpdateSettings(); }
 
         [[nodiscard]] std::string_view GetName() const override { return "Matrix LED"; }
 
@@ -24,13 +21,10 @@ namespace Spectrum {
         }
 
     protected:
-        void OnSettingsUpdated() override {
-            m_grid = {};
-            m_gradient = RenderUtils::LedGradient();
-        }
+        void OnSettingsUpdated() override { m_grid = {}; m_gradient = RenderUtils::LedGradient(); }
 
         void UpdateAnimation(const SpectrumData& spectrum, float dt) override {
-            SyncGrid(m_grid, spectrum.size(), kSize + kMargin, m_settings.ledDensity);
+            SyncGrid(m_grid, spectrum.size(), m_settings.ledDensity);
             if (m_settings.enableGlow && HasPeakTracker())
                 GetPeakTracker().Update(spectrum, dt);
         }
@@ -73,12 +67,10 @@ namespace Spectrum {
         }
 
     private:
-        static constexpr float kSize = 4.0f;
         static constexpr float kMargin = 1.0f;
 
         [[nodiscard]] Rect LedRect(int col, int row) const {
-            const Point c = GetGridCellCenter(m_grid, col, m_grid.rows - 1 - row);
-            return { c.x - kSize * 0.5f, c.y - kSize * 0.5f, kSize, kSize };
+            return GetGridCellRect(m_grid, col, m_grid.rows - 1 - row, kMargin);
         }
 
         GridConfig m_grid{};

@@ -15,10 +15,6 @@ namespace Spectrum {
 
         // -=-=-=-=-=-=-=-= Constants =-=-=-=-=-=-=-=
         static constexpr float kMinLogFreq = 20.0f;
-        static constexpr float kAmpMin = 0.1f;
-        static constexpr float kAmpMax = 5.0f;
-        static constexpr float kSmoothMin = 0.0f;
-        static constexpr float kSmoothMax = 1.0f;
         static constexpr float kMinLevel = 1e-6f;
         static constexpr float kLevelAttack = 0.01f;
         static constexpr float kLevelDecay = 0.999f;
@@ -35,11 +31,11 @@ namespace Spectrum {
             MIN_BIN = 1
         };
 
-        enum { FAIL, DONE };
+        enum Result { FAIL, DONE };
 
-        enum {
-            MORPH, FFT, BANDS, AGC, SMOOTH,
-            BAND_EDGES, REBUILD, WIN_BUILD
+        enum Stage {
+            MORPH, FFT, BANDS, AGC, COMPRESS, SMOOTH,
+            REBUILD, WIN_BUILD
         };
 
         Analyzer(size_t bars = DEFAULT_BAR_COUNT, size_t fftSize = DEFAULT_FFT_SIZE)
@@ -82,6 +78,7 @@ namespace Spectrum {
                 return;
             Act(BANDS);
             Act(AGC);
+            Act(COMPRESS);
             Act(SMOOTH);
         }
 
@@ -91,8 +88,8 @@ namespace Spectrum {
             m_targetBarCount = Clamp(n, size_t(1), size_t(MAX_BARS));
         }
 
-        void SetAmplification(float a) { m_amp = Clamp(a, kAmpMin, kAmpMax); }
-        void SetSmoothing(float s) { m_smooth = Clamp(s, kSmoothMin, kSmoothMax); }
+        void SetAmplification(float a) { m_amp = Clamp(a, AMP_MIN, AMP_MAX); }
+        void SetSmoothing(float s) { m_smooth = Clamp(s, SMOOTH_MIN, SMOOTH_MAX); }
 
         void SetSampleRate(size_t rate) {
             if (rate == 0 || rate == m_rate)
@@ -135,8 +132,7 @@ namespace Spectrum {
                 m_bars.swap(m_scratch);
                 m_barCount = n;
                 m_rawBars.resize(n);
-                Act(REBUILD);
-                return DONE;
+                return Act(REBUILD);
             }
 
             case FFT: {
@@ -165,19 +161,21 @@ namespace Spectrum {
 
             case AGC: {
                 auto s = kfr::make_univector(m_rawBars.data(), m_barCount);
-
                 const float peak = static_cast<float>(kfr::maxof(s));
                 if (peak > m_level)
                     m_level = Lerp(m_level, peak, kLevelAttack);
                 else
                     m_level *= kLevelDecay;
                 m_level = std::max(m_level, kMinLevel);
+                return DONE;
+            }
 
+            case COMPRESS: {
+                auto s = kfr::make_univector(m_rawBars.data(), m_barCount);
                 const float factor =
                     Clamp(kTargetLevel / m_level, kGainMin, kGainMax) * kLogRange;
-
                 s = kfr::clamp(
-                    kfr::pow(kfr::logm(1.0f + s * factor, kInvLog), m_amp),
+                    kfr::logm(1.0f + s * factor, kInvLog) * m_amp,
                     0.0f, 1.0f);
                 return DONE;
             }
@@ -192,8 +190,10 @@ namespace Spectrum {
                 return DONE;
             }
 
-            case BAND_EDGES: {
-                const size_t edgeCount = m_barCount + 1;
+            case REBUILD: {
+                m_edge.resize(m_barCount + 1);
+                m_len.resize(m_barCount);
+
                 const size_t maxBin = m_fftSize / 2;
                 const float stop = float(maxBin);
 
@@ -207,12 +207,11 @@ namespace Spectrum {
                 float bin = start;
                 size_t prev = MIN_BIN;
 
-                for (size_t i = 0; i < edgeCount; ++i) {
+                for (size_t i = 0; i <= m_barCount; ++i) {
                     size_t edge = size_t(Clamp(bin, float(MIN_BIN), stop) + 0.5f);
-                    if (i + 1 == edgeCount)
+                    if (i == m_barCount)
                         edge = maxBin;
-                    if (edge < prev)
-                        edge = prev;
+                    edge = std::max(edge, prev);
 
                     m_edge[i] = edge;
                     if (i > 0)
@@ -223,11 +222,6 @@ namespace Spectrum {
                 }
                 return DONE;
             }
-
-            case REBUILD:
-                m_edge.resize(m_barCount + 1);
-                m_len.resize(m_barCount);
-                return Act(BAND_EDGES);
 
             case WIN_BUILD: {
                 // Indexed by FFTWindowType

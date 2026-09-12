@@ -124,50 +124,23 @@ namespace Spectrum {
         struct GridConfig {
             int rows = 0;
             int columns = 0;
-            float cellSize = 0.0f;
-            Point gridStart{};
+            float cellW = 0.0f;
+            float cellH = 0.0f;
         };
 
-        [[nodiscard]] GridConfig CalculateGrid(
-            size_t requiredColumns,
-            float cellSize,
-            int maxRows = 64,
-            int maxColumns = 64) const
-        {
-            const float scale = m_isOverlay ? kOverlayScale : 1.0f;
-            const float availW = float(m_width) * scale;
-            const float availH = float(m_height) * scale;
-
-            GridConfig g;
-            g.columns = std::clamp(
-                int(std::min(requiredColumns, size_t(availW / cellSize))), 1, maxColumns);
-            g.rows = std::clamp(int(availH / cellSize), 1, maxRows);
-            g.cellSize = std::min(availW / g.columns, availH / g.rows);
-
-            const Point c = GetViewportCenter();
-            g.gridStart = {
-                c.x - g.columns * g.cellSize * 0.5f,
-                c.y - g.rows * g.cellSize * 0.5f
-            };
-            return g;
-        }
-
         [[nodiscard]] Point GetGridCellCenter(const GridConfig& g, int col, int row) const {
-            const float half = g.cellSize * 0.5f;
-            return {
-                g.gridStart.x + col * g.cellSize + half,
-                g.gridStart.y + row * g.cellSize + half
-            };
+            return { (col + 0.5f) * g.cellW, (row + 0.5f) * g.cellH };
         }
 
-        bool SyncGrid(GridConfig& grid, size_t columns, float cellSize, int maxRows = 64) {
-            const GridConfig next = CalculateGrid(columns, cellSize, maxRows);
-            if (next.columns == grid.columns && next.rows == grid.rows)
-                return false;
-            grid = next;
-            if (HasPeakTracker())
-                GetPeakTracker().Resize(size_t(grid.columns));
-            return true;
+        [[nodiscard]] Rect GetGridCellRect(const GridConfig& g, int col, int row, float margin) const {
+            return CreateCentered(GetGridCellCenter(g, col, row), g.cellW - margin, g.cellH - margin);
+        }
+
+        void SyncGrid(GridConfig& g, size_t columns, int rows) {
+            const int c = int(columns);
+            if (c != g.columns && HasPeakTracker())
+                GetPeakTracker().Resize(columns);
+            g = { rows, c, float(m_width) / c, float(m_height) / rows };
         }
 
         // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -181,11 +154,8 @@ namespace Spectrum {
         };
 
         [[nodiscard]] BarLayout CalculateBarLayout(size_t count, float spacing) const {
-            BarLayout layout;
-            layout.spacing = spacing;
-            layout.totalBarWidth = float(m_width) / count;
-            layout.barWidth = std::max(0.0f, layout.totalBarWidth - spacing);
-            return layout;
+            const float total = float(m_width) / count;
+            return { std::max(0.0f, total - spacing), spacing, total };
         }
 
         [[nodiscard]] Rect GetBarRect(
@@ -242,7 +212,7 @@ namespace Spectrum {
 
         SettingsType  m_settings{};
         RenderQuality m_quality = RenderQuality::Medium;
-        Color         m_primaryColor = Color::FromRGB(33, 150, 243);
+        Color         m_primaryColor = DEFAULT_PRIMARY_COLOR;
         bool          m_isOverlay = false;
         int           m_width = 0;
         int           m_height = 0;

@@ -1,8 +1,8 @@
-#ifndef SPECTRUM_CPP_INPUT_MANAGER_H
+﻿#ifndef SPECTRUM_CPP_INPUT_MANAGER_H
 #define SPECTRUM_CPP_INPUT_MANAGER_H
 
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-// Keyboard polling ? InputAction queue.
+// Keyboard polling → InputAction queue
 // Detects key-down transitions per frame via GetAsyncKeyState.
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
@@ -50,7 +50,7 @@ namespace Spectrum::Platform {
 
         std::vector<Binding> m_binds{
             { VK_SPACE,     InputAction::ToggleCapture         },
-            { 'A',          InputAction::ToggleAnimation       },
+            //{ 'A',          InputAction::ToggleAnimation       },
             { VK_UP,        InputAction::IncreaseAmplification },
             { VK_DOWN,      InputAction::DecreaseAmplification },
             { VK_LEFT,      InputAction::PrevFFTWindow         },

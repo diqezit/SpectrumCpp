@@ -11,10 +11,7 @@ namespace Spectrum {
 
     class LedPanelRenderer final : public BaseRenderer<LedPanelRenderer> {
     public:
-        LedPanelRenderer() {
-            InitializePeakTracker(0, 0.5f, 0.95f);
-            UpdateSettings();
-        }
+        LedPanelRenderer() { InitializePeakTracker(0, 0.5f, 0.95f); UpdateSettings(); }
 
         [[nodiscard]] std::string_view GetName() const override { return "LED Panel"; }
 
@@ -24,13 +21,10 @@ namespace Spectrum {
         }
 
     protected:
-        void OnSettingsUpdated() override {
-            m_grid = {};
-            m_gradient = RenderUtils::LedGradient();
-        }
+        void OnSettingsUpdated() override { m_grid = {}; m_gradient = RenderUtils::LedGradient(); }
 
         void UpdateAnimation(const SpectrumData& spectrum, float dt) override {
-            SyncGrid(m_grid, spectrum.size(), kRadius * 2.0f + kMargin, m_settings.maxRows);
+            SyncGrid(m_grid, spectrum.size(), m_settings.maxRows);
             if (m_settings.usePeakHold && HasPeakTracker())
                 GetPeakTracker().Update(spectrum, dt);
         }
@@ -38,11 +32,13 @@ namespace Spectrum {
         void DoRender(BLContext& ctx, const SpectrumData& spectrum) override {
             if (m_grid.columns == 0 || m_grid.rows == 0 || spectrum.empty()) return;
 
+            const float radius = (std::min(m_grid.cellW, m_grid.cellH) - kMargin) * 0.5f;
+
             PointBatch inactive;
             RenderUtils::FillIdleGrid(
                 inactive, m_grid.columns, m_grid.rows, RenderUtils::LedIdleColor(),
                 [&](int col, int row) { return LedCenter(col, row); });
-            RenderCircleBatches(ctx, inactive, kRadius);
+            RenderCircleBatches(ctx, inactive, radius);
 
             PointBatch active;
             const size_t cols = std::min(size_t(m_grid.columns), spectrum.size());
@@ -55,7 +51,7 @@ namespace Spectrum {
                         .push_back(LedCenter(int(col), row));
                     });
             }
-            RenderCircleBatches(ctx, active, kRadius);
+            RenderCircleBatches(ctx, active, radius);
 
             if (!m_settings.usePeakHold || !HasPeakTracker()) return;
 
@@ -67,12 +63,11 @@ namespace Spectrum {
                 if (!RenderUtils::IsValidRow(row, m_grid.rows)) continue;
                 Draw::StrokeCircle(
                     ctx, LedCenter(int(col), row),
-                    kRadius + kPeakStroke, peakColor, kPeakStroke);
+                    radius + kPeakStroke, peakColor, kPeakStroke);
             }
         }
 
     private:
-        static constexpr float kRadius = 6.0f;
         static constexpr float kMargin = 3.0f;
         static constexpr float kPeakStroke = 2.0f;
         static constexpr float kPeakAlpha = 0.8f;

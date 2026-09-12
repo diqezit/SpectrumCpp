@@ -39,7 +39,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
 #if defined(SHOW_CONSOLE) && SHOW_CONSOLE
     Console console;
 #endif
-
+    
     Spectrum::Core app(hInstance);
     if (!app.Initialize()) {
         MessageBoxW(nullptr, L"Failed to initialize.", L"Spectrum", MB_OK | MB_ICONERROR);

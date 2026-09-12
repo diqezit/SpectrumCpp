@@ -171,7 +171,7 @@ namespace Spectrum {
             c[ImGuiCol_ResizeGripHovered] = p.accentDim;
             c[ImGuiCol_ResizeGripActive] = p.accent;
             c[ImGuiCol_TextSelectedBg] = { p.accent.x, p.accent.y, p.accent.z, 0.30f };
-            c[ImGuiCol_NavHighlight] = p.accent;
+            c[ImGuiCol_NavCursor] = p.accent;
             c[ImGuiCol_ModalWindowDimBg] = { 0, 0, 0, 0.60f };
         }
 
