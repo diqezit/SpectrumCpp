@@ -1,58 +1,64 @@
-
-# SpectrumC++: Real-Time Audio Visualizer
-
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE.txt)
 ![Language](https://img.shields.io/badge/Language-C%2B%2B-blue)
 ![Platform](https://img.shields.io/badge/Platform-Windows-0078D6?logo=windows)
-![Build](https://img.shields.io/badge/Build-Visual_Studio-5C2D91?logo=visualstudio)
+![Build](https://img.shields.io/badge/Build-CMake-064F8C?logo=cmake)
 [![Latest Release](https://img.shields.io/github/v/release/diqezit/SpectrumCpp)](https://github.com/diqezit/SpectrumCpp/releases/latest)
 
-<img width="802" height="632" alt="image" src="https://github.com/user-attachments/assets/74336351-12e9-4207-b49d-caf398699d82" />
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/e9fd7878-be77-425b-beff-33864c91e155" width="700" alt="Main window"/>
+</p>
 
-A simple and lightweight audio visualizer for Windows. It captures any sound playing on your PC (like music from Spotify, YouTube, or games) and turns it into beautiful, real-time animations. Works both as a standalone window and as a seamless, click-through overlay on top of your screen.
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/c21553d4-45cd-4549-8331-12bffa6b0358" width="340" alt="Screenshot 1"/>
+  &nbsp;&nbsp;
+  <img src="https://github.com/user-attachments/assets/8c31c940-f0cb-40d2-8455-31edeec50d63" width="340" alt="Screenshot 2"/>
+</p>
 
-## 🚀 Core Features
+A lightweight audio visualizer for Windows. Captures desktop audio (or a microphone/other input device) via WASAPI and renders it in real time. Works as a normal window or as a click-through overlay.
 
-*   **Capture Any Desktop Audio:** Uses WASAPI Loopback to visualize sound from any application—no configuration needed.
-*   **Multiple Visualization Styles:** Choose from several built-in renderers: Bars, Wave, Circular Wave, Cubes, Fire, and LED Panel.
-*   **Seamless Overlay Mode:** A transparent, borderless, and click-through window that you can place over your games, desktop, or other applications.
-*   **Real-Time Customization:** Use hotkeys to change colors, styles, sensitivity, and other parameters instantly.
-*   **High Performance:** Written in C++ with Direct2D for smooth, 60 FPS hardware-accelerated rendering.
-*   **Zero Dependencies:** No need to install any third-party libraries. Just build and run.
+## Features
 
-## ⌨️ Hotkeys
+*   **Audio source picker:** Default Output (WASAPI loopback) or any capture device, selectable from the settings panel.
+*   **13 visualizer styles:** Bars, Wave, Circular Wave, Cubes, Fire, Gauge, Kenwood Bars, LED Panel, Matrix LED, Particles, Sunburst (Polyline Wave), Sphere, Waterfall.
+*   **Overlay mode:** Transparent, borderless, click-through window that stays on top.
+*   **Settings panel:** ImGui window for renderer, FFT window, bar count, amplification, smoothing, primary color, and overlay toggle.
+*   **Rendering:** Blend2D (software, on D3D11 swapchain) for the visualization; ImGui/D3D11 for the settings panel.
 
-| Key             | Action                              |
-| --------------- | ----------------------------------- |
-| **Space**       | Start / Stop audio capture          |
-| **O**           | Toggle Overlay Mode                 |
-| **R**           | Switch to the next visualizer style |
-| **Q**           | Cycle through render qualities      |
-| **Up / Down**   | Increase / Decrease sensitivity     |
-| **Left / Right**| Change FFT window (adjusts visuals) |
-| **- / +**       | Decrease / Increase bar count       |
-| **S**           | Switch frequency scale (Linear/Log) |
-| **ESC**         | Exit the app (or exit overlay mode) |
+## Hotkeys
 
-## 💡 Tips & Notes
+Active only while the main window or settings panel has focus (overlay toggle works globally).
 
-*   **Audio Source:** The visualizer captures sound from your **default playback device**. If you don't see any activity, make sure the correct device is set as default in Windows Sound settings.
-*   **Overlay Performance:** For the smoothest 60 FPS animation in overlay mode, you may need to click on your desktop or an empty area to make it the "active" window. When a fullscreen game or another application is active in the foreground, Windows may limit the visualizer's frame rate to ~30 FPS.
+| Key              | Action                                 |
+| ---------------- | ---------------------------------------|
+| **Space**        | Start / Stop audio capture             |
+| **O**            | Toggle Overlay Mode                    |
+| **R**            | Switch to the next visualizer style    |
+| **Q**            | Cycle through render qualities         |
+| **Up / Down**    | Increase / Decrease amplification      |
+| **Left / Right** | Change FFT window                      |
+| **- / +**        | Decrease / Increase bar count          |
+| **ESC**          | Exit the app (or exit overlay mode)    |
 
-## 🛠️ How to Build & Run
+## Notes
+
+*   **Audio Source:** Defaults to WASAPI loopback of the default playback device. To visualize a microphone or another input, open the settings panel (click the "Show Settings" button in the top-right corner) and pick a device under Audio → Audio Source.
+*   **Overlay Performance:** In overlay mode, frame rate can drop when a fullscreen application has focus — this is a Windows compositor limitation, not a bug.
+
+## How to Build
 
 **Requirements:**
-*   Windows 10 or 11 (x64)
-*   Visual Studio 2019/2022 with the **"Desktop development with C++"** workload.
+*   Windows 10/11 (x64)
+*   Visual Studio 2019/2022 with "Desktop development with C++"
+*   CMake 3.20+
+*   Git (dependencies are fetched into `third_party/` on first configure)
 
 **Steps:**
-1.  Clone this repository to your computer.
-2.  Open the `SpectrumC++.sln` file in Visual Studio.
-3.  Set the configuration to **Release** and the platform to **x64**.
-4.  Build the solution (press **F5** or go to `Build` > `Build Solution`).
+1.  Clone the repository.
+2.  Configure with CMake (e.g. open the folder in Visual Studio, or run `cmake -B build -S .`).
+3.  Build the `SpectrumCpp` target in Release x64.
 
-The executable (`SpectrumC++.exe`) will be located in the `x64/Release` folder.
+The executable is placed under `build/bin/<Config>/SpectrumCpp.exe`.
 
-## 📄 License
+## License
 
-This project is licensed under the MIT License. See the `LICENSE.txt` file for details.
+MIT License. See `LICENSE.txt`.
