@@ -5,8 +5,6 @@
 
 #include <miniaudio.h>
 
-#include <cstdint>
-
 namespace Spectrum {
 
     struct IAudioCaptureCallback {
@@ -16,7 +14,23 @@ namespace Spectrum {
 
     class AudioCapture {
     public:
-        AudioCapture() = default;
+        AudioCapture() {
+            m_names.emplace_back(kDefaultSource);
+            m_ids.emplace_back();
+
+            ma_context ctx{};
+            if (ma_context_init(nullptr, 0, nullptr, &ctx) != MA_SUCCESS)
+                return;
+
+            ma_device_info* info = nullptr;
+            ma_uint32 n = 0;
+            ma_context_get_devices(&ctx, nullptr, nullptr, &info, &n);
+            for (ma_uint32 i = 0; i < n; ++i) {
+                m_names.emplace_back(info[i].name);
+                m_ids.push_back(info[i].id);
+            }
+            ma_context_uninit(&ctx);
+        }
         ~AudioCapture() { Stop(); }
 
         AudioCapture(const AudioCapture&) = delete;
@@ -30,9 +44,17 @@ namespace Spectrum {
 
             Stop();
 
-            ma_device_config cfg = ma_device_config_init(ma_device_type_loopback);
+            ma_device_type type = ma_device_type_loopback;
+            const ma_device_id* id = nullptr;
+            if (m_src) {
+                type = ma_device_type_capture;
+                id = &m_ids[m_src];
+            }
+
+            ma_device_config cfg = ma_device_config_init(type);
             cfg.capture.format = ma_format_f32;
             cfg.capture.channels = 1; // miniaudio converts WASAPI stereo to mono
+            cfg.capture.pDeviceID = id;
             cfg.sampleRate = DEFAULT_SAMPLE_RATE;
             cfg.pUserData = this;
             cfg.dataCallback = [](ma_device* device, void*, const void* input, ma_uint32 frames) {
@@ -67,6 +89,25 @@ namespace Spectrum {
 
         void SetCallback(IAudioCaptureCallback* cb) { m_cb = cb; }
 
+        void SetSourceByName(std::string_view name) {
+            const auto it = std::find(m_names.begin(), m_names.end(), name);
+            if (it == m_names.end())
+                return;
+            const size_t i = size_t(it - m_names.begin());
+            if (i == m_src)
+                return;
+            Stop();
+            m_src = i;
+        }
+
+        [[nodiscard]] std::string_view GetSourceName() const noexcept {
+            return m_names[m_src];
+        }
+
+        [[nodiscard]] const std::vector<std::string>& GetAvailableSource() const {
+            return m_names;
+        }
+
         // AudioManager checks this only while capturing
         // not started = device is lost
         [[nodiscard]] bool IsFaulted() const noexcept {
@@ -80,8 +121,14 @@ namespace Spectrum {
         }
 
     private:
+        static constexpr const char* kDefaultSource = "Default Output";
+
         ma_device              m_device{};
         IAudioCaptureCallback* m_cb = nullptr;
+
+        size_t                    m_src = 0;
+        std::vector<std::string>  m_names;
+        std::vector<ma_device_id> m_ids;
     };
 
 } // namespace Spectrum

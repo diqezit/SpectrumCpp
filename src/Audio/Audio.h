@@ -94,6 +94,11 @@ namespace Spectrum {
             }
         }
 
+        void SetCurrentSourceByName(std::string_view name) {
+            m_capture.SetSourceByName(name);
+            if (m_capturing) StartCapture();
+        }
+
         void ResetToDefaults() {
             m_cfg = {};
             ApplyConfig();
@@ -107,6 +112,14 @@ namespace Spectrum {
         [[nodiscard]] float  GetAmplification() const noexcept { return m_cfg.amplification; }
         [[nodiscard]] float  GetSmoothing()     const noexcept { return m_cfg.smoothing; }
         [[nodiscard]] size_t GetBarCount()      const noexcept { return m_cfg.barCount; }
+
+        [[nodiscard]] std::string_view GetSourceName() const noexcept {
+            return m_capture.GetSourceName();
+        }
+
+        [[nodiscard]] const std::vector<std::string>& GetAvailableSource() {
+            return m_capture.GetAvailableSource();
+        }
 
         [[nodiscard]] std::string_view GetFFTWindowName() const noexcept {
             return Helpers::Utils::ToString(m_cfg.windowType);

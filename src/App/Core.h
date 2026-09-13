@@ -114,9 +114,10 @@ namespace Spectrum {
     private:
         static constexpr Color kClear = Color::FromRGB(13, 13, 26);
         static constexpr Color kUiBg = Color::FromRGB(30, 30, 40);
-        static constexpr float kBtnSize = 30.0f;
+        static constexpr float kBtnW = 130.0f;
+        static constexpr float kBtnH = 28.0f;
         static constexpr float kBtnPad = 10.0f;
-        static constexpr float kBtnFont = 24.0f;
+        static constexpr float kBtnFont = 14.0f;
         static constexpr float kBtnIdle = 0.5f;
 
         void MainLoop() {
@@ -190,20 +191,15 @@ namespace Spectrum {
                 static_cast<void>(m_windowMgr->HandleUIResize(backend->GetWidth(), backend->GetHeight(), true));
         }
 
-        void RenderSettingsButton(const FrameState& fs, GraphicsSurface* surface) {
-            const float x = float(surface->GetWidth()) - kBtnSize - kBtnPad;
-            m_settingsBtnRect = Rect(x, kBtnPad, kBtnSize, kBtnSize);
+        void RenderSettingsButton(const FrameState&, GraphicsSurface* surface) {
 
-            float alpha = kBtnIdle;
-            if (m_settingsBtnRect.Contains(fs.mouse.position))
-                alpha = 1.0f;
+            m_settingsBtnRect = Rect(
+                float(surface->GetWidth()) - kBtnW - kBtnPad,
+                kBtnPad, kBtnW, kBtnH);
 
             Draw::FillTextCentered(
-                surface->GetContext(),
-                "\xE2\x9A\x99",
-                m_settingsBtnRect,
-                Color(1.0f, 1.0f, 1.0f, alpha),
-                kBtnFont);
+                surface->GetContext(), "Show Settings",
+                m_settingsBtnRect, Color::White(), kBtnFont);
         }
 
         HINSTANCE m_hInstance;

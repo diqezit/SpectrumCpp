@@ -106,12 +106,10 @@ namespace Spectrum {
             }
 
             if (ui::Section s("AUDIO"); s) {
-
-                // TODO
-                        //    ui::NamedCombo("Audio Source",
-                        //        m_audio->GetSourceName(),
-                        //        m_audio->GetAvailableSource(),
-                        //        [this](const std::string& n) { m_audio->SetCurrentSourceByName(n); });
+                ui::NamedCombo("Audio Source",
+                    m_audio->GetSourceName(),
+                    m_audio->GetAvailableSource(),
+                    [this](const std::string& n) { m_audio->SetCurrentSourceByName(n); });
 
                 float amp = m_audio->GetAmplification();
                 if (ui::Slider("Amplification", &amp, AMP_MIN, AMP_MAX))

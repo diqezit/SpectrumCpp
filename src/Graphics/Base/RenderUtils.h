@@ -6,6 +6,7 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include "Common/Common.h"
+#include "Resource.h"
 
 #include <blend2d.h>
 #include <kfr/base.hpp>
@@ -376,14 +377,12 @@ namespace Spectrum::Draw {
         static float last = -1.f;
 
         if (last < 0.f) {
-            for (auto* p : {
-                "C:\\Windows\\Fonts\\seguisym.ttf",
-                "C:\\Windows\\Fonts\\segoeui.ttf",
-                "C:\\Windows\\Fonts\\arial.ttf"
-                }) {
-                if (face.create_from_file(p) == BL_SUCCESS)
-                    break;
-            }
+            const HRSRC r = FindResourceW(
+                nullptr, MAKEINTRESOURCEW(IDR_FONT_PIXEL_OPERATOR), RT_RCDATA);
+            BLFontData data;
+            data.create_from_data(
+                LockResource(LoadResource(nullptr, r)), SizeofResource(nullptr, r));
+            face.create_from_data(data, 0);
         }
 
         if (last != size) {
